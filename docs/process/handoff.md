@@ -4,23 +4,35 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision
 records are the source of truth and this is only where the work stopped.
 
-**As of the end of setup, 2026-08-24.**
+**As of 2026-08-25, with the first real wave dispatched.**
 
 ## Where the work is
 
-Setup is complete and nothing has been built. Four commits on `main`: the
-unedited asset scaffold, the wired enforcement layer, the product decisions, and
-the seeded backlog.
+Setup is complete and the enforcement stack is verified end to end rather than
+installed: a ruleset refuses direct pushes from everyone including the owner,
+three pull requests have landed through `merge-pr.mjs`, and the provenance audit
+has run green on each merge commit after failing correctly on the first push.
 
-Nothing is dispatched. No agent has run.
+Nothing of the product itself is built yet. `src/index.ts` is still a
+placeholder.
+
+**Two agents are out**, on surfaces that share no files:
+
+- **dbmd-10**, the model reader, in `src/model/`. It owns `package.json` this
+  wave and is expected to add a YAML parser. ADR number 0008 is reserved for it.
+- **dbmd-40**, the introspection contract and provider seam, in `src/import/`.
+  Told to add no dependencies. ADR number 0009 is reserved for it.
+
+Neither may merge. If either reports a pull request, review it against the three
+lenses and merge with `node scripts/merge-pr.mjs <n>`.
 
 ## What a successor would otherwise have to reconstruct
 
-- **The guard is wired and was never loaded.** `scripts/guard-merge.mjs --probe`
-  printed rather than being refused, because `.claude/settings.json` was written
-  during the session that would have needed it. Ask it again after a restart,
-  and put the answer in the status update. Nothing mechanically stops an agent
-  landing code until that probe is refused.
+- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused after
+  the harness restart, having printed before it. Ask it again after every
+  restart, before the first dispatch, and alone on the command line: a
+  `PreToolUse` refusal kills anything chained to it, so a probe joined with `&&`
+  reports a comforting answer about a command that never ran.
 - **`check-setup.mjs` went 4-of-4 MISSING to 4-of-4 ok.** Both outputs were in
   the first status update. Two of the four are dormant until a remote exists;
   ADR 0001 says which and why none was deleted.
