@@ -115,3 +115,24 @@ reflowed, never reformatted, never round-tripped through a markdown AST.
 - **Layout in frontmatter is observed causing a real review problem**, rather
   than an anticipated one. Then the side-car returns, with the conflict cost
   accepted knowingly.
+
+## Extended by 0005, on the same day
+
+Appended rather than edited, because the reasoning that turned out to be
+incomplete is still worth reading.
+
+This record assumed the only thing on the canvas was a table, and the owner named
+sticky notes and grouping boxes on the day it was written. ADR 0005 extends the
+format to hold them, and two things above are superseded by it:
+
+- **Table files move to `db-model/tables/`.** The layout in this record is flat;
+  0005 puts a directory per kind under the model root and requires a `kind:` key
+  in every file as a cross-check.
+- **"Table files are flat, so two schemas collide" is unchanged as a limitation**
+  but the way out has moved: it is now a subdirectory question inside
+  `tables/` rather than at the model root.
+
+Everything else here stands, and 0005 is built on it rather than around it. In
+particular, membership in a group is declared by the member for exactly the
+reason a relationship is declared by the foreign key column: a registry is a
+shared file, and a shared file is a merge conflict.

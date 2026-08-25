@@ -2,6 +2,25 @@
   "name": "dbmd",
   "version": "0.0.0",
   "description": "Model your database in markdown, edit it in a local web view, commit the result.",
+  "keywords": [
+    "database",
+    "schema",
+    "erd",
+    "markdown",
+    "documentation",
+    "data-modeling",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "Blake Hastings",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BlakeHastings/dbmd.git"
+  },
+  "homepage": "https://github.com/BlakeHastings/dbmd#readme",
+  "bugs": {
+    "url": "https://github.com/BlakeHastings/dbmd/issues"
+  },
   "type": "module",
   "private": true,
   "engines": {

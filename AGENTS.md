@@ -11,9 +11,15 @@ repository, as markdown, and gives developers a local web view to edit it. Edit
 the model, commit the diff, open a pull request, and the next developer sees
 what changed and why.
 
+It holds more than tables: sticky notes and grouping boxes are first-class
+objects on the same canvas, stored the same way, for the same reason.
+
 **It describes a schema. It does not generate or apply DDL.** Nothing here
 connects to a database except the import path, and that reads a JSON file a
 human produced by running a query themselves.
+
+MIT licensed, published as `dbmd` on npm, developed at
+`github.com/BlakeHastings/dbmd`.
 
 ## What exists today
 
@@ -77,6 +83,9 @@ assigns the number, checked against `main` and every open branch.
 - No dependency is added without a line in the pull request saying what it
   replaces or what it makes possible. This is a tool people run with `npx`, and
   install time is a feature.
+- **stdout is data, stderr is narration, nothing ever prompts, and output is
+  deterministic.** ADR 0006. This one is not a style preference: it is what makes
+  the same binary usable by a human, by a GitHub Actions step and by an agent.
 
 ## Gotchas
 
