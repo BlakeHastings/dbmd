@@ -16,15 +16,20 @@ has run green on each merge commit after failing correctly on the first push.
 Nothing of the product itself is built yet. `src/index.ts` is still a
 placeholder.
 
-**Two agents are out**, on surfaces that share no files:
+**The first wave landed.** dbmd-10 (the model reader, `src/model/`) and dbmd-40
+(the introspection contract and provider seam, `src/import/`) are merged as PRs
+#5 and #6 and both items are closed. Nothing is in flight.
 
-- **dbmd-10**, the model reader, in `src/model/`. It owns `package.json` this
-  wave and is expected to add a YAML parser. ADR number 0008 is reserved for it.
-- **dbmd-40**, the introspection contract and provider seam, in `src/import/`.
-  Told to add no dependencies. ADR number 0009 is reserved for it.
+Both were verified by driving them against fixtures the orchestrator wrote
+rather than the ones in the pull requests. That is what found the one defect
+CI could not: a stray NUL byte that made the largest test file binary to git and
+unreviewable as a diff, in a repository whose premise is that the diff is the
+review.
 
-Neither may merge. If either reports a pull request, review it against the three
-lenses and merge with `node scripts/merge-pr.mjs <n>`.
+What the wave produced besides code: `dbmd-13`, filed because both agents
+independently invented a `Diagnostic` type and there are now two. It has to land
+before `dbmd-21`, because ADR 0006 makes that shape a public contract the moment
+`--json` ships.
 
 ## What a successor would otherwise have to reconstruct
 
