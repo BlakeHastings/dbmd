@@ -2,7 +2,7 @@
 // `src/import/providers/` knows an engine by name.
 
 import { describe, expect, it } from 'vitest'
-import { createRegistry, registry, resolveProvider } from '../../src/import/providers/index.js'
+import { createRegistry, resolveProvider } from '../../src/import/providers/index.js'
 import { readEnvelope } from '../../src/import/contract.js'
 import { formatDiagnostics } from '../../src/import/diagnostics.js'
 import { readIntrospection } from '../../src/import/read.js'
@@ -41,10 +41,11 @@ describe('the registry', () => {
   })
 
   it('says so plainly when the build has no providers at all', () => {
-    // Which is the state of `main` until dbmd-43 lands, so it is worth a message
-    // rather than an empty list in a sentence.
-    expect(registry.ids).toEqual([])
-    const result = resolveProvider(envelope('postgres'), registry)
+    // Which is what a build with its providers removed looks like, so it is worth
+    // a message rather than an empty list in a sentence.
+    const none = createRegistry([])
+    expect(none.ids).toEqual([])
+    const result = resolveProvider(envelope('postgres'), none)
     expect(formatDiagnostics(result.diagnostics)).toEqual([
       "error $.engine [import/unknown-engine] no provider claims the engine 'postgres', and this build has no engine providers at all",
     ])

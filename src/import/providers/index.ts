@@ -1,11 +1,11 @@
 // The registry. ADR 0007: adding an engine is one file in this directory and one
 // line in the list below, and nothing outside this directory learns its name.
 //
-// The list is empty until dbmd-43 and dbmd-44 land. That is not a placeholder to
-// be tidied away: an empty registry is a state the code has to survive, because
-// it is also what a build with a provider removed looks like, and the diagnostic
-// for it is tested.
+// An empty list stays a state the code has to survive, because it is what a
+// build with a provider removed looks like, and the diagnostic for it is tested
+// against a registry built by hand rather than against this one.
 
+import { postgresProvider } from './postgres.js'
 import type { EngineProvider } from '../provider.js'
 import type { Diagnostic, Result } from '../diagnostics.js'
 import { compareCodeUnits } from '../diagnostics.js'
@@ -17,7 +17,7 @@ import type { Envelope } from '../contract.js'
  *   import { postgresProvider } from './postgres.js'
  *   export const engineProviders = [postgresProvider]
  */
-export const engineProviders: readonly EngineProvider[] = []
+export const engineProviders: readonly EngineProvider[] = [postgresProvider]
 
 export interface ProviderRegistry {
   /** Sorted, so anything that prints them is deterministic. ADR 0006. */

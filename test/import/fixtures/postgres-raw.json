@@ -2,226 +2,60 @@
   "dbmdIntrospection": 1,
   "engine": "postgres",
   "database": "shop",
-  "server_version": "16.2",
+  "server_version": "16.15 (Debian 16.15-1.pgdg13+2)",
   "default_collation": "en_US.utf8",
   "tables": [
     {
       "table_schema": "public",
-      "table_name": "orders",
-      "table_comment": "One row per placed order.",
-      "columns": [
-        {
-          "column_name": "id",
-          "format_type": "bigint",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 64,
-          "numeric_scale": 0,
-          "column_default": null,
-          "identity_generation": "ALWAYS",
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
-        },
-        {
-          "column_name": "tenant_id",
-          "format_type": "integer",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 32,
-          "numeric_scale": 0,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
-        },
-        {
-          "column_name": "code",
-          "format_type": "character varying(32)",
-          "not_null": true,
-          "character_maximum_length": 32,
-          "numeric_precision": null,
-          "numeric_scale": null,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": "Human-facing order reference."
-        },
-        {
-          "column_name": "placed_at",
-          "format_type": "timestamp with time zone",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": null,
-          "numeric_scale": null,
-          "column_default": "now()",
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
-        },
-        {
-          "column_name": "total",
-          "format_type": "numeric(12,2)",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 12,
-          "numeric_scale": 2,
-          "column_default": "0",
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
-        },
-        {
-          "column_name": "notes",
-          "format_type": "text",
-          "not_null": false,
-          "character_maximum_length": null,
-          "numeric_precision": null,
-          "numeric_scale": null,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
-        }
-      ],
-      "primary_key": {
-        "constraint_name": "orders_pkey",
-        "columns": ["id"]
-      },
-      "indexes": [
-        {
-          "index_name": "orders_tenant_id_code_key",
-          "is_unique": true,
-          "is_constraint": true,
-          "predicate": null,
-          "key_columns": [
-            { "column_name": "tenant_id", "is_descending": false },
-            { "column_name": "code", "is_descending": false }
-          ],
-          "included_columns": []
-        }
-      ],
-      "foreign_keys": [],
-      "check_constraints": [
-        {
-          "constraint_name": "orders_total_check",
-          "expression": "((total >= (0)::numeric))"
-        }
-      ]
-    },
-    {
-      "table_schema": "public",
       "table_name": "order_line",
-      "table_comment": null,
       "columns": [
         {
           "column_name": "order_id",
           "format_type": "bigint",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 64,
-          "numeric_scale": 0,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
+          "not_null": true
         },
         {
           "column_name": "line_no",
           "format_type": "integer",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 32,
-          "numeric_scale": 0,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
+          "not_null": true
         },
         {
           "column_name": "tenant_id",
           "format_type": "integer",
-          "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 32,
-          "numeric_scale": 0,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
+          "not_null": true
         },
         {
           "column_name": "order_code",
-          "format_type": "character varying(32)",
+          "format_type": "character varying",
           "not_null": true,
           "character_maximum_length": 32,
-          "numeric_precision": null,
-          "numeric_scale": null,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": "C",
-          "column_comment": null
+          "collation_name": "C"
         },
         {
           "column_name": "quantity",
           "format_type": "integer",
           "not_null": true,
-          "character_maximum_length": null,
-          "numeric_precision": 32,
-          "numeric_scale": 0,
-          "column_default": "0",
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
+          "column_default": "0"
         },
         {
           "column_name": "unit_price",
-          "format_type": "numeric(12,2)",
+          "format_type": "numeric",
           "not_null": true,
-          "character_maximum_length": null,
           "numeric_precision": 12,
-          "numeric_scale": 2,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
+          "numeric_scale": 2
         },
         {
           "column_name": "line_total",
-          "format_type": "numeric(12,2)",
+          "format_type": "numeric",
           "not_null": true,
-          "character_maximum_length": null,
           "numeric_precision": 12,
           "numeric_scale": 2,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": "((quantity)::numeric * unit_price)",
-          "collation_name": null,
-          "column_comment": null
+          "generation_expression": "((quantity)::numeric * unit_price)"
         },
         {
           "column_name": "notes",
           "format_type": "text",
-          "not_null": false,
-          "character_maximum_length": null,
-          "numeric_precision": null,
-          "numeric_scale": null,
-          "column_default": null,
-          "identity_generation": null,
-          "generation_expression": null,
-          "collation_name": null,
-          "column_comment": null
+          "not_null": false
         }
       ],
       "primary_key": {
@@ -235,22 +69,19 @@
           "is_constraint": false,
           "predicate": "(quantity > 0)",
           "key_columns": [
-            { "column_name": "order_id", "is_descending": false },
-            { "column_name": "line_no", "is_descending": true }
+            {
+              "column_name": "order_id",
+              "is_descending": false
+            },
+            {
+              "column_name": "line_no",
+              "is_descending": true
+            }
           ],
           "included_columns": ["quantity"]
         }
       ],
       "foreign_keys": [
-        {
-          "constraint_name": "order_line_tenant_id_order_code_fkey",
-          "columns": ["tenant_id", "order_code"],
-          "referenced_schema": "public",
-          "referenced_table": "orders",
-          "referenced_columns": ["tenant_id", "code"],
-          "on_delete": "c",
-          "on_update": "a"
-        },
         {
           "constraint_name": "order_line_order_id_fkey",
           "columns": ["order_id"],
@@ -259,9 +90,91 @@
           "referenced_columns": ["id"],
           "on_delete": "r",
           "on_update": "a"
+        },
+        {
+          "constraint_name": "order_line_tenant_id_order_code_fkey",
+          "columns": ["tenant_id", "order_code"],
+          "referenced_schema": "public",
+          "referenced_table": "orders",
+          "referenced_columns": ["tenant_id", "code"],
+          "on_delete": "c",
+          "on_update": "a"
         }
       ],
       "check_constraints": []
+    },
+    {
+      "table_schema": "public",
+      "table_name": "orders",
+      "table_comment": "One row per placed order.",
+      "columns": [
+        {
+          "column_name": "id",
+          "format_type": "bigint",
+          "not_null": true,
+          "identity_generation": "ALWAYS"
+        },
+        {
+          "column_name": "tenant_id",
+          "format_type": "integer",
+          "not_null": true
+        },
+        {
+          "column_name": "code",
+          "format_type": "character varying",
+          "not_null": true,
+          "character_maximum_length": 32,
+          "column_comment": "Human-facing order reference."
+        },
+        {
+          "column_name": "placed_at",
+          "format_type": "timestamp with time zone",
+          "not_null": true,
+          "column_default": "now()"
+        },
+        {
+          "column_name": "total",
+          "format_type": "numeric",
+          "not_null": true,
+          "numeric_precision": 12,
+          "numeric_scale": 2,
+          "column_default": "0"
+        },
+        {
+          "column_name": "notes",
+          "format_type": "text",
+          "not_null": false
+        }
+      ],
+      "primary_key": {
+        "constraint_name": "orders_pkey",
+        "columns": ["id"]
+      },
+      "indexes": [
+        {
+          "index_name": "orders_tenant_id_code_key",
+          "is_unique": true,
+          "is_constraint": true,
+          "key_columns": [
+            {
+              "column_name": "tenant_id",
+              "is_descending": false
+            },
+            {
+              "column_name": "code",
+              "is_descending": false
+            }
+          ],
+          "included_columns": []
+        }
+      ],
+      "foreign_keys": [],
+      "check_constraints": [
+        {
+          "constraint_name": "orders_total_check",
+          "expression": "(total >= (0)::numeric)"
+        }
+      ]
     }
   ]
 }
