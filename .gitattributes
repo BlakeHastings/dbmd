@@ -1,3 +1,8 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
+
+# Model fixtures are bytes under test. Normalising their line endings on the way
+# in or out of the repository would quietly change what the test is testing, and
+# line endings are the thing this format has to preserve.
+test/fixtures/** -text
