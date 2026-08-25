@@ -33,7 +33,8 @@
     "test": "vitest run --passWithNoTests",
     "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run test && npm run build",
-    "check:adr": "node scripts/check-adr-numbers.mjs"
+    "check:adr": "node scripts/check-adr-numbers.mjs",
+    "backlog": "bd export -o .beads/issues.jsonl"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",

@@ -33,6 +33,13 @@ excludes, and the JSONL export is off by default. ADR 0002 records the
 correction. The general shape is worth keeping: a claim about where state lives
 is checkable in about ten seconds and was wrong here on the first try.
 
+**`bd export` with no `-o` prints to stdout and does not write the tracked
+file.** The auto-export that does write it is throttled, so the committed
+`.beads/issues.jsonl` silently lags behind the database. Four items were missing
+from it on the first check. `npm run backlog` is the command that actually
+writes it; run it before any commit that changed the backlog, and check the
+count.
+
 **`bd create` refuses `--id` together with `--parent`.** Create with `--id`,
 then add the edge with `bd dep add <child> <parent> --type parent-child`. Worth
 knowing before you write a seeding script that half works.
@@ -72,10 +79,10 @@ item is probably not specified yet.
 
 ## Merging
 
-There is no remote yet, so merging is local and the merge wrapper is dormant.
-Until then: review the branch, run `npm run check` on it yourself, merge into
-`main` with a squash, and post the three-lens review record on the item with
-`bd comment <id> --file review.md`.
+`node scripts/merge-pr.mjs <n>`. It reads the check rollup, refuses on anything
+red, and squash merges. A ruleset on `main` refuses a direct push from anyone
+including the owner, so this is not a convention: it is the only path.
 
-When the remote exists, `node scripts/merge-pr.mjs <n>` becomes the path and ADR
-0001 has what else has to be confirmed at that point.
+Post the three-lens review record on the beads item before merging, with
+`bd comment <id> --file review.md`. The pull request body carries the same three
+headings, and the item is where it stays findable once the branch is gone.
