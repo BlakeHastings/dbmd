@@ -27,6 +27,7 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMap, isScalar, isSeq, parseDocument, type YAMLMap } from 'yaml'
+import { KIND_DIRECTORIES, MODEL_FILE } from './paths.js'
 import type {
   Column,
   Diagnostic,
@@ -43,15 +44,6 @@ import type {
   Severity,
   Table,
 } from './types.js'
-
-/** The directory decides the kind; the `kind:` key is a cross-check (ADR 0005). */
-const KIND_DIRECTORIES: ReadonlyMap<string, ObjectKind> = new Map<string, ObjectKind>([
-  ['tables', 'table'],
-  ['notes', 'note'],
-  ['groups', 'group'],
-])
-
-const MODEL_FILE = '_model.md'
 
 /**
  * Read a model directory. `dir` is the model root itself, the directory that
@@ -81,17 +73,23 @@ export async function readModel(dir: string): Promise<ReadResult> {
   let name: string | undefined
   let engine: string | undefined
   let body = ''
+  let complete = true
 
   const names = entries.map((entry) => entry.name).sort(byText)
   const isDirectory = new Map(entries.map((entry) => [entry.name, entry.isDirectory()]))
 
   if (isDirectory.get(MODEL_FILE) === false) {
     const text = await readText(join(dir, MODEL_FILE), MODEL_FILE, diagnostics)
-    if (text !== undefined) {
+    if (text === undefined) {
+      // The file is there and unreadable, so what it says is unknown rather
+      // than absent, and a save must not put an empty one over the top of it.
+      complete = false
+    } else {
       const read = readModelFile(text, diagnostics)
       name = read.name
       engine = read.engine
       body = read.body
+      complete = read.complete
     }
   } else {
     push(diagnostics, {
@@ -159,6 +157,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
     ...(name === undefined ? {} : { name }),
     ...(engine === undefined ? {} : { engine }),
     body,
+    complete,
     tables: tables.map(stripInternals),
     notes,
     groups,
@@ -323,37 +322,72 @@ function report(
 function readModelFile(
   text: string,
   out: Diagnostic[],
-): { name?: string; engine?: string; body: string } {
-  const split = splitFrontmatter(text)
-  // `_model.md` is allowed to be prose only: it is the one file whose whole
-  // reason to exist can be the paragraph about the model.
-  if (split.outcome === 'absent') return { body: text }
-  if (split.outcome === 'unterminated') {
-    reportSplit(out, MODEL_FILE, split.outcome)
-    return { body: '' }
-  }
-  if (split.outcome === 'empty') {
-    reportSplit(out, MODEL_FILE, split.outcome)
-    return { body: split.body }
-  }
+): { name?: string; engine?: string; body: string; complete: boolean } {
+  // Diagnostics land in a sink of this file's own, so that "did reading this
+  // file lose anything" is a question the reader answers rather than one the
+  // caller has to reconstruct from a shared list.
+  const raised: Diagnostic[] = []
+  try {
+    const split = splitFrontmatter(text)
+    // `_model.md` is allowed to be prose only: it is the one file whose whole
+    // reason to exist can be the paragraph about the model.
+    if (split.outcome === 'absent') return { body: text, complete: true }
+    if (split.outcome === 'unterminated') {
+      reportSplit(raised, MODEL_FILE, split.outcome)
+      return { body: '', complete: false }
+    }
+    if (split.outcome === 'empty') {
+      reportSplit(raised, MODEL_FILE, split.outcome)
+      return { body: split.body, complete: false }
+    }
 
-  const ctx: Ctx = { path: MODEL_FILE, yaml: split.yaml, out }
-  const map = parseFrontmatter(ctx)
-  if (map === undefined) return { body: split.body }
+    const ctx: Ctx = { path: MODEL_FILE, yaml: split.yaml, out: raised }
+    const map = parseFrontmatter(ctx)
+    if (map === undefined) return { body: split.body, complete: false }
 
-  const fields = fieldsOf(ctx, map)
-  checkKind(ctx, fields, 'model')
-  const name = takeString(ctx, fields, 'name')
-  const engine = takeString(ctx, fields, 'engine')
-  fields.reportUnknown('the model')
-  return {
-    ...(name === undefined ? {} : { name }),
-    ...(engine === undefined ? {} : { engine }),
-    body: split.body,
+    const fields = fieldsOf(ctx, map)
+    checkKind(ctx, fields, 'model')
+    const name = takeString(ctx, fields, 'name')
+    const engine = takeString(ctx, fields, 'engine')
+    fields.reportUnknown('the model')
+    return {
+      ...(name === undefined ? {} : { name }),
+      ...(engine === undefined ? {} : { engine }),
+      body: split.body,
+      complete: intact(raised),
+    }
+  } finally {
+    out.push(...raised)
   }
 }
 
 function readObjectFile(
+  kind: ObjectKind,
+  path: string,
+  name: string,
+  text: string,
+  out: Diagnostic[],
+): TableInProgress | Note | Group | undefined {
+  const raised: Diagnostic[] = []
+  try {
+    return buildObject(kind, path, name, text, raised)
+  } finally {
+    out.push(...raised)
+  }
+}
+
+/**
+ * An error raised while building an object from its file means the file holds
+ * something the object does not, so the object is not complete and the writer
+ * leaves the file alone. Errors raised anywhere else, such as a `group:` naming
+ * no group file, are about the model rather than about this file: nothing in
+ * the file was lost, and saving it back is safe.
+ */
+function intact(raised: readonly Diagnostic[]): boolean {
+  return !raised.some((diagnostic) => diagnostic.severity === 'error')
+}
+
+function buildObject(
   kind: ObjectKind,
   path: string,
   name: string,
@@ -530,6 +564,7 @@ function readTable(
     body,
     columns,
     indexes,
+    complete: intact(ctx.out),
     ...(layout === undefined ? {} : { layout }),
     ...(group === undefined ? {} : { group }),
     ...(group === undefined || groupLine === undefined ? {} : { groupLine }),
@@ -637,6 +672,7 @@ function readNote(ctx: Ctx, fields: FieldSet, path: string, name: string, body: 
     name,
     path,
     body,
+    complete: intact(ctx.out),
     ...(layout === undefined ? {} : { layout }),
     ...(color === undefined ? {} : { color }),
   }
@@ -661,6 +697,7 @@ function readGroup(ctx: Ctx, fields: FieldSet, path: string, name: string, body:
     name,
     path,
     body,
+    complete: intact(ctx.out),
     ...(label === undefined ? {} : { label }),
     ...(color === undefined ? {} : { color }),
   }
@@ -960,6 +997,7 @@ function push(out: Diagnostic[], diagnostic: Diagnostic): void {
 function emptyModel(): Model {
   return {
     body: '',
+    complete: true,
     tables: [],
     notes: [],
     groups: [],
