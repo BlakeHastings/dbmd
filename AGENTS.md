@@ -14,6 +14,9 @@ what changed and why.
 It holds more than tables: sticky notes and grouping boxes are first-class
 objects on the same canvas, stored the same way, for the same reason.
 
+Import supports Postgres and SQL Server, behind a provider seam, so a third
+engine is one file and one registry line. ADR 0007.
+
 **It describes a schema. It does not generate or apply DDL.** Nothing here
 connects to a database except the import path, and that reads a JSON file a
 human produced by running a query themselves.

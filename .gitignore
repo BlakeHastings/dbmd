@@ -10,3 +10,7 @@ coverage/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Agent worktrees are created inside the repo and would otherwise show up
+# as untracked in every git status on the default branch.
+.claude/worktrees/
