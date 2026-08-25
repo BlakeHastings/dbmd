@@ -93,6 +93,7 @@ Prose.
       name: 'why',
       path: 'notes/why.md',
       body: '\nWhy.\n',
+      complete: true,
       layout: { x: 120, y: 640, w: 320, h: 200 },
       color: 'amber',
     }
@@ -114,6 +115,7 @@ Prose.
       name: 'billing',
       path: 'groups/billing.md',
       body: '\nBilling.\n',
+      complete: true,
       label: 'Billing',
       color: 'violet',
     }
@@ -252,7 +254,7 @@ describe('quoting', () => {
 describe('only what changed is written', () => {
   test('changing one column type writes one file out of fifteen', async () => {
     await withCopy(canonicalModel, async (dir) => {
-      const { model: read, diagnostics } = await readModel(dir)
+      const { model: read } = await readModel(dir)
       const retyped = withTable(read, 'orders', (orders) => ({
         ...orders,
         columns: orders.columns.map((column) =>
@@ -260,7 +262,7 @@ describe('only what changed is written', () => {
         ),
       }))
 
-      const { written, skipped } = await writeModel(dir, retyped, { diagnostics })
+      const { written, skipped } = await writeModel(dir, retyped)
       expect(written).toEqual(['tables/orders.md'])
       expect(skipped.every((skip) => skip.reason === 'unchanged')).toBe(true)
       expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toContain(
@@ -272,15 +274,13 @@ describe('only what changed is written', () => {
   test('adding a table to a group touches that table and not the group', async () => {
     await withCopy(canonicalModel, async (dir) => {
       const before = await snapshot(dir)
-      const { model: read, diagnostics } = await readModel(dir)
+      const { model: read } = await readModel(dir)
       const joined = withTable(read, 'shipments', (shipments) => ({
         ...shipments,
         group: 'billing',
       }))
 
-      expect((await writeModel(dir, joined, { diagnostics })).written).toEqual([
-        'tables/shipments.md',
-      ])
+      expect((await writeModel(dir, joined)).written).toEqual(['tables/shipments.md'])
 
       const after = await snapshot(dir)
       expect(after.get('groups/billing.md')).toBe(before.get('groups/billing.md'))
@@ -293,7 +293,7 @@ describe('only what changed is written', () => {
   test('a group drag writes the members that moved and nothing else', async () => {
     await withCopy(canonicalModel, async (dir) => {
       const before = await snapshot(dir)
-      const { model: read, diagnostics } = await readModel(dir)
+      const { model: read } = await readModel(dir)
       const inBilling = new Set(read.groupMembers.get('billing') ?? [])
       expect(inBilling.size).toBe(4)
 
@@ -310,7 +310,7 @@ describe('only what changed is written', () => {
         ),
       }
 
-      expect((await writeModel(dir, dragged, { diagnostics })).written).toEqual([
+      expect((await writeModel(dir, dragged)).written).toEqual([
         'tables/invoice_lines.md',
         'tables/invoices.md',
       ])
@@ -322,31 +322,69 @@ describe('only what changed is written', () => {
 })
 
 describe('a file the reader could not fully load', () => {
-  test('is left exactly as it is', async () => {
+  /**
+   * The shortest call the signature allows, which is the one a careless caller
+   * makes. There is no option to forget, because the fact that a file did not
+   * fully load travels on the object that came out of it.
+   */
+  test('is left exactly as it is by the shortest possible call', async () => {
     await withCopy(fixtureModel, async (dir) => {
       const before = await snapshot(dir)
-      const { model: read, diagnostics } = await readModel(dir)
-      const { written, skipped } = await writeModel(dir, read, { diagnostics })
+      const { model: read } = await readModel(dir)
+
+      const { written, skipped } = await writeModel(dir, read)
       const after = await snapshot(dir)
 
       // `coerced.md` loads with one of its four columns, because three of them
       // hold values YAML did not resolve to strings. Writing the model back
-      // would delete them from the file its author has to fix.
-      expect(skipped).toContainEqual({ path: 'tables/coerced.md', reason: 'diagnostic' })
+      // would silently delete two columns and a default from the file its
+      // author has to fix, and their undo is a commit that has not happened.
+      expect(skipped).toContainEqual({ path: 'tables/coerced.md', reason: 'incomplete' })
       expect(written).not.toContain('tables/coerced.md')
       expect(after.get('tables/coerced.md')).toBe(before.get('tables/coerced.md'))
+      expect(after.get('tables/coerced.md')).toContain('unqiue: true')
     })
+  })
+
+  test('says so on the object, so the fact survives being carried around', async () => {
+    const { model: read } = await readModel(fixtureModel)
+    const complete = (name: string): boolean | undefined =>
+      read.tables.find((current) => current.name === name)?.complete
+
+    expect(complete('coerced')).toBe(false)
+    expect(complete('orders')).toBe(true)
+
+    // `shipments` declares `group: shipping` and there is no such group, which
+    // is an error. It is an error about the model rather than about this file:
+    // everything the file says did reach the object, so saving it loses
+    // nothing and it is not marked incomplete.
+    expect(complete('shipments')).toBe(true)
   })
 
   test('is not deleted either, because a broken file is missing from the model', async () => {
     await withCopy(fixtureModel, async (dir) => {
       const before = await snapshot(dir)
-      const { model: read, diagnostics } = await readModel(dir)
-      await writeModel(dir, read, { diagnostics })
+      const { model: read } = await readModel(dir)
+      await writeModel(dir, read)
       const after = await snapshot(dir)
       expect([...after.keys()]).toEqual([...before.keys()])
       for (const path of ['tables/broken-yaml.md', 'tables/no-frontmatter.md', 'notes/misfiled.md'])
         expect(after.get(path)).toBe(before.get(path))
+    })
+  })
+
+  test('a `_model.md` that half loaded is not overwritten with what survived', async () => {
+    await withCopy(fixtureModel, async (dir) => {
+      const broken = '---\nkind: model\nname: 1\n---\n\nThe name is a number.\n'
+      await writeFile(join(dir, '_model.md'), broken, 'utf8')
+
+      const { model: read } = await readModel(dir)
+      expect(read.complete).toBe(false)
+      expect(read.name).toBeUndefined()
+
+      const { skipped } = await writeModel(dir, read)
+      expect(skipped).toContainEqual({ path: '_model.md', reason: 'incomplete' })
+      expect(await readFile(join(dir, '_model.md'), 'utf8')).toBe(broken)
     })
   })
 })
@@ -372,7 +410,7 @@ describe('the write is atomic', () => {
   test('the target is untouched until a fully written temporary file replaces it', async () => {
     await withCopy(canonicalModel, async (dir) => {
       const before = await readFile(join(dir, 'tables', 'orders.md'), 'utf8')
-      const { model: read, diagnostics } = await readModel(dir)
+      const { model: read } = await readModel(dir)
       const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
 
       const observed: { source: string; destination: string }[] = []
@@ -386,7 +424,7 @@ describe('the write is atomic', () => {
         })
       }
 
-      await writeModel(dir, changed, { diagnostics })
+      await writeModel(dir, changed)
 
       expect(observed).toHaveLength(1)
       expect(observed[0]?.destination).toBe(before)
@@ -397,14 +435,14 @@ describe('the write is atomic', () => {
   test('a failed rename leaves the original whole and no rubbish behind', async () => {
     await withCopy(canonicalModel, async (dir) => {
       const before = await snapshot(dir)
-      const { model: read, diagnostics } = await readModel(dir)
+      const { model: read } = await readModel(dir)
       const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
 
       rename.instead = async () => {
         throw new Error('the disk filled up')
       }
 
-      await expect(writeModel(dir, changed, { diagnostics })).rejects.toThrow('the disk filled up')
+      await expect(writeModel(dir, changed)).rejects.toThrow('the disk filled up')
       expect(await snapshot(dir)).toEqual(before)
     })
   })
@@ -429,6 +467,7 @@ function table(over: Partial<Table> = {}): Table {
     name: 'orders',
     path: 'tables/orders.md',
     body: '\nProse.\n',
+    complete: true,
     columns: [],
     indexes: [],
     ...over,
@@ -438,6 +477,7 @@ function table(over: Partial<Table> = {}): Table {
 function model(objects: readonly (Table | Note | Group)[]): Model {
   return {
     body: '',
+    complete: true,
     tables: objects.filter((object): object is Table => object.kind === 'table'),
     notes: objects.filter((object): object is Note => object.kind === 'note'),
     groups: objects.filter((object): object is Group => object.kind === 'group'),

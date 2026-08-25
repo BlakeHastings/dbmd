@@ -30,17 +30,20 @@
  * appear in `git status`, or the format has lost the reviewability it exists
  * for.
  *
- * **A file that did not load is left alone.** An error diagnostic against a
- * path means the reader could not build the whole object, so writing the model
- * back over it would delete whatever the reader could not understand. The
- * caller passes the diagnostics from the read that produced the model.
+ * **A file that did not load is left alone.** An object the reader could not
+ * build entirely from its file carries `complete: false`, and writing the model
+ * back over such a file would delete whatever the reader could not understand.
+ * The flag is on the object rather than in a list beside it so that there is no
+ * way to call the writer without it: a separately carried diagnostics array is
+ * the thing that gets dropped on the way through an HTTP layer, and dropping it
+ * would turn a broken file into a silently truncated one.
  */
 
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { MODEL_FILE, directoryOfKind } from './paths.js'
-import type { CanvasObject, Column, Diagnostic, Index, Layout, Model, Table } from './types.js'
+import type { CanvasObject, Column, Index, Layout, Model, Table } from './types.js'
 
 // --------------------------------------------------------------------------
 // Serialising: a model, or one object on it, as the full text of its file.
@@ -265,20 +268,11 @@ function number(value: number): string {
 // Writing.
 // --------------------------------------------------------------------------
 
-export interface WriteOptions {
-  /**
-   * The diagnostics from the read that produced this model. Any path carrying
-   * an `error` is left alone: the reader could not build the whole object, so
-   * the model does not hold everything the file does.
-   */
-  readonly diagnostics?: readonly Diagnostic[]
-}
-
 export type SkipReason =
   /** The file on disk is already byte-identical to what the model renders to. */
   | 'unchanged'
-  /** The read reported an error against this path, so the file is not touched. */
-  | 'diagnostic'
+  /** The object says the reader could not build all of it from its file. */
+  | 'incomplete'
   /** The object's name cannot be a file name, so it has nowhere to be written. */
   | 'unsafe-name'
 
@@ -301,6 +295,11 @@ export interface WriteResult {
  * Every file is written atomically and only when its content would change, so
  * calling this after a drag that moved one box touches one file.
  *
+ * There is nothing to remember and nothing to pass. An object that came from a
+ * file the reader could not fully understand says so, and this leaves that file
+ * alone; a model built from scratch says `complete: true` on every object, out
+ * loud, because that is a claim its author is making.
+ *
  * It does not delete. A file that failed to parse is missing from the model
  * (ADR 0008), so "in the directory but not in the model" cannot be told apart
  * from "broken", and deleting on that basis would throw away the file whose
@@ -311,23 +310,13 @@ export interface WriteResult {
  * not a diagnostic about the model, and a caller that carries on regardless has
  * told the user their work is saved when it is not.
  */
-export async function writeModel(
-  dir: string,
-  model: Model,
-  options: WriteOptions = {},
-): Promise<WriteResult> {
-  const failed = new Set(
-    (options.diagnostics ?? [])
-      .filter((diagnostic) => diagnostic.severity === 'error')
-      .map((diagnostic) => diagnostic.path),
-  )
-
+export async function writeModel(dir: string, model: Model): Promise<WriteResult> {
   const written: string[] = []
   const skipped: WriteSkip[] = []
   const objects: readonly CanvasObject[] = [...model.tables, ...model.notes, ...model.groups]
 
-  const jobs: { path: string; text: string }[] = [
-    { path: MODEL_FILE, text: serialiseModelFile(model) },
+  const jobs: { path: string; text: string; complete: boolean }[] = [
+    { path: MODEL_FILE, text: serialiseModelFile(model), complete: model.complete },
   ]
   for (const object of objects) {
     if (!isFileName(object.name)) {
@@ -344,13 +333,14 @@ export async function writeModel(
     jobs.push({
       path: `${directoryOfKind(object.kind)}/${object.name}.md`,
       text: serialiseObject(object),
+      complete: object.complete,
     })
   }
   jobs.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 
   for (const job of jobs) {
-    if (failed.has(job.path)) {
-      skipped.push({ path: job.path, reason: 'diagnostic' })
+    if (!job.complete) {
+      skipped.push({ path: job.path, reason: 'incomplete' })
       continue
     }
     const target = join(dir, ...job.path.split('/'))

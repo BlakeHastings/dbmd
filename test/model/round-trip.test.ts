@@ -27,7 +27,7 @@ describe('property 2: a canonical file serialises back to identical bytes', () =
       const { model, diagnostics } = await readModel(dir)
 
       expect(diagnostics).toEqual([])
-      const { written } = await writeModel(dir, model, { diagnostics })
+      const { written } = await writeModel(dir, model)
 
       // Nothing was written, which is the strongest form of "identical bytes":
       // the writer looked at all fifteen files and had nothing to say about any
@@ -42,7 +42,7 @@ describe('property 1: a serialised model parses back to an equal model', () => {
   test('the canonical fixture survives a read, a write and a read', async () => {
     const first = await readModel(canonicalModel)
     await withCopy(canonicalModel, async (dir) => {
-      await writeModel(dir, first.model, { diagnostics: first.diagnostics })
+      await writeModel(dir, first.model)
       const second = await readModel(dir)
       expect(second.diagnostics).toEqual([])
       expect(second.model).toEqual(first.model)
@@ -67,7 +67,7 @@ describe('property 1: a serialised model parses back to an equal model', () => {
         expect(model.groups).toEqual(input.groups)
 
         // And having gone round once, it does not move again.
-        expect((await writeModel(dir, model, { diagnostics })).written).toEqual([])
+        expect((await writeModel(dir, model)).written).toEqual([])
       } finally {
         await rm(dir, { recursive: true, force: true })
       }
@@ -80,7 +80,7 @@ describe('an untidy file normalises once and then never moves', () => {
     await withCopy(untidyModel, async (dir) => {
       const first = await readModel(dir)
       expect(first.diagnostics).toEqual([])
-      const firstSave = await writeModel(dir, first.model, { diagnostics: first.diagnostics })
+      const firstSave = await writeModel(dir, first.model)
 
       // Every file was hand-written badly, so every file changes on save one.
       expect(firstSave.written).toEqual([
@@ -92,7 +92,7 @@ describe('an untidy file normalises once and then never moves', () => {
       ])
 
       const second = await readModel(dir)
-      const secondSave = await writeModel(dir, second.model, { diagnostics: second.diagnostics })
+      const secondSave = await writeModel(dir, second.model)
       expect(secondSave.written).toEqual([])
       expect(second.model).toEqual(first.model)
     })
@@ -103,8 +103,8 @@ describe('an untidy file normalises once and then never moves', () => {
     expect(original).toContain('\r\n')
 
     await withCopy(untidyModel, async (dir) => {
-      const { model, diagnostics } = await readModel(dir)
-      await writeModel(dir, model, { diagnostics })
+      const { model } = await readModel(dir)
+      await writeModel(dir, model)
       const saved = await readFile(join(dir, 'tables', 'orders.md'), 'utf8')
 
       const body = bodyOf(saved)
@@ -118,8 +118,8 @@ describe('an untidy file normalises once and then never moves', () => {
 
   test('a body that never had a trailing newline does not grow one', async () => {
     await withCopy(untidyModel, async (dir) => {
-      const { model, diagnostics } = await readModel(dir)
-      await writeModel(dir, model, { diagnostics })
+      const { model } = await readModel(dir)
+      await writeModel(dir, model)
       const saved = await readFile(join(dir, 'tables', 'customers.md'), 'utf8')
       expect(saved.endsWith('without a newline.')).toBe(true)
     })
@@ -228,6 +228,7 @@ function generateModel(seed: number): Model {
     name,
     path: `groups/${name}.md`,
     body: pick(BODIES),
+    complete: true,
     ...(maybe() ? { label: pick(AWKWARD) } : {}),
     ...(maybe() ? { color: pick(AWKWARD) } : {}),
   }))
@@ -238,6 +239,7 @@ function generateModel(seed: number): Model {
     name,
     path: `notes/${name}.md`,
     body: pick(BODIES),
+    complete: true,
     ...(maybe() ? { layout: layout(coordinate, maybe) } : {}),
     ...(maybe() ? { color: pick(AWKWARD) } : {}),
   }))
@@ -248,6 +250,7 @@ function generateModel(seed: number): Model {
     name,
     path: `tables/${name}.md`,
     body: pick(BODIES),
+    complete: true,
     columns: Array.from({ length: count(4) }, () => ({
       name: pick(AWKWARD),
       type: pick(AWKWARD),
@@ -268,6 +271,7 @@ function generateModel(seed: number): Model {
     ...(maybe() ? { name: pick(AWKWARD) } : {}),
     ...(maybe() ? { engine: pick(AWKWARD) } : {}),
     body: pick(BODIES),
+    complete: true,
     tables: sortByName(tables),
     notes: sortByName(notes),
     groups: sortByName(groups),
@@ -310,7 +314,7 @@ describe('examples/shop, hand-written from the ADR', () => {
       const first = await readModel(dir)
       expect(first.diagnostics).toEqual([])
 
-      const { written } = await writeModel(dir, first.model, { diagnostics: first.diagnostics })
+      const { written } = await writeModel(dir, first.model)
       const after = await snapshot(dir)
 
       // Whatever moved, every changed line is a `default:`: key order,
@@ -325,7 +329,7 @@ describe('examples/shop, hand-written from the ADR', () => {
 
       const second = await readModel(dir)
       expect(second.model).toEqual(first.model)
-      const secondSave = await writeModel(dir, second.model, { diagnostics: second.diagnostics })
+      const secondSave = await writeModel(dir, second.model)
       expect(secondSave.written).toEqual([])
     })
   })

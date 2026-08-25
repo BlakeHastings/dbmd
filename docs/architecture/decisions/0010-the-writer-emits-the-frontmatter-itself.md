@@ -14,6 +14,11 @@ text of a scalar and does not record its quoting style, because "this is where
 the canonical style is decided" and recording the author's style would have made
 the writer preserve it, which is the opposite of canonical.
 
+ADR 0008 also settled that a file which fails to load is missing from the model
+rather than approximated. It did not say what happens to a file that *partly*
+loads, and that gap is where the one destructive mistake in this whole module
+lives.
+
 ## Decision
 
 **The frontmatter is emitted as text, not through a YAML emitter.** `yaml` stays
@@ -71,13 +76,37 @@ frontmatter on the first save, keeps its body exactly as it was, and never moves
 again. Nothing is added to a body either: a file that ended without a trailing
 newline still does.
 
-**A file whose read produced an `error` diagnostic is not written.** The reader
-drops what it could not understand, so writing the model back over such a file
-deletes the very lines its author has to fix. A warning does not block a write:
-a warning means the file loaded, and normalising it is the point. The
-consequence to accept is that a key dbmd does not know is a warning and is
-therefore dropped on the first save. ADR 0008 already names carrying unknown
-keys as the way out, and it is a feature rather than a writer bug.
+**An object carries whether its file was fully read, and the writer refuses an
+object that was not.** The reader drops what it could not understand, so writing
+the model back over such a file deletes the very lines its author has to fix,
+and that is the only thing the writer does that reading the file back cannot
+undo.
+
+`CanvasObject.complete` and `Model.complete` are `false` when the reader raised
+an error while building that object from its file. The obvious alternative was
+to hand the writer the diagnostics from the read, and it was wrong for two
+reasons that only show up later. It is optional at the call site, so the safe
+call is the one you have to know to make and the destructive one is the default;
+and the studio saves on every drag with a model that has travelled through an
+HTTP layer, where a separately carried diagnostics array is exactly the thing
+that gets dropped. A flag on the object goes wherever the object goes.
+
+The field is required rather than optional, so a model built from scratch by an
+importer or a test has to say `complete: true` out loud. An omitted field would
+mean safe-looking and destructive, which is the shape this replaced.
+
+The boundary is "an error raised while building this object from its file",
+which is narrower than "an error against this path" and is the honest line: it
+means the file holds something the object does not. An error raised anywhere
+else is about the model rather than about the file. `group: shipping` naming no
+group file is the case that separates them: everything the file says reached the
+object, so saving it loses nothing and it is not blocked.
+
+A warning does not block a write: a warning means the file loaded, and
+normalising it is the point. The consequence to accept is that a key dbmd does
+not know is a warning and is therefore dropped on the first save. ADR 0008
+already names carrying unknown keys as the way out, and it is a feature rather
+than a writer bug.
 
 **The writer never deletes.** "In the directory but not in the model" cannot be
 told apart from "broken", because a file that failed to parse is missing from
@@ -109,6 +138,10 @@ moved.
 - **The writer throws where the reader diagnoses.** A filesystem that will not
   accept a write is not a fact about the model, and a caller that carries on
   regardless has told the user their work is saved when it is not.
+- **`writeModel(dir, model)` takes no options at all.** There is nothing to
+  remember and therefore nothing to forget. That is the property being bought,
+  and it is worth a required field on every object to get it: the writer has
+  exactly one call shape and it is the safe one.
 - **A model built by hand can hold things the format cannot.** A table layout
   with a `w`, or an object whose name is not a file name. The first is dropped,
   because ADR 0005 says a table's size is computed; the second is refused and
@@ -129,3 +162,7 @@ moved.
 - **Deleting becomes something a caller needs.** It belongs in whatever removes
   an object, with the model's diagnostics in hand, and not in a function whose
   job is to write.
+- **`complete` starts meaning more than one thing.** It answers exactly one
+  question, which is whether writing this object back would lose what the file
+  says. The moment somebody wants it to also mean "this object is valid" it has
+  become two fields wearing one name, and validation is dbmd-12's.

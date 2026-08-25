@@ -241,6 +241,7 @@ describe('group membership is declared by the member', () => {
       name: 'billing',
       path: 'groups/billing.md',
       body: billing?.body,
+      complete: true,
       label: 'Billing',
       color: 'violet',
     })

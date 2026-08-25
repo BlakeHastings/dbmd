@@ -71,6 +71,25 @@ interface CanvasObjectBase {
    * endings included. Never parsed as markdown, never reflowed, never trimmed.
    */
   readonly body: string
+  /**
+   * `false` when the reader raised an error building this object from its file,
+   * which means the file holds something this object does not: a column whose
+   * type YAML resolved to a boolean, a key given twice, a `table:` that
+   * disagrees with the file name.
+   *
+   * It is a fact about the read rather than about the file, and it is on the
+   * object rather than beside it because it has to survive every journey the
+   * object takes. The writer refuses to write an incomplete object, since
+   * writing it back would delete the lines the reader could not understand, and
+   * a diagnostics array carried separately is exactly the thing that gets
+   * dropped on the way through the studio's HTTP layer. ADR 0010.
+   *
+   * It is required rather than optional so that a model built from scratch, by
+   * an importer or a test, has to say `complete: true` out loud. An omitted
+   * field would default to safe-looking and destructive, which is the shape
+   * this replaced.
+   */
+  readonly complete: boolean
 }
 
 export interface Table extends CanvasObjectBase {
@@ -119,6 +138,12 @@ export interface Model {
   readonly engine?: string
   /** The prose body of `_model.md`, verbatim. Empty when there is no such file. */
   readonly body: string
+  /**
+   * The same fact as `CanvasObject.complete`, about `_model.md`. A missing
+   * `_model.md` is complete: there is nothing in it to lose, and `dbmd init`
+   * writing one is the point.
+   */
+  readonly complete: boolean
   readonly tables: readonly Table[]
   readonly notes: readonly Note[]
   readonly groups: readonly Group[]
