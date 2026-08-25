@@ -4,3 +4,7 @@ coverage/
 .beads/
 scripts/
 docs/
+
+# Model fixtures are inputs, not source. Several are deliberately malformed and
+# prettier would either reformat the mistake away or fail on it.
+test/fixtures/

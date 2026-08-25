@@ -26,9 +26,10 @@ MIT licensed, published as `dbmd` on npm, developed at
 
 ## What exists today
 
-Setup only. There is no CLI yet, no parser, no studio. `src/index.ts` is a
-placeholder so the build has a root module. Everything else in this file is
-either about the repository or about a decision already recorded.
+The reader. `src/model/` turns a `db-model/` directory into a typed model plus a
+list of diagnostics, and `src/index.ts` exports it. There is no CLI yet, no
+writer and no studio. Everything else in this file is either about the
+repository or about a decision already recorded.
 
 Do not read intent from this file as though it were implemented. Where a
 decision record describes a property the code should have, that property is an

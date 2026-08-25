@@ -1,3 +1,18 @@
-// Placeholder so the build has a root module. The CLI entry point arrives with
-// the first issue that needs one; see docs/architecture/decisions/.
-export const version = '0.0.0'
+export { readModel } from './model/read.js'
+export type {
+  CanvasObject,
+  Column,
+  Diagnostic,
+  DiagnosticCode,
+  Group,
+  Index,
+  Layout,
+  Model,
+  Note,
+  ObjectKind,
+  ReadResult,
+  Ref,
+  RefEdge,
+  Severity,
+  Table,
+} from './model/types.js'
