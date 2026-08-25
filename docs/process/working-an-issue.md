@@ -3,20 +3,18 @@
 How a change gets from an issue to the default branch. Read `review.md` first:
 it defines what "done" means. This file is only the mechanics.
 
-> Template. Replace the bracketed parts with this repo's real commands and check
-> names, then delete this note.
-
 ## Before you start
 
 Read, in this order:
 
 1. `AGENTS.md` for the invariants and how to run the environment
-2. `[the domain doc, if there is one]`
+2. `docs/architecture/decisions/` for the decisions already taken, especially any
+   your issue names
 3. `docs/process/review.md` for the three review lenses
-4. The issue itself, including its parent epic
+4. The work item itself, `bd show <id>`, including its parent epic
 
-If the issue conflicts with something you find in the code, say so on the issue
-rather than quietly picking one. **A stale issue is a normal thing to find**, and
+If the item conflicts with something you find in the code, say so on the item
+with `bd comment <id>` rather than quietly picking one. **A stale issue is a normal thing to find**, and
 checking the premise is part of the job.
 
 ## Branch and commits
@@ -25,7 +23,8 @@ checking the premise is part of the job.
 <area>/<issue-number>-<short-slug>
 ```
 
-for example `platform/14-ci-pipeline` or `intake/20-eligibility-gating`.
+for example `format/4-markdown-parser` or `cli/9-studio-server`. The number is
+the beads id's numeric part, so `dbmd-4` becomes `format/4-markdown-parser`.
 
 Commit messages say **why**, not what. The diff already says what.
 
@@ -34,20 +33,34 @@ Commit messages say **why**, not what. The diff already says what.
 Do not open a PR you have not run.
 
 ```bash
-[the command that brings up the environment, isolated per worktree]
-[the command that tells you this run's URLs]
+npm ci
+npm run check
 ```
 
-Then exercise the change the way the real user would, and confirm the mechanical
-gates pass locally (typecheck, lint, tests, build).
+`npm run check` is typecheck, format check, tests and build, and it is the same
+command CI runs. It is the whole mechanical gate: there is nothing else to
+remember.
 
-Tear down by explicit path when you are done, before your worktree is removed.
-An unscoped teardown stops every environment on the machine, including the ones
-other agents are working in.
+Where the change touches the studio, bring it up and drive it:
+
+```bash
+npm run studio -- --port 0
+```
+
+`--port 0` lets the OS pick a free port and the command prints the URL it bound
+to. Use it rather than a fixed port: several worktrees run at once and a fixed
+port makes them collide, silently, with whichever started first.
+
+Then exercise the change the way the real user would, not the way a test does.
+
+Stop the server you started, by its own process, before your worktree is
+removed. Do not kill node globally: other agents are working in other worktrees
+on this machine.
 
 ## The pull request
 
-Title: what changed, in plain language. Reference the issue with `Closes #N`.
+Title: what changed, in plain language. Name the work item, `dbmd-N`, in the
+title or the first line of the body.
 
 The body is the three lenses, filled in honestly. See
 `.github/pull_request_template.md`. An empty section means the lens was skipped;
@@ -68,7 +81,14 @@ trivial, and even when you are confident.
 
 ## Merge discipline
 
-CI runs [N] checks: `[names]`.
+CI runs one check, named `check`, and it is `npm run check`. One entry point
+rather than four jobs, so that what CI runs and what you can run are the same
+thing by construction.
+
+Until this repository has a remote, two of the three layers below are installed
+and dormant, and "landing" means merging your branch into local `main`.
+`docs/architecture/decisions/0001-enforcement-layers-this-repo-keeps.md` says
+which is which and why none of them was deleted.
 
 **GitHub itself does not enforce them.** Branch protection needs a paid plan on a
 private repo. Three things stand in for it, and each is worth exactly what it

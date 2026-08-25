@@ -1,0 +1,28 @@
+# Layer 3 of the enforcement stack: detection, not prevention. It runs only on
+# push to the default branch, so it must never be a required check -- a job that
+# never runs on a pull request reads as "never ran" and would refuse every merge.
+name: provenance
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  provenance:
+    name: provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/check-main-provenance.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROVENANCE_BEFORE: ${{ github.event.before }}
+          PROVENANCE_AFTER: ${{ github.sha }}

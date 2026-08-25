@@ -14,7 +14,9 @@ CI runs these. If they are red, the work is not ready for review.
 - typecheck, lint, format
 - unit and integration tests
 - production build succeeds
-- database migrations apply cleanly to an empty database and are reversible
+- decision record numbers do not collide
+
+All of them are `npm run check`, one command, the same one CI runs.
 
 Never ask a reviewer to run these by hand. If a mechanical check is missing,
 adding it is cheaper than reviewing for it forever.
@@ -24,11 +26,15 @@ adding it is cheaper than reviewing for it forever.
 **The reviewer drives the running app.** Not the tests, the app.
 
 ```bash
-[bring up the environment]
-[run the end-to-end suite]
+npm ci
+npm run check
+npm run studio -- --port 0
 ```
 
-Run the end-to-end suite first: what it covers, you do not have to re-check.
+Run `npm run check` first: what it covers, you do not have to re-check. Then
+bring up the studio on an OS-assigned port and drive it. A change that touches
+neither the CLI nor the studio says so under this lens rather than leaving it
+blank.
 
 Then exercise **the change itself** as the actual user would, since no suite
 covers what landed today. Confirm:
@@ -81,8 +87,8 @@ The point is that the decision is findable later, not that it is ceremonious.
 Take the next number after everything on the default branch **and** everything
 in an open pull request. Work runs in parallel here, so the next free number on
 your branch is usually already claimed on someone else's.
-`[the collision check]` fails a duplicate, and CI runs it on the merge
-commit, so a collision that does not exist on your branch yet still turns the PR
+`node scripts/check-adr-numbers.mjs`, part of `npm run check`, fails a
+duplicate, and CI runs it on the merge commit, so a collision that does not exist on your branch yet still turns the PR
 red.
 
 ## Recording the review

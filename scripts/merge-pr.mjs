@@ -28,7 +28,7 @@ import { execFileSync } from 'node:child_process'
 //   gh pr view <n> --json statusCheckRollup --jq '.statusCheckRollup[].name'
 // A name that never appears is treated as "never ran" and refuses the merge.
 // That is the safe direction, but a typo here looks like a broken script.
-const REQUIRED = ['REPLACE_WITH_REQUIRED_CHECK_NAME', 'REPLACE_WITH_ANOTHER_CHECK_NAME']
+const REQUIRED = ['check']
 
 // SETUP: refuse a branch that is behind its base. On by default, and it has to
 // be: without branch protection GitHub reports such a branch as mergeable and

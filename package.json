@@ -1,0 +1,25 @@
+{
+  "name": "dbmd",
+  "version": "0.0.0",
+  "description": "Model your database in markdown, edit it in a local web view, commit the result.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run test && npm run build",
+    "check:adr": "node scripts/check-adr-numbers.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
