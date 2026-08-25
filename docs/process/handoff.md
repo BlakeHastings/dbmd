@@ -16,7 +16,25 @@ has run green on each merge commit after failing correctly on the first push.
 Nothing of the product itself is built yet. `src/index.ts` is still a
 placeholder.
 
-**The first wave landed.** dbmd-10 (the model reader, `src/model/`) and dbmd-40
+**Two waves landed.** Wave two was dbmd-11 (canonical writer), dbmd-43
+(Postgres provider) and dbmd-61 (the example model), merged as PRs #10, #9 and
+#8. `main` now has a reader, a writer, a validated introspection contract, a
+working Postgres provider and a real example model. No CLI and no studio yet.
+
+Both send-backs in wave two came from driving the code rather than reading the
+report, and neither was visible to CI:
+
+- **dbmd-11** shipped a parse guard that was opt-in. `writeModel(dir, model)`
+  was a legal call that silently deleted two columns from a file the reader
+  could not fully read. The fix makes that call not compile, and the agent's
+  chosen shape found a better line than the one asked for: `complete` is set at
+  the phase boundary, so a file with an error that lost nothing is still
+  writable.
+- **dbmd-43** was correct, and reviewing it against a live Postgres surfaced
+  dbmd-18: an expression index is indistinguishable from a column with a strange
+  name.
+
+**Wave one landed.** dbmd-10 (the model reader, `src/model/`) and dbmd-40
 (the introspection contract and provider seam, `src/import/`) are merged as PRs
 #5 and #6 and both items are closed. Nothing is in flight.
 
@@ -49,6 +67,23 @@ before `dbmd-21`, because ADR 0006 makes that shape a public contract the moment
   has an empty bypass list. Publishing to npm has still not been asked for.
 - **Layer 3 fired on its first run and BASELINE moved once, deliberately.**
   ADR 0001 carries the correction and the reason it is the only time.
+
+## The open format questions, in the order they bind
+
+These came out of `examples/shop` being written by hand and they gate real work:
+
+- **dbmd-14 (P0)**: a column cannot be declared unique. Blocks dbmd-41, because
+  an import would silently drop a constraint the database enforces.
+- **dbmd-16**: `null: false` reads backwards. Do it before anything writes a
+  model at scale, or it becomes a migration.
+- **dbmd-13**: two `Diagnostic` types. Blocks dbmd-21, because ADR 0006 makes
+  that shape public the moment `--json` ships.
+- **dbmd-18**: expression indexes. Blocks dbmd-41.
+- **dbmd-15**: there is no format reference at all, only decision records.
+
+All five touch the reader, the writer or the contract, so they mostly cannot run
+alongside each other or alongside provider work. Sequencing them is the next
+real orchestration decision.
 
 ## What is waiting on the owner
 
