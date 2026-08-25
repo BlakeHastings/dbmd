@@ -27,6 +27,7 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMap, isScalar, isSeq, parseDocument, type YAMLMap } from 'yaml'
+import { KIND_DIRECTORIES, MODEL_FILE } from './paths.js'
 import type {
   Column,
   Diagnostic,
@@ -43,15 +44,6 @@ import type {
   Severity,
   Table,
 } from './types.js'
-
-/** The directory decides the kind; the `kind:` key is a cross-check (ADR 0005). */
-const KIND_DIRECTORIES: ReadonlyMap<string, ObjectKind> = new Map<string, ObjectKind>([
-  ['tables', 'table'],
-  ['notes', 'note'],
-  ['groups', 'group'],
-])
-
-const MODEL_FILE = '_model.md'
 
 /**
  * Read a model directory. `dir` is the model root itself, the directory that
