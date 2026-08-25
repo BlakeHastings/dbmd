@@ -1,0 +1,225 @@
+{
+  "dbmdIntrospection": 1,
+  "engine": "sqlserver",
+  "database": "Shop",
+  "productVersion": "16.0.4145.4",
+  "collation": "SQL_Latin1_General_CP1_CI_AS",
+  "tables": [
+    {
+      "schema": "dbo",
+      "name": "Order",
+      "description": "One row per placed order.",
+      "columns": [
+        {
+          "name": "Id",
+          "type": "bigint",
+          "maxLength": 8,
+          "precision": 19,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": true,
+          "seedValue": 1,
+          "incrementValue": 1
+        },
+        {
+          "name": "TenantId",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "Code",
+          "type": "nvarchar",
+          "maxLength": 64,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false,
+          "collationName": "SQL_Latin1_General_CP1_CI_AS",
+          "description": "Human-facing order reference."
+        },
+        {
+          "name": "PlacedAt",
+          "type": "datetimeoffset",
+          "maxLength": 10,
+          "precision": 34,
+          "scale": 7,
+          "isNullable": false,
+          "isIdentity": false,
+          "defaultName": "DF_Order_PlacedAt",
+          "defaultDefinition": "(sysdatetimeoffset())"
+        },
+        {
+          "name": "Total",
+          "type": "decimal",
+          "maxLength": 9,
+          "precision": 12,
+          "scale": 2,
+          "isNullable": false,
+          "isIdentity": false,
+          "defaultName": "DF_Order_Total",
+          "defaultDefinition": "((0))"
+        },
+        {
+          "name": "Notes",
+          "type": "nvarchar",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "SQL_Latin1_General_CP1_CI_AS"
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_Order",
+        "isClustered": true,
+        "columns": ["Id"]
+      },
+      "indexes": [
+        {
+          "name": "UQ_Order_TenantCode",
+          "isUnique": true,
+          "isClustered": false,
+          "isUniqueConstraint": true,
+          "keyColumns": [
+            { "name": "TenantId", "isDescending": false },
+            { "name": "Code", "isDescending": false }
+          ]
+        }
+      ],
+      "checkConstraints": [
+        {
+          "name": "CK_Order_Total",
+          "definition": "([Total]>=(0))"
+        }
+      ]
+    },
+    {
+      "schema": "sales",
+      "name": "OrderLine",
+      "columns": [
+        {
+          "name": "OrderId",
+          "type": "bigint",
+          "maxLength": 8,
+          "precision": 19,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "LineNo",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "TenantId",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "OrderCode",
+          "type": "nvarchar",
+          "maxLength": 64,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false,
+          "collationName": "Latin1_General_BIN2"
+        },
+        {
+          "name": "Quantity",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false,
+          "defaultName": "DF_OrderLine_Quantity",
+          "defaultDefinition": "((0))"
+        },
+        {
+          "name": "UnitPrice",
+          "type": "decimal",
+          "maxLength": 9,
+          "precision": 12,
+          "scale": 2,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "LineTotal",
+          "type": "decimal",
+          "maxLength": 9,
+          "precision": 12,
+          "scale": 2,
+          "isNullable": false,
+          "isIdentity": false,
+          "computedDefinition": "([Quantity]*[UnitPrice])",
+          "isPersisted": true
+        },
+        {
+          "name": "Notes",
+          "type": "nvarchar",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "SQL_Latin1_General_CP1_CI_AS"
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_OrderLine",
+        "isClustered": true,
+        "columns": ["OrderId", "LineNo"]
+      },
+      "indexes": [
+        {
+          "name": "IX_OrderLine_Open",
+          "isUnique": false,
+          "isClustered": false,
+          "isUniqueConstraint": false,
+          "filterDefinition": "([Quantity]>(0))",
+          "keyColumns": [
+            { "name": "OrderId", "isDescending": false },
+            { "name": "LineNo", "isDescending": true }
+          ],
+          "includedColumns": ["Quantity"]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "name": "FK_OrderLine_Order",
+          "columns": ["TenantId", "OrderCode"],
+          "referencedSchema": "dbo",
+          "referencedTable": "Order",
+          "referencedColumns": ["TenantId", "Code"],
+          "deleteAction": "CASCADE",
+          "updateAction": "NO_ACTION"
+        },
+        {
+          "name": "FK_OrderLine_OrderId",
+          "columns": ["OrderId"],
+          "referencedSchema": "dbo",
+          "referencedTable": "Order",
+          "referencedColumns": ["Id"],
+          "deleteAction": "NO_ACTION",
+          "updateAction": "NO_ACTION"
+        }
+      ]
+    }
+  ]
+}
