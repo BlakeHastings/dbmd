@@ -18,7 +18,7 @@ import { describe, expect, test } from 'vitest'
 import { readModel, splitFrontmatter } from '../../src/model/read.js'
 import { writeModel } from '../../src/model/write.js'
 import type { Group, Layout, Model, Note, Table } from '../../src/model/types.js'
-import { canonicalModel, snapshot, untidyModel, withCopy } from './fixtures.js'
+import { canonicalModel, exampleShop, snapshot, untidyModel, withCopy } from './fixtures.js'
 
 describe('property 2: a canonical file serialises back to identical bytes', () => {
   test('every file in the canonical fixture is already what the writer would write', async () => {
@@ -295,4 +295,48 @@ function distinct(pool: readonly string[], howMany: number, next: () => number):
 
 function sortByName<T extends { name: string }>(values: readonly T[]): T[] {
   return [...values].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+}
+
+// --------------------------------------------------------------------------
+// And over `examples/shop`, which is the strongest material in the repository
+// for this: eight real tables written by a person from ADR 0003 alone, with
+// prose bodies full of fences, emphasis, colons and dashes.
+// --------------------------------------------------------------------------
+
+describe('examples/shop, hand-written from the ADR', () => {
+  test('normalises only where the ADR never said what to do, and then settles', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      const before = await snapshot(dir)
+      const first = await readModel(dir)
+      expect(first.diagnostics).toEqual([])
+
+      const { written } = await writeModel(dir, first.model, { diagnostics: first.diagnostics })
+      const after = await snapshot(dir)
+
+      // Whatever moved, every changed line is a `default:`: key order,
+      // indentation, flow style and every body came back untouched. The example
+      // quotes a SQL literal as `"\'GB\'"` the way ADR 0003 shows, and quotes a
+      // non-string default as `\'1\'` the way nothing shows, and the second is
+      // the one this item had to decide.
+      for (const path of written) {
+        const changed = changedLines(before.get(path) ?? '', after.get(path) ?? '')
+        expect(changed.filter((line) => !line.trimStart().startsWith('default:'))).toEqual([])
+      }
+
+      const second = await readModel(dir)
+      expect(second.model).toEqual(first.model)
+      const secondSave = await writeModel(dir, second.model, { diagnostics: second.diagnostics })
+      expect(secondSave.written).toEqual([])
+    })
+  })
+})
+
+/** The lines in one text and not in the other, in both directions. */
+function changedLines(before: string, after: string): string[] {
+  const kept = new Set(after.split('\n'))
+  const original = new Set(before.split('\n'))
+  return [
+    ...before.split('\n').filter((line) => !kept.has(line)),
+    ...after.split('\n').filter((line) => !original.has(line)),
+  ]
 }

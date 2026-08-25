@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 /** A ten-table model written by the writer, so every file in it is canonical. */
 export const canonicalModel = fileURLToPath(new URL('../fixtures/canonical', import.meta.url))
 
+/** The demo model, hand-written by a person from ADR 0003 and nothing else. */
+export const exampleShop = fileURLToPath(new URL('../../examples/shop', import.meta.url))
+
 /** The same sort of model, hand-written badly. Every file parses; none is canonical. */
 export const untidyModel = fileURLToPath(new URL('../fixtures/untidy', import.meta.url))
 
