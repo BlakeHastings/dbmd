@@ -38,14 +38,19 @@ Nothing is dispatched. No agent has run.
 - **dbmd-90**, the name. `dbmd` is a working name, free on npm as of
   2026-08-24. Everything proceeds under it and a rename would touch
   `package.json`, the bin name and the README only.
-- **dbmd-91**, which database engines the import must cover. dbmd-40 proceeds on
-  Postgres and is briefed to keep the JSON contract engine-neutral where that is
-  free.
-- **The format itself.** ADR 0003 is the design the owner asked to spec, and no
-  item that builds against it should be dispatched before they have read it.
-  That is the only thing holding dbmd-10, which is otherwise ready.
+Nothing. Both owner questions are answered and closed:
 
-## What is dispatchable the moment that clears
+- **dbmd-90**: the name is `dbmd`, MIT, public on GitHub.
+- **dbmd-91**: Postgres and SQL Server, behind a provider seam. ADR 0007, and
+  dbmd-40 rewritten as the seam with dbmd-43 and dbmd-44 as the two engines.
 
-`dbmd-10` (the reader) and `dbmd-40` (the Postgres query and its JSON contract).
-They share no files. Everything else in the backlog is behind one of them.
+## What is dispatchable
+
+`dbmd-10` (the model reader) and `dbmd-40` (the introspection contract and the
+provider seam). They share no files: one is `src/model/`, the other is
+`src/import/`. Everything else in the backlog is behind one of them.
+
+**dbmd-10 was dispatched once and stopped by the owner before it reported.** It
+left `yaml@^2.9.0` in its worktree's package.json and nothing else: no commits,
+no source, nothing merged. It was not resumed and not finished by the
+orchestrator, and the item is open and unchanged.
