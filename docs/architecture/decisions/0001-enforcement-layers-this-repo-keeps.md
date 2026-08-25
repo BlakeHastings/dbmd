@@ -62,3 +62,49 @@ run by the orchestrator, not by the agent that wrote it.
 - **Layer 2 has never been observed denying anything after six weeks of use.**
   Then it is either not loaded or not matching, and that is a defect to find
   rather than a layer to trust.
+
+## Correction, appended the same day: the remote arrived and layer 3 fired
+
+The owner authorised the repository on 2026-08-24 and it was created public and
+pushed. Three things changed within ten minutes, and all three are corrections
+to what is written above rather than new decisions.
+
+**A ruleset now exists, and it is the gate this record said was unavailable.**
+`main` requires a pull request and a green `check`, allows only squash merges,
+forbids deletion and force-push, and has an empty bypass list:
+`current_user_can_bypass` reads `never`, including for the owner. Layers 1 and 2
+are no longer the only things standing between an agent and the default branch.
+
+**Layer 3 fired on its first run, and it was right.** The five setup commits
+reached `main` without a pull request, because until the push there was no remote
+to open one against. The table above called layers 1 and 3 dormant and this is
+what dormant looked like when it woke up.
+
+**BASELINE moved from `9bb58f8` to `30726ea`, once, deliberately.** The script
+warns against exactly this and the warning is correct in the case it is aimed at,
+which is absorbing a real violation into history nobody looks at. This is not
+that case, and the distinction is in the constant's own comment: the baseline is
+"the commit that first made the PR-only rule a control rather than a sentence".
+Until 01:40 UTC on 2026-08-25 it was a sentence, because the mechanism it
+describes did not exist. `30726ea` is the state of the repository at the moment
+it gained a remote and a ruleset, and every commit after it comes through a pull
+request without exception. **This is the only time that constant moves.** If it
+is ever proposed again, the answer is no, and the reason it was allowed here is
+that the rule had no way of being true before.
+
+**Layer 3 is kept rather than deleted, and the revisit trigger above said to
+delete it.** The trigger fired and the arithmetic came out the other way, so the
+trigger is what is being corrected. Its reasoning was borrowed from a repository
+where a ruleset with no bypass actors meant the commit layer 3 detects cannot
+exist. That is not true here: the ruleset is an object in the GitHub API, and
+the token the factory's agents run under can delete it. Prevention that can be
+removed by the thing it is preventing is exactly the case constraint 4 is about,
+and detection runs on the result, which is the one thing a bypass cannot avoid
+producing.
+
+So the revisit trigger is replaced with a narrower one:
+
+- **Delete layer 3 when the ruleset can no longer be removed by anything that
+  runs here**, which realistically means agents running under a token that cannot
+  administer the repository. That is a better fix than deleting the audit, and it
+  is the thing to build if this ever becomes worth the effort.

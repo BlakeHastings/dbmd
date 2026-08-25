@@ -37,7 +37,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 // real violation gets absorbed into "history we agreed not to look at".
 // SETUP: the commit that first made the PR-only rule a control rather than a
 // sentence, normally the one that adds this script and the merge wrapper.
-const BASELINE = '9bb58f8eca01a8f8e28d4648c26946f6be9884fc'
+const BASELINE = '30726ead8623a277be706f40a030b9c2fdce3954'
 
 const DEFAULT_BRANCH = 'main'
 

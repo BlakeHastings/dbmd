@@ -27,8 +27,11 @@ Nothing is dispatched. No agent has run.
 - **The write boundary is owned**, recorded in `.git/factory/machine.md`, which
   is not committed and does not survive a clone. Whoever works this repository
   on another machine records it again, once.
-- **No remote exists, and creating one is the owner's step.** So is publishing
-  to npm. Neither has been asked for.
+- **The remote exists.** `github.com/BlakeHastings/dbmd`, public, MIT. A ruleset
+  on `main` requires a pull request and a green `check`, allows squash only, and
+  has an empty bypass list. Publishing to npm has still not been asked for.
+- **Layer 3 fired on its first run and BASELINE moved once, deliberately.**
+  ADR 0001 carries the correction and the reason it is the only time.
 
 ## What is waiting on the owner
 
