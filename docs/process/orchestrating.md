@@ -80,7 +80,48 @@ surface, not count. On this repository the surfaces are:
 
 `package.json` is this repository's version of the file everything links from.
 Two items that each add a script or a dependency collide there even when they
-sound unrelated. Expect it and sequence around it.
+sound unrelated. Expect it and sequence around it. Naming one item as its owner
+for the wave, and telling the others to add no dependencies, worked: the first
+two-agent wave came back with no collision in it at all.
+
+## Do not land your own commits into a live wave
+
+The rule that cost the most in the first wave, and it cost it twice.
+
+While two agents were working, a docs-only pull request was merged: two files,
+no code, nothing either agent touched. Both branches were then refused by
+`merge-pr.mjs` with "the required checks are green, but the branch is behind
+main, so that green is stale", and both agents had to rebase and re-earn a green
+they had already earned.
+
+**One orchestrator commit costs one rebase per agent in flight**, however small
+it is, because the wrapper judges the green against what would land rather than
+against the branch point. It is right to. The commit that caused this was
+process notes that could have waited an hour.
+
+So: land orchestrator work **before** dispatching a wave or **after** it drains,
+never during. Nothing an orchestrator writes between dispatches is urgent
+enough to be worth a round trip per agent, and the round trip is the cheap half.
+The expensive half is that a rebase puts a tree you already reviewed back into
+motion, so the review has to be redone against what actually landed.
+
+Two things follow when it happens anyway:
+
+- **The rebase is the agent's, never yours.** Resolving it makes you the author
+  of a change you are about to review. Send it back, and if that agent is gone,
+  brief a fresh one whose job is rebase-and-re-verify rather than build.
+- **Re-verify after the rebase, not before.** The claim you checked was checked
+  against a different tree. Re-running the adversarial fixture against the
+  rebased branch took under a minute both times and is the only thing that makes
+  the earlier review still true.
+
+## Sequence a wave so nobody rebases twice
+
+Once both branches are stale, the ordering matters. Merging one moves `main`
+again, so the other goes stale a second time.
+
+Wait for whichever is already rebasing, land it, then send the other for one
+rebase onto the result. One rebase each instead of one and then another.
 
 ## The evidence bar is the part to get right
 
