@@ -48,8 +48,23 @@ knowing before you write a seeding script that half works.
 at process start, so the session that installs one runs unguarded until it is
 restarted, and so does everything it spawns. `node scripts/guard-merge.mjs
 --probe` is the only way to find out, it must be alone on the command line, and
-being refused is the answer you want. Ask it after every restart, and ask it
-from a worktree too.
+being refused is the answer you want.
+
+Both answers were observed here, which is the pair worth keeping:
+
+```
+# before the restart
+The merge guard is NOT loaded in this process.
+
+# after
+The merge guard is loaded in this process. This probe was refused before it ran.
+```
+
+Nothing else changed between those two runs. The wiring was identical, the
+script was identical, and `check-setup.mjs` reported layer 2 `ok` for both. That
+is the whole reason the probe exists: a guard that was never loaded produces
+exactly the same silence as a guard with nothing to deny. **Ask it after every
+restart, before the first dispatch.**
 
 ## Dispatching
 
