@@ -8,3 +8,10 @@ docs/
 # Model fixtures are inputs, not source. Several are deliberately malformed and
 # prettier would either reformat the mistake away or fail on it.
 test/fixtures/
+
+# The example model is mostly prose, and ADR 0003 says a model file's body is
+# preserved byte for byte. Prettier disagrees: it rewrote `*style*` to `_style_`
+# inside a table's body the first time it ran over this directory. Same reason
+# `docs/` is here, and the same advice we will end up giving anyone who keeps a
+# `db-model/` in a repository that runs prettier over everything.
+examples/
