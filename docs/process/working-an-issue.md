@@ -83,28 +83,27 @@ trivial, and even when you are confident.
 
 CI runs one check, named `check`, and it is `npm run check`. One entry point
 rather than four jobs, so that what CI runs and what you can run are the same
-thing by construction.
+thing by construction. It is a required status check on `main`.
 
-Until this repository has a remote, two of the three layers below are installed
-and dormant, and "landing" means merging your branch into local `main`.
-`docs/architecture/decisions/0001-enforcement-layers-this-repo-keeps.md` says
-which is which and why none of them was deleted.
+**GitHub enforces the first half, and this repository the second.** A ruleset on
+`main` requires a pull request and a green `check`, allows squash merges only,
+forbids deletion and force-push, and has an empty bypass list. The owner cannot
+bypass it either. What the ruleset does not do is stop an agent merging *its
+own* pull request, which is why the layers below still exist:
 
-**GitHub itself does not enforce them.** Branch protection needs a paid plan on a
-private repo. Three things stand in for it, and each is worth exactly what it
-covers:
-
-1. **`node scripts/merge-pr.mjs <n>`**, the only sanctioned way to land a PR. It
-   refuses unless all required checks are green, and always squash merges.
+1. **`node scripts/merge-pr.mjs <n>`**, the sanctioned way to land a PR. It
+   reads the check rollup, refuses unless every required check is green, and
+   always squash merges.
    *Not covered:* anyone who does not use the command. It is a tool, not a gate.
 2. **`scripts/guard-merge.mjs`**, a PreToolUse hook wired up in
    `.claude/settings.json`. It denies the commands above before they run.
    *Not covered:* sessions that did not load it. A net, not a guarantee.
-3. **`scripts/check-main-provenance.mjs`**, run on every push to the default
-   branch. It asks the API whether each new commit belongs to a merged pull
-   request and fails loudly when one does not.
+3. **`scripts/check-main-provenance.mjs`**, run on every push to `main`. It asks
+   the API whether each new commit belongs to a merged pull request and fails
+   loudly when one does not.
    *Not covered:* prevention. It notices afterwards, which is why it cannot be
-   bypassed.
+   bypassed. It is kept despite the ruleset because the ruleset is an API object
+   that the token agents run under can delete. ADR 0001 has that argument.
 
 Landing a PR:
 
