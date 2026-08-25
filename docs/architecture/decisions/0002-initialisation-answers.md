@@ -27,15 +27,25 @@ conventions apply: `docs/architecture/decisions/` for decision records,
 `docs/process/` for the two process docs, `<area>/<number>-<slug>` for branches,
 and commit subjects that say why rather than what.
 
-**The backlog is beads**, driven by `bd`, stored in `.beads/` and committed.
-Not GitHub issues, and the reason is that there is no remote yet: a loop whose
-queue cannot be created today is a loop that cannot start today. beads supplies
-all eight verbs the loop needs, including real parent/child and blocks edges,
-and it works offline.
+**The backlog is beads**, driven by `bd`. Not GitHub issues, and the reason is
+that there is no remote yet: a loop whose queue cannot be created today is a
+loop that cannot start today. beads supplies all eight verbs the loop needs,
+including real parent/child and blocks edges, and it works offline.
 
-That it lives in source control also suits this particular project, whose whole
-premise is that the thing you are modelling belongs in the repository beside the
-code.
+**It is not in source control by default, and that was corrected rather than
+assumed.** This version of beads stores issues in an embedded Dolt database
+under `.beads/embeddeddolt/`, which its own `.gitignore` excludes, and its JSONL
+export is off out of the box. So `export.auto` and `export.git-add` are turned
+on, and `.beads/issues.jsonl` is committed. beads is explicit that this file is
+an export and not the source of truth, so what the repository holds is a
+readable copy of the queue rather than the queue.
+
+For this project that copy is worth having anyway: a repository whose premise is
+that the model belongs beside the code should not keep its own plan somewhere a
+clone cannot see.
+
+Ids are assigned explicitly, `dbmd-10`, not by hash. `bd` will generate
+`dbmd-a3f2dd` if you let it, and branch names read better with numbers.
 
 ## Consequences
 
@@ -54,5 +64,11 @@ code.
 - **The owner asks for the GitHub repository.** The backlog does not have to
   move with it, and moving it is a decision to make deliberately rather than by
   drift. `references/backlog-port.md` has what would have to survive the port.
-- **A second person works this repository.** A local queue that only one machine
-  can see stops being sufficient at exactly that point.
+- **A second person works this repository.** The committed JSONL is a copy, not
+  a sync. Two people writing to it produce a merge conflict in a file neither of
+  them edited by hand, and that is the point at which the backlog either moves
+  to GitHub issues or starts using a Dolt remote.
+- **`bd init` commits on its own.** It did here, twice, sweeping an unrelated
+  file into a commit called `bd init: initialize beads issue tracking`. Both
+  were squashed away before anything depended on them. If beads is ever
+  re-initialised in this repository, check `git log` afterwards.
