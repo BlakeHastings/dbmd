@@ -72,6 +72,17 @@ describe('the query', () => {
     .map((line) => (line.trimStart().startsWith('--') ? '' : line))
     .join('\n')
 
+  /**
+   * The comment block as one run of words.
+   *
+   * The assertions below are on sentences, and a sentence in a block wrapped to
+   * 80 columns breaks wherever it happens to break. Reflowing a comment is not a
+   * regression and is not worth a red build, so the markers come off and the
+   * whitespace flattens: what is asserted is then what the block says rather
+   * than where it wraps.
+   */
+  const prose = sql.replace(/^--\s?/gm, '').replace(/\s+/g, ' ')
+
   it('is one statement, so it pastes into any client', () => {
     expect(withoutComments.match(/;/g)).toHaveLength(1)
     expect(withoutComments.trimEnd().endsWith(';')).toBe(true)
@@ -115,6 +126,61 @@ describe('the query', () => {
 
   it('writes the version this build reads, so the two cannot drift', () => {
     expect(withoutComments).toContain(`'dbmdIntrospection', ${INTROSPECTION_VERSION}`)
+  })
+
+  it('gives a psql recipe that produces a file dbmd import accepts', () => {
+    // Until dbmd-pqd the block said only "Save that value to a file", and the
+    // obvious way of doing that produced a file `dbmd import` refused: psql's
+    // default output is a column header, a rule of dashes, the value padded into
+    // the column and a "(1 row)" footer, so the parser stops on the header
+    // before it has reached a byte of JSON. ADR 0041 states the position and
+    // calls this change owed.
+    //
+    // Nothing here can run psql, the same way nothing can run sqlcmd. What this
+    // can do is fail the day somebody drops a flag, which is exactly how it will
+    // be tempted to go: two of the three look like noise until you know what
+    // they are for.
+    const recipe = sql.split('\n').find((line) => line.includes('psql -'))
+    expect(recipe).toBeDefined()
+    // -t drops the header, the dashes and the row count. -A stops the padding.
+    // -X stops ~/.psqlrc from overriding the other two, which psql reads after
+    // the command line rather than before.
+    expect(recipe).toMatch(/\B-X\b/)
+    expect(recipe).toMatch(/\B-t\b/)
+    expect(recipe).toMatch(/\B-A\b/)
+
+    // And the block has to say what each one is for, or a reader who mistyped
+    // one cannot work out which.
+    expect(prose).toMatch(/\(1 row\)/)
+    expect(prose).toMatch(/output format is wrapped/)
+    expect(prose).toMatch(/\.psqlrc/)
+
+    // The flags are psql's and stay out of the query, so it is still one
+    // statement that pastes into a client that has never heard of psql.
+    // `contains nothing that could write` asserts the other half of this.
+    expect(withoutComments).not.toMatch(/pset/i)
+    expect(withoutComments).not.toMatch(/psql/i)
+  })
+
+  it('says what a correct file looks like, for the clients it cannot name', () => {
+    // pgAdmin and DBeaver are what most people use and neither was measured, so
+    // the block gives the shape of a correct file rather than an invocation it
+    // cannot stand behind. ADR 0041 predicted this is where the block ends up;
+    // if the shape sentence goes, a GUI user is left with nothing at all.
+    expect(prose).toMatch(/pgAdmin/)
+    expect(prose).toMatch(/DBeaver/)
+    expect(prose).toMatch(/begins `\{` and ends `\}`/)
+  })
+
+  it('tells a wrapper apart from a truncation, because the message does', () => {
+    // A file that is too long and a file that is too short both arrive as "not
+    // JSON", and `dbmd import` says the usual cause is a paste that stopped
+    // early. For psql's default output that is wrong twice over: the file is
+    // longer than the JSON, and the failure is at the front rather than the end.
+    // What the message names tells the three apart, and the block now says so.
+    expect(prose).toMatch(/stopped early/)
+    expect(prose).toMatch(/client's header/)
+    expect(prose).toMatch(/client's footer/)
   })
 })
 
