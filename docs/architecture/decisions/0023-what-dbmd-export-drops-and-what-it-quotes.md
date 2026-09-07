@@ -156,3 +156,34 @@ not need to touch puts noise in a diff.
   being an answer when somebody has to scroll past it. Splitting by group is the
   first thing to try, and it is a decision of its own because a group is
   something this diagram currently drops.
+
+## Amended by dbmd-c9h, once a ref could carry `on delete` and `on update`
+
+ADR 0046 gave a `ref` two more facts, `on delete:` and `on update:`, after the
+paragraph above was written, and the diagram drops them the way it already
+drops nullability and a default: silently. `examples/shop`'s
+`order_items.order_id` carries `on delete: cascade`, and
+`dbmd export --stdout examples/shop` renders that relationship as
+`"orders" ||--o{ "order_items" : "order_id"`, with no mention of `cascade`
+anywhere in the diagram or in the paragraph naming what it dropped. The list
+above was incomplete rather than the export: **a model carries things
+`erDiagram` has nowhere to put, and a ref's `on delete` and `on update` are two
+more of them**, filed beside the nullability and the default already on that
+list, the same two ADR 0046 pointed to as proof the format already carried
+behaviour.
+
+The diagram keeps dropping them on purpose. `erDiagram`'s only slot on a
+relationship is its label, that label already carries the referring column a
+reader needs to find the `ref` in the model, and crowding an action onto the
+same line would make a worse diagram rather than a more complete one. Nothing
+here reopens what the label says; a change to it is a different item and needs
+its own owner.
+
+The studio's canvas raises the same question and is not a third gap. Its edge
+draws the relationship exactly as this diagram does, and its panel names the
+action on the column that carries the `ref`, once that column's table is
+selected: the panel lists every column, and the one with a `ref` carries two
+selects holding `on delete` and `on update`. That is the split ADR 0035
+already uses for a group: the box is the overview, the panel is the detail. A
+reader who needs the action selects the table and reads the column, the same
+way they open a table's panel to learn whether it joined a group.
