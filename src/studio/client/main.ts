@@ -70,6 +70,10 @@ import {
 // validator is a pure function of a model, which is what lets it run here.
 import { locationText, sortDiagnostics } from '../../diagnostics.js'
 import { validate } from '../../model/validate.js'
+// The one question that tells a file nobody can read from a file that is wrong,
+// shared with the server so the page and the refusal cannot answer it
+// differently. dbmd-c7q.
+import { saidAbout } from '../unreadable.js'
 import type { Diagnostic, Group, Note, ObjectKind, Table } from '../../model/types.js'
 import type { WireConflict, WireModel, WireModelResponse, WireStatus } from '../wire.js'
 import type { Point } from './geometry.js'
@@ -164,25 +168,39 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
  * the same route and are opposite facts about the disk, and saying the second
  * about the first sends a developer looking for a change nobody made. dbmd-e6e.
  *
- * The code answers it for a delete, which is refused as `unreadable`, and it
- * cannot for an edit: a file that will not open moves the model, so the next
- * patch of a drag is refused as `stale`, which is true and says nothing about
- * why. So the page asks the reader, whose answer it is already holding and
- * already showing in the panel below this line. A diagnostic that is not there
- * leaves this exactly as it was.
+ * The code answers it for a delete, which is refused as `unreadable`, and for
+ * an edit to an object the server is already holding from memory, which
+ * dbmd-c7q made `unreadable` too. It cannot answer for the rest: a file that
+ * will not open moves the model, so the next patch of a drag is refused as
+ * `stale`, which is true and says nothing about why. So the page asks the
+ * reader, whose answer it is already holding and already showing in the panel
+ * below this line. A diagnostic that is not there leaves this exactly as it was.
+ *
+ * The asking is `saidAbout`, shared with the server rather than written again
+ * here, which is also how this came to count the directory that would not list.
  */
 function sayStale(what: string, failure: RequestFailed, path?: string): void {
   console.warn(`dbmd studio: ${failure.code}: ${failure.message}`)
   const unreadable =
     failure.wasUnreadable ||
-    (path !== undefined &&
-      readerDiagnostics.some(
-        (diagnostic) =>
-          diagnostic.code === 'file-unreadable' &&
-          diagnostic.at.in === 'file' &&
-          diagnostic.at.path === path,
-      ))
+    (path !== undefined && saidAbout(readerDiagnostics, path) !== undefined)
   say(unreadable ? unreadableNotice(what) : staleNotice(what), 'bad')
+}
+
+/**
+ * Why an object the server is holding from memory is incomplete, for the two
+ * scenes that have to say so.
+ *
+ * One function, handed to both, because dbmd-e6e's own finding was that a
+ * status line can stand over a list saying the opposite. The canvas box, the
+ * panel's red paragraph and the footer's diagnostics are three renderings of
+ * one read, and this is what keeps them one answer: the scenes never look at
+ * `readerDiagnostics` themselves and never hold a copy of the answer, so a
+ * lock clearing changes all three at the next draw and none of them before it.
+ * dbmd-c7q.
+ */
+function unreadableSays(path: string): string | undefined {
+  return saidAbout(readerDiagnostics, path)
 }
 
 const writer = new ObjectWriter({
@@ -225,6 +243,7 @@ let arming: 'table' | 'note' | null = null
 
 const inspector = new Inspector(inspectorHost, {
   model: () => model,
+  unreadable: unreadableSays,
   onPatch: (name, patch, next) => {
     adoptTable(next)
     writer.patch('table', name, patch)
@@ -259,6 +278,7 @@ const inspector = new Inspector(inspectorHost, {
 })
 
 const canvas = new Canvas(canvasHost, {
+  unreadable: unreadableSays,
   onMove: (kind, name, layout) => {
     writer.move(kind, name, layout)
     // The note's panel shows where it is, and a drag is the thing that changes

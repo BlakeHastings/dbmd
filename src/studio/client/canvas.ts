@@ -75,6 +75,7 @@ import {
 import { groupBoxes, groupPath, GROUP_HEADER, type GroupBox, type Outsider } from './groups.js'
 import { parseMarkdown, type Block, type Span } from './markdown.js'
 import { tintClass } from './palette.js'
+import { couldNotBeReadNow } from '../unreadable.js'
 
 const SVG = 'http://www.w3.org/2000/svg'
 
@@ -155,6 +156,20 @@ export interface CanvasHandlers {
   readonly onPlace: (at: Point) => void
   /** Pan or zoom changed, so a readout can follow it. */
   readonly onViewport: (viewport: Viewport) => void
+  /**
+   * What the reader said about a file it could not open, for a box this canvas
+   * is drawing from memory. `undefined` for every other path, which includes
+   * the file that is there and did not parse.
+   *
+   * An accessor rather than a field on the object or an argument to `show`, for
+   * the same reason the inspector's `model` is one: the page holds the reader's
+   * diagnostics and they change without the objects changing. A locked file
+   * clearing is exactly that, and a copy taken at draw time would be a second
+   * answer to the same question, going stale on its own schedule. Asked at the
+   * moment a sentence is written, so what the box says and what the footer's
+   * diagnostics list says cannot disagree. dbmd-c7q.
+   */
+  readonly unreadable: (path: string) => string | undefined
 }
 
 interface Box {
@@ -338,7 +353,7 @@ export class Canvas {
 
     for (const table of scene.tables) {
       const position = positions.get(table.name) ?? { x: 0, y: 0 }
-      const element = renderTable(table)
+      const element = renderTable(table, this.handlers.unreadable(table.path))
       this.boxLayer.append(element)
       this.boxes.set(table.name, {
         element,
@@ -383,7 +398,7 @@ export class Canvas {
   update(next: Table): void {
     const box = this.boxes.get(next.name)
     if (box === undefined) return
-    const element = renderTable(next)
+    const element = renderTable(next, this.handlers.unreadable(next.path))
     element.classList.toggle('selected', this.isSelected('table', next.name))
     placeElement(element, box.position)
     this.rowSizes.unobserve(box.element)
@@ -405,7 +420,7 @@ export class Canvas {
   updateNote(next: Note): void {
     const held = this.notes.get(next.name)
     if (held === undefined) return
-    const element = renderNote(next)
+    const element = renderNote(next, this.handlers.unreadable(next.path))
     element.classList.toggle('selected', this.isSelected('note', next.name))
     const rect = { ...held.rect }
     held.element.replaceWith(element)
@@ -776,7 +791,7 @@ export class Canvas {
   // ------------------------------------------------------------------------
 
   private addNote(note: Note): void {
-    const element = renderNote(note)
+    const element = renderNote(note, this.handlers.unreadable(note.path))
     const rect = {
       x: note.layout?.x ?? 0,
       y: note.layout?.y ?? 0,
@@ -1001,7 +1016,16 @@ export class Canvas {
 // Rendering one object.
 // --------------------------------------------------------------------------
 
-function renderTable(table: Table): HTMLElement {
+/**
+ * One table's box. `said` is the reader's clause when the file could not be
+ * opened, and `undefined` when it was read and did not parse.
+ *
+ * The box looks the same either way, because either way this canvas is drawing
+ * a table from memory and will not let it be dragged. What changes is the
+ * sentence in place of the rows, and it has to: "did not parse" sends somebody
+ * to a file with nothing wrong in it. dbmd-c7q.
+ */
+function renderTable(table: Table, said: string | undefined): HTMLElement {
   const element = document.createElement('article')
   element.className = table.complete ? 'box' : 'box broken'
   element.dataset['table'] = table.name
@@ -1013,7 +1037,10 @@ function renderTable(table: Table): HTMLElement {
   if (!table.complete) {
     const problem = document.createElement('p')
     problem.className = 'problem'
-    problem.textContent = `${table.path} did not parse, so this table cannot be moved. See the diagnostics below.`
+    problem.textContent =
+      said === undefined
+        ? `${table.path} did not parse, so this table cannot be moved. See the diagnostics below.`
+        : couldNotBeReadNow(table.path, 'this table cannot be moved', said)
     element.append(problem)
     return element
   }
@@ -1074,8 +1101,12 @@ function renderColumn(column: Column): HTMLElement {
  *
  * The body is built out of text nodes by `renderBlocks`, never assigned as
  * HTML, so a note whose body contains a tag shows the tag.
+ *
+ * `said` is what `renderTable`'s is, and is asked and answered the same way: a
+ * note whose file another program is holding open is not a note that failed to
+ * parse.
  */
-function renderNote(note: Note): HTMLElement {
+function renderNote(note: Note, said: string | undefined): HTMLElement {
   const element = document.createElement('article')
   element.className = `note-card ${tintClass(note.color)}`
   if (!note.complete) element.classList.add('broken')
@@ -1085,7 +1116,10 @@ function renderNote(note: Note): HTMLElement {
   if (!note.complete) {
     const problem = document.createElement('p')
     problem.className = 'problem'
-    problem.textContent = `${note.path} did not parse, so this note cannot be moved. See the diagnostics below.`
+    problem.textContent =
+      said === undefined
+        ? `${note.path} did not parse, so this note cannot be moved. See the diagnostics below.`
+        : couldNotBeReadNow(note.path, 'this note cannot be moved', said)
     element.append(problem)
     return element
   }

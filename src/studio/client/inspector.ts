@@ -74,6 +74,7 @@ import type {
   Table,
 } from '../../model/types.js'
 import { REFERENTIAL_ACTIONS } from '../../model/types.js'
+import { couldNotBeReadNow } from '../unreadable.js'
 import type { GroupPatch, NotePatch, TablePatch, WireModel } from '../wire.js'
 import type { Selected } from './canvas.js'
 import {
@@ -121,6 +122,18 @@ const GROUP_UNWRITTEN =
 export interface InspectorHandlers {
   /** The page's copy of the model. Read on demand so there is one copy, not two. */
   readonly model: () => WireModel
+  /**
+   * What the reader said about a file it could not open, for an object this
+   * panel is showing from memory. `undefined` for every other path, which
+   * includes the file that is there and did not parse.
+   *
+   * Read on demand for the reason `model` is, and here it matters more: the
+   * diagnostics move without the object moving. A lock clearing changes this
+   * answer and changes nothing about the table, so a copy taken when the panel
+   * was built would keep saying a file could not be read after it could.
+   * dbmd-c7q.
+   */
+  readonly unreadable: (path: string) => string | undefined
   /** An edit to the selected table: apply it to the page's copy and write it. */
   readonly onPatch: (name: string, patch: TablePatch, next: Table) => void
   /** An edit to the selected note. Same shape, one kind along. */
@@ -389,12 +402,12 @@ export class Inspector {
   private build(table: Table): HTMLElement[] {
     const parts: HTMLElement[] = [this.heading(table)]
     if (!table.complete) {
-      parts.push(
-        note(
-          `${table.path} did not parse, so this server is holding less than the file does and will not write over it. Fix the file and reload.`,
-          'bad',
-        ),
-      )
+      // Through `brokenNotice` rather than said again here. It was the same
+      // sentence twice, in two files, and the point of dbmd-c7q is that it is
+      // two sentences depending on what the reader found; a second copy is a
+      // second chance for the panel to say one thing about a table and another
+      // about a note whose file will not open for the same reason.
+      parts.push(this.brokenNotice(table.path))
       // Deleting it is still offered, and is the only thing this panel can
       // usefully do with a file it could not read: every other section edits
       // something the server has refused to write back.
@@ -1471,9 +1484,30 @@ export class Inspector {
     return parts
   }
 
+  /**
+   * The red paragraph on the panel for an object the server is holding from
+   * memory, and why it is holding it.
+   *
+   * One method for all three kinds, which is what it was already, and now the
+   * one place the panel decides between two sentences rather than assuming the
+   * first. `complete: false` is set both by a file that says something the
+   * reader could not use and by a file the reader could not open, and only the
+   * first is something "fix the file and reload" is an answer to: for the
+   * second there is nothing wrong in the file and the page is already showing
+   * what the reader last saw. The reader is asked which, and its clause is
+   * repeated rather than reworded, so a lock and a permission change read the
+   * same. dbmd-c7q.
+   */
   private brokenNotice(path: string): HTMLElement {
+    const said = this.handlers.unreadable(path)
     return note(
-      `${path} did not parse, so this server is holding less than the file does and will not write over it. Fix the file and reload.`,
+      said === undefined
+        ? `${path} did not parse, so this server is holding less than the file does and will not write over it. Fix the file and reload.`
+        : couldNotBeReadNow(
+            path,
+            'this server is showing what it last read and will not write over it',
+            said,
+          ),
       'bad',
     )
   }
