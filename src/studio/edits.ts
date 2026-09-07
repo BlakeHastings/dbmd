@@ -26,6 +26,11 @@
  * could not build entirely carries `complete: false` and `writeModel` skips it,
  * which would make an edit to it vanish silently. So an edit to such a table is
  * refused here, out loud, rather than accepted and then dropped one layer down.
+ * **Why it could not be built is part of the refusal**, because that flag is
+ * set both by a file that says something the reader could not use and by a file
+ * the reader could not open, and only the first of those is something a person
+ * can go and fix. `saidAbout` is the one question that tells them apart, and it
+ * is asked here, at the flush, and by the page. dbmd-c7q.
  *
  * ADR 0019 added the fourth, and it is the one that is easy to get wrong:
  *
@@ -73,6 +78,11 @@ import type {
 } from '../model/types.js'
 import { MODEL_FILE, directoryOfKind } from '../model/paths.js'
 import { isSafeSegment, resolveWithin } from './safe-path.js'
+// The one question that tells a file nobody can read from a file that is wrong.
+// It moved out of this file when the page had to ask it too: the canvas and the
+// panel say why an object is incomplete, and three copies of this rule would be
+// three chances to answer it differently. dbmd-c7q.
+import { saidAbout } from './unreadable.js'
 import { ModelWatcher } from './watch.js'
 import type {
   GroupPatch,
@@ -122,7 +132,17 @@ export type EditRefusalCode =
   | 'table-exists'
   | 'note-exists'
   | 'group-exists'
-  /** The reader could not build the table from its file, so a write would truncate it. */
+  /**
+   * The file is there, it says something, and the reader could not build the
+   * table from it, so a write would truncate it.
+   *
+   * A real state and the common one: a file halfway through being typed is the
+   * ordinary state of a file, its message is correct, and a person can go and
+   * fix it. It is narrower than `complete: false`, which is also what a file
+   * that would not open leaves behind; that one is `unreadable`, because
+   * telling somebody to fix a file with nothing wrong in it is advice they
+   * cannot take. dbmd-c7q.
+   */
   | 'incomplete'
   /** The file changed on disk since the session read it, so acting on it would lose that change. */
   | 'conflicted'
@@ -132,6 +152,12 @@ export type EditRefusalCode =
    * seen. Distinct from `conflicted` for the reason `file-unreadable` is
    * distinct from a parse error: "absent because it could not be read" and
    * "present and different" are opposite facts about somebody's disk.
+   *
+   * Raised by all three routes that can meet such a file, and that is the
+   * point of it being one code: a delete, a write at the flush, and an edit to
+   * an object the session is holding from memory because that read left it out.
+   * The last of them used to answer `incomplete`, which said the file did not
+   * parse. dbmd-c7q.
    */
   | 'unreadable'
   /** The edit names a revision this session has moved on from, so it was made against a model that is gone. */
@@ -322,6 +348,24 @@ export class Edits {
     this.requireCurrent(base, 'this patch')
     const current = this.object(kind, name)
     if (!current.complete) {
+      // Why it is incomplete, in the reader's own words, because `complete:
+      // false` is two facts wearing one flag exactly as "a file that no longer
+      // says what it said" was two facts wearing one sentence. `carryForward`
+      // sets it for a file that stopped parsing and for a file that would not
+      // open, and this refusal called both of them a parse error: "fix the
+      // file and reload" is the third false reason a person meets about a
+      // locked file, after dbmd-e6e and dbmd-062 removed two. dbmd-c7q.
+      //
+      // Asked of the diagnostics this session adopted rather than of a fresh
+      // read, and that is the right pair: the object was carried forward by the
+      // read those diagnostics came from, so they are the answer about the
+      // same moment. A patch is synchronous by ADR 0004's debounce and must
+      // stay that way; the fresh read happens at the flush, where the write
+      // path asks the same question again.
+      const said = saidAbout(this.diagnostics, current.path)
+      if (said !== undefined) {
+        throw new EditRefused(409, 'unreadable', couldNotBeRead(current.path, 'editing it', said))
+      }
       throw new EditRefused(
         409,
         'incomplete',
@@ -659,6 +703,14 @@ export class Edits {
    * `writeModel` skips on and the flag `patchObject` refuses on, so an object
    * shown from memory cannot be written back over the file it no longer
    * matches.
+   *
+   * **The flag says that and deliberately not why.** A file being typed into
+   * and a file another program is holding open both land here, and the reason
+   * is a fact about the read rather than about the object, so it stays in the
+   * diagnostics beside it and is asked for by whoever has to say a sentence
+   * about it. Putting it on the object would mean carrying it through the wire
+   * and back, and it would go stale the moment the lock cleared while the
+   * object it is attached to did not. dbmd-c7q.
    */
   private async carryForward(fresh: Model): Promise<Model> {
     let model = fresh
@@ -935,33 +987,6 @@ function couldNotBeRead(path: string, action: string, said: string): string {
     `\`${path}\` could not be read just now, so the studio did not go through with ${action}: ${said}. ` +
     `Nothing was written and the file is exactly as it was; try it again once the file can be read`
   )
-}
-
-/**
- * What the reader said about a file it could not read at all, or `undefined`
- * when the file is not one of those.
- *
- * The containing directory counts, and that is not a flourish: a `tables/` that
- * cannot be listed leaves every table missing from the read for exactly the
- * same reason one locked file does, and a write refused for that has the same
- * two candidate explanations. Its clause reads `cannot list the directory:` and
- * says so.
- *
- * Only `file-unreadable`, and deliberately. A file that is there and does not
- * parse is also missing from the read, and for that one "changed on disk after
- * the studio read it" is true: somebody is typing in it. The distinction this
- * draws is between a file whose contents are unknown and a file whose contents
- * are known and different, which is the distinction the reader already makes.
- */
-function saidAbout(diagnostics: readonly Diagnostic[], path: string): string | undefined {
-  const directory = path.slice(0, path.lastIndexOf('/'))
-  for (const diagnostic of diagnostics) {
-    if (diagnostic.code !== 'file-unreadable' || diagnostic.at.in !== 'file') continue
-    if (diagnostic.at.path === path || (directory !== '' && diagnostic.at.path === directory)) {
-      return diagnostic.message
-    }
-  }
-  return undefined
 }
 
 function applyTablePatch(table: Table, patch: TablePatch): Table {

@@ -144,7 +144,11 @@ async function status(studio: Studio): Promise<WireStatus> {
   return (await (await fetch(new URL('/api/model', studio.url))).json()) as WireStatus
 }
 
-async function patch(studio: Studio, name: string, body: unknown): Promise<number> {
+async function edit(
+  studio: Studio,
+  name: string,
+  body: unknown,
+): Promise<{ status: number; body: Record<string, unknown> }> {
   const response = await fetch(new URL(`/api/table/${name}`, studio.url), {
     method: 'PATCH',
     headers: {
@@ -153,7 +157,11 @@ async function patch(studio: Studio, name: string, body: unknown): Promise<numbe
     },
     body: JSON.stringify(body),
   })
-  return response.status
+  return { status: response.status, body: (await response.json()) as Record<string, unknown> }
+}
+
+async function patch(studio: Studio, name: string, body: unknown): Promise<number> {
+  return (await edit(studio, name, body)).status
 }
 
 async function remove(
@@ -401,6 +409,136 @@ describe('a delete of a file the session has already absorbed as unreadable', ()
 
       fail.rm = undefined
       expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toBe(before)
+    })
+  })
+})
+
+/**
+ * The third false reason, one edit after the second. dbmd-c7q.
+ *
+ * The two refusals above are about the moment the file stopped being readable.
+ * This is the moment after, and it is where a person actually ends up: the
+ * refusal told them to try again once the file can be read, so they try again,
+ * and by then the session has absorbed a read the file is missing from.
+ * `carryForward` keeps the table and marks it `complete: false`, which is a
+ * flag with two causes behind it and no room for either, and `patchObject`
+ * refused every one of them with "did not parse ... Fix the file and reload".
+ *
+ * It parsed fine. Nobody can fix it, and reloading shows the same thing. That
+ * is a third wrong sentence about somebody's disk after two were carefully
+ * removed, and the fix is the one both of those took: ask the reader, repeat
+ * its clause, name no cause.
+ */
+describe('an edit to an object the session is holding because the file would not open', () => {
+  const LOCKED = 'C:\\Users\\somebody\\models\\shop\\tables\\orders.md'
+
+  /** Get the session into the state a person meets: one read later, still locked. */
+  async function absorbed(studio: Studio, thrown: Error): Promise<void> {
+    fail.readFile = only('orders.md', thrown)
+    // A flush is not a contrived step. Every write does one, the watcher does
+    // one per burst, and the refusal above tells the developer to try again,
+    // which is a request that re-reads on the way through.
+    await flush(studio)
+  }
+
+  it('says what the reader said, rather than that the file did not parse', async () => {
+    await withStudio(async ({ studio, dir }) => {
+      const before = await readFile(join(dir, 'tables', 'orders.md'), 'utf8')
+      await absorbed(studio, errno('EBUSY', LOCKED))
+
+      const refused = await edit(studio, 'orders', MOVED)
+
+      expect(refused.status).toBe(409)
+      // The same code the delete and the write use, because it is the same
+      // fact: the page switches on this, and `incomplete` and `unreadable` are
+      // opposite things to say to the person reading the panel.
+      expect(refused.body['code']).toBe('unreadable')
+      expect(refused.body['error']).toContain('cannot read the file: the file is in use (EBUSY)')
+      expect(refused.body['error']).toContain(`\`${ORDERS}\``)
+      expect(refused.body['error']).toContain('did not go through with editing it')
+      // The sentence that was wrong, and the instruction nobody could follow.
+      expect(refused.body['error']).not.toContain('did not parse')
+      expect(refused.body['error']).not.toContain('Fix the file and reload')
+      // No guess at a cause, and no machine named, exactly as the other two.
+      expect(refused.body['error']).not.toMatch(/lock|another program|antivirus/i)
+      expect(JSON.stringify(refused.body)).not.toContain(LOCKED)
+
+      fail.readFile = undefined
+      expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toBe(before)
+    })
+  })
+
+  it('reads the same for the errno a POSIX permission gives', async () => {
+    const posix = '/home/somebody/models/shop/tables/orders.md'
+    await withStudio(async ({ studio }) => {
+      await absorbed(studio, errno('EACCES', posix))
+
+      const refused = await edit(studio, 'orders', MOVED)
+
+      expect(refused.status).toBe(409)
+      expect(refused.body['code']).toBe('unreadable')
+      expect(refused.body['error']).toContain('cannot read the file: permission denied (EACCES)')
+      expect(refused.body['error']).not.toContain('did not parse')
+      expect(JSON.stringify(refused.body)).not.toContain(posix)
+    })
+  })
+
+  it('says the same thing when it is the directory that will not open', async () => {
+    // Every table is missing from that read for one reason, so every one of
+    // them is carried forward incomplete and every edit to any of them meets
+    // this refusal. `saidAbout` counts the containing directory for exactly
+    // this, which is why the clause reads `cannot list the directory:`.
+    await withStudio(async ({ studio }) => {
+      fail.readdir = only('tables', errno('EACCES', '/model/tables'))
+      await flush(studio)
+
+      const refused = await edit(studio, 'orders', MOVED)
+
+      expect(refused.status).toBe(409)
+      expect(refused.body['code']).toBe('unreadable')
+      expect(refused.body['error']).toContain(
+        'cannot list the directory: permission denied (EACCES)',
+      )
+      expect(refused.body['error']).not.toContain('did not parse')
+    })
+  })
+
+  it('lands the edit once the file can be read again', async () => {
+    // The advice the new sentence gives is a condition rather than an action,
+    // so the thing to prove is that the condition is the whole of it: nothing
+    // else has to happen, and no restart.
+    await withStudio(async ({ studio, dir }) => {
+      await absorbed(studio, errno('EBUSY', LOCKED))
+      expect((await edit(studio, 'orders', MOVED)).status).toBe(409)
+
+      fail.readFile = undefined
+      await flush(studio)
+      expect(await patch(studio, 'orders', MOVED)).toBe(200)
+      const settled = await flush(studio)
+
+      expect(settled.conflicts).toEqual([])
+      expect(settled.lastWrite?.paths).toEqual([ORDERS])
+      expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toContain('x: 700')
+    })
+  })
+
+  it('is still `incomplete` for a file that genuinely did not parse', async () => {
+    // The obvious way to go wrong here is to fix the locked file by calling
+    // every incomplete object unreadable. A file halfway through being typed is
+    // the common case, "did not parse" is true of it, and "fix the file and
+    // reload" is advice somebody can act on. Word for word what it always said.
+    await withStudio(async ({ studio, dir }) => {
+      await writeFile(join(dir, 'tables', 'orders.md'), 'kind: table\nhalf typed\n', 'utf8')
+      await flush(studio)
+
+      const refused = await edit(studio, 'orders', MOVED)
+
+      expect(refused.status).toBe(409)
+      expect(refused.body['code']).toBe('incomplete')
+      expect(refused.body['error']).toBe(
+        `\`${ORDERS}\` did not parse, so this server is holding less than the file does; writing it back would delete the part it could not read. Fix the file and reload`,
+      )
+      expect(refused.body['error']).not.toContain('could not be read just now')
     })
   })
 })

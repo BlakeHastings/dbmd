@@ -391,3 +391,85 @@ live and what the reader's own catch blocks use. The status stays 500, because
 something really did go wrong; only the borrowed sentence goes. This is a net
 under the refusals rather than a substitute for one, and a filesystem failure a
 request can predict still belongs in a refusal with a code and a relative path.
+
+## Amended a third time by dbmd-c7q, once somebody took the advice and edited again
+
+The amendment before last left this open in as many words: "a table the studio
+is holding from memory still says it *did not parse*". This is that, closed, and
+it is worth saying why it needed a third pass rather than being folded into the
+first. **Every refusal in this record is about a moment, and the three
+amendments are three consecutive moments in one person's afternoon.** The write
+is refused; they take the advice, which is to try again once the file can be
+read; by then a flush has re-read the directory and the session is holding the
+table from memory. That is where the third sentence was waiting:
+
+    PATCH /api/table/orders 409
+    {
+      "error": "`tables/orders.md` did not parse, so this server is holding
+                less than the file does; writing it back would delete the part
+                it could not read. Fix the file and reload",
+      "code": "incomplete"
+    }
+
+It parsed fine. There is nothing in it to fix and reloading shows the same
+thing, so the one instruction the sentence gives cannot be taken, and the canvas
+box and the inspector panel were saying it too. Three surfaces, one wrong
+reason, after two had been carefully removed.
+
+### `complete: false` is two facts wearing one flag
+
+Which is the same shape as "a file that no longer says what it said", one layer
+over. `carryForward` sets that flag for a table whose file the reader could not
+build an object from, and for a table whose file the reader could not open at
+all, and those are the same two things this record's second amendment separated
+about the write. The flag cannot carry the difference and should not: the reason
+is a fact about the read rather than about the object, it goes stale the moment
+a lock clears while the object it would be attached to does not, and putting it
+on the object means carrying it out over the wire and back.
+
+**So the flag stays exactly as it is and the reason stays in the diagnostics
+beside it**, and whoever has to say a sentence asks `saidAbout` for it at the
+moment they say it. `incomplete` stays a real refusal with its own code and its
+own words, because a file halfway through being typed is the ordinary state of a
+file and "fix the file and reload" is advice somebody can act on. What changed is
+that it is asked for now rather than assumed.
+
+### The question moved to where three callers can reach it
+
+`saidAbout` was a private function in `src/studio/edits.ts`, which was right
+while the server was the only thing asking. The page has to ask the same
+question about the same read, so it moved to `src/studio/unreadable.ts`: no
+`node:` import, no DOM, and therefore reachable from the server and from the
+browser bundle. Three copies of this rule would be three chances for one of them
+to answer differently, and two surfaces disagreeing about somebody's disk is
+what this whole sequence has been.
+
+The page's own copy of the question went with it. `main.ts` was matching
+`file-unreadable` inline and did not count the kind directory that would not
+list; sharing the function fixed that on the way past.
+
+### The scenes ask it rather than being told
+
+The canvas and the inspector each take one accessor, alongside the `model`
+accessor the inspector already had, and call it when they write the sentence.
+Not a field on the object and not an argument to `show`: the reader's
+diagnostics move without the objects moving, and a copy taken at draw time would
+be a second answer going stale on its own schedule. Asked at the moment a
+sentence is written, so the box, the panel and the footer's diagnostics list are
+three renderings of one read.
+
+That is the part this record has been wrong about twice. dbmd-e6e's own finding
+was that a status line can stand over a list saying the opposite, and neither
+that nor the two class collisions [ADR
+0037](0037-a-class-name-two-scenes-share-says-which-one-it-means.md) exists for
+were visible in a diff or in a test. So the three surfaces were checked
+together, in a browser, against a real exclusive lock, before and after.
+
+### What did not change
+
+The refusal, the code it uses, and the rule about naming a cause. An edit to an
+object the session is holding from memory is still refused, it is refused with
+`unreadable`, which is the code the delete and the write already use for the
+same fact, and the sentence repeats the reader's clause and guesses nothing. A
+lock and a permission change read identically, which is the rule the second
+amendment settled and the third re-settled, and this one does not reopen it.
