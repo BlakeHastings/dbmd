@@ -244,10 +244,18 @@ function checkItCanBePublished(install) {
  * The command list is read from `--help` rather than written here, so a command
  * added to the CLI is covered by this the day it lands, and a command that is
  * advertised but not dispatchable fails here rather than in front of somebody.
- * That is the cheap half. The other half is driving `init`, `check` and `export`
- * for real, which cannot be generated from a help listing because each one needs
+ * That is the cheap half. The other half drives six of the seven for real,
+ * which cannot be generated from a help listing because each one needs
  * arguments only somebody who knows the command can supply, and which is the
  * half that proves more than "the module loaded".
+ *
+ * `import` is the seventh, and it is left out on purpose rather than by
+ * oversight. It reads the JSON an introspection query returns, and only a live
+ * database produces that: `query` prints the SQL rather than running it, so
+ * the two do not chain here without an engine to run one against. A checked-in
+ * fixture would prove the parser parses, which the suite already proves against
+ * `src/`, and would say nothing about the tarball. So `import` is covered here
+ * by its `--help` and by nothing else.
  *
  * Every one of them is asserted on what it said and not only on what it
  * returned. An exit code is a coarse instrument here: `dbmd check` exits 0 for
@@ -336,7 +344,48 @@ async function checkTheCommands(install, version) {
         `${firstLine(exported.stderr)}`,
     )
   }
-  return [...ran, 'init', 'check', 'check --strict', 'export --stdout']
+  // The same stream split as `export --stdout`, seen from the other side. `refs`
+  // answers a question about the model entirely in narration, so an empty stdout
+  // is the assertion and a stdout assertion here would be wrong in the opposite
+  // direction from the one above. The question is asked about a table `init`
+  // wrote, so the case follows the scaffold if the scaffold is rewritten, and
+  // fails loudly if the scaffold stops carrying a ref at all, which would itself
+  // be worth knowing. The row is matched with the padding left free: the columns
+  // are as wide as the widest row in the list, so a second ref in the scaffold
+  // would move the arrow along without changing what the line says.
+  const pointed = await dbmd(install, ['refs', 'accounts', model])
+  const named = /api_keys\.account_id\s+-> accounts\.id/.test(pointed.stderr)
+  if (pointed.code !== 0 || pointed.stdout !== '' || !named) {
+    failures.push(
+      `dbmd refs accounts exited ${pointed.code}, put ${pointed.stdout.length} bytes on stdout ` +
+        `and did not name the ref init wrote on stderr: ${firstLine(pointed.stderr)}`,
+    )
+  }
+  // `query` is the one command here that reads no model, opens no connection and
+  // asks for no credential: it prints SQL and stops. `--engine` is spelled out
+  // because it is required, and for the reason its help gives: `dbmd import`
+  // reads the engine out of the file it is handed and there is no file yet, so a
+  // run without the flag would be testing the usage error by accident.
+  const sql = await dbmd(install, ['query', '--engine', 'postgres'])
+  // The first line of the query rather than its size. It is the head of the
+  // comment block the help sends a user to read before running it, and it names
+  // the engine, so a provider reachable under the wrong id fails here rather
+  // than against somebody's database.
+  if (sql.code !== 0 || !sql.stdout.startsWith('-- dbmd introspection query for PostgreSQL')) {
+    failures.push(
+      `dbmd query --engine postgres exited ${sql.code} and put no PostgreSQL query on stdout: ` +
+        `${firstLine(sql.stderr)}`,
+    )
+  }
+  return [
+    ...ran,
+    'init',
+    'check',
+    'check --strict',
+    'export --stdout',
+    'refs accounts',
+    'query --engine postgres',
+  ]
 }
 
 /** The command names out of the root help, which lists them one per indented line. */
