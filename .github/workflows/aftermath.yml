@@ -1,0 +1,66 @@
+# What the merge did to `main`, said out loud on the pull request that did it.
+#
+# `merge-pr.mjs` refuses a pull request whose checks are red, stale or behind,
+# and that prevention works. What nothing looked at is the result: the run that
+# starts on `main` seconds after the merge, against a combination that did not
+# exist until the merge created it. Seven of those went red and nobody noticed
+# any of them, including the pull request whose own subject was that nobody
+# notices. ADR 0057.
+#
+# THIS IS NOT A GATE AND MUST NOT BECOME ONE. It runs after the merge, on the
+# result, so there is nothing left for it to prevent. Wiring it into the merge
+# path would buy a several-minute stall in exchange for a verdict that arrives
+# too late to act on.
+#
+# IT RUNS ONLY WHEN THERE IS SOMETHING TO SAY. The `if` below is the whole of
+# the filtering: a push to `main` whose run did not finish green. So an
+# `aftermath` run appearing in the Actions list is itself the finding, and this
+# workflow is silent on every ordinary merge rather than adding three green runs
+# to each one.
+#
+# AND IT GOES RED WHEN `main` IS RED. That is deliberate. A green job sitting
+# beside a red one, reporting successfully that everything is broken, is the
+# exact shape of the problem this exists to close.
+#
+# `workflows:` names the workflows by their `name:`, and this one is not among
+# them, so it cannot trigger itself.
+name: aftermath
+
+on:
+  workflow_run:
+    workflows: [check, model, provenance]
+    types: [completed]
+
+jobs:
+  aftermath:
+    name: aftermath
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion != 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      # `actions: read` to ask about the finished run and its jobs,
+      # `pull-requests: write` to comment on the pull request the commit came
+      # through. Nothing here writes to the repository, and nothing here needs
+      # to: the report is a comment and the remedy is a person's decision.
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      # A checkout of the default branch, which is what `workflow_run` gives by
+      # default and what is wanted: the script that judges `main` should be
+      # `main`'s copy of it.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # No `npm ci`. This script imports nothing outside Node's standard library
+      # and shells out to `gh`, which the runner already has, so installing the
+      # dependency tree here would add a minute to the one job whose value is
+      # that it arrives quickly.
+      - name: report what the merge did to main
+        run: node scripts/report-merge-aftermath.mjs --run ${{ github.event.workflow_run.id }} --post
+        env:
+          GH_TOKEN: ${{ github.token }}
