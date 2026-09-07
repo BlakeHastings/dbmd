@@ -219,6 +219,22 @@ Also theirs, and still here afterwards.
     expect(payload(run).error?.code).toBe('markers-unbalanced')
     expect(await readme(directory)).toBe(`# Notes\n\n${SECTION_BEGIN}\n`)
   })
+
+  test('the unbalanced-marker error names the same file the --json report does', async () => {
+    const directory = await twoTables()
+    await writeFile(join(directory, 'README.md'), `# Notes\n\n${SECTION_BEGIN}\n`, 'utf8')
+
+    const jsonRun = await runCli(['export', directory, '--json'])
+    const proseRun = await runCli(['export', directory])
+
+    const file = payload(jsonRun).file
+    expect(file).toBeDefined()
+    // The same report, told two ways: a path in the --json `file` field and the
+    // same path named in the prose error. `join` uses a backslash on Windows,
+    // so this fails there unless the prose is put through `slashed` the same
+    // way the rest of the file's path prints already are.
+    expect(proseRun.err).toContain(file as string)
+  })
 })
 
 describe('--stdout prints and writes nothing', () => {
