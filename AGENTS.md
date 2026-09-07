@@ -62,7 +62,8 @@ npm run check
 
 `npm run check` is typecheck, format check, decision-record numbering, the
 reviewable-diff check, the check that every command named in this tree exists,
-tests, a build, a smoke test over the packed tarball, and
+the check that the studio's two scenes do not reach into each other's class
+names, tests, a build, a smoke test over the packed tarball, and
 one deliberate break of that smoke test, in that order. It is the only mechanical
 gate and it is exactly what CI runs, so a green local run and a green CI run mean
 the same thing. CI runs it twice, once on Node 22 and once on Node 24, so the
@@ -77,6 +78,12 @@ fails unless it refuses. Every other guard here is broken on purpose too, in
 `test/guards/broken-on-purpose.test.ts`, which runs with the rest of the suite.
 A guard that never fires looks exactly like a guard that cannot, and one of these
 spent weeks in the second state. ADR 0034.
+
+`npm run check:scenes` reads the studio's stylesheet and its two scene files.
+The page is one `<style>` block for the canvas and the inspector, a bare class
+selector matches both, and that cost two defects hours apart. A class name both
+files write has to say which scene each of its rules means: `.scene > .notes`,
+`#inspector .notes`, or any class only one of them writes. ADR 0037.
 
 Individually: `npm run typecheck`, `npm run format`, `npm run test`,
 `npm run build`.

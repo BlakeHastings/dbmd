@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Seventy-six pull requests have merged, all through `merge-pr.mjs`, and the
+Seventy-nine pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -95,14 +95,13 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-3ip**, a check that fails the build when a class used by both the canvas
-  and the inspector has an unscoped rule. That collision broke the page twice in
-  one day.
-- **dbmd-wxh**, whether a kind name that is a file rather than a directory
-  deserves a diagnostic. Genuinely open, and the symlink case may settle it.
-
-**After these two the queue is empty of anything that is not an epic or waiting
-on the owner.**
+- **dbmd-80**, a skill that teaches an agent to drive dbmd. It became
+  dispatchable only because a day of using the tool answered three of the four
+  questions its refinement was waiting on.
+- **dbmd-95n**, a symlinked model file inside a kind directory, which is the
+  `Dirent` problem one level down.
+- **dbmd-4cp**, the sqlcmd recipe the SQL Server query prints, which does not
+  work.
 
 ## What proved out, and is easy to lose
 
@@ -168,6 +167,26 @@ on the owner.**
   is in. The right outcome was a corrected comment and a renamed test, and
   nothing in the watcher moved.
 
+- **A `Dirent` cannot say whether that is a directory.** A junction or a symlink
+  answers `isDirectory() === false` whatever it points at, so a model whose
+  `tables/` was a link had its tables **never read**, and `dbmd check` reported
+  `0 tables, 0 notes, 0 groups, no problems`. Not a malformed model: a correct
+  one the tool refused to read and then called healthy. Found by measuring the
+  symlink case while answering a much smaller question, and it is the reason
+  "leave it alone, it is none of dbmd's business" was the wrong answer. The same
+  shape survives one level down for a linked `.md` file, which is dbmd-95n.
+
+- **Following the instruction the tool prints is a different test from running
+  the tool.** `dbmd query --engine sqlserver` ships a copyable `sqlcmd` command
+  for saving its result. Run it verbatim against a real SQL Server 2022 and
+  `dbmd import` refuses the file: sqlcmd appends its row-count line, so the file
+  is 2333 bytes of which the JSON is the first 2315. **The payload is perfect and
+  the instruction is wrong**, and the parse error a user gets says "the usual
+  cause is a paste that stopped early", which sends them hunting a truncation
+  that did not happen. Filed as dbmd-4cp with a proven one-line fix. The Postgres
+  query has no such command, so it cannot be wrong in this way and gives less
+  help; whether that asymmetry is right is part of the item.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
@@ -193,7 +212,7 @@ rather than by reading.
 - **`dbmd export` is idempotent** and writes only between its markers.
 - **`dbmd check --json` is machine-independent.** Its `directory` field echoes
   what you typed rather than resolving it, so two machines agree.
-- **The whole journey, against a real database rather than a fixture.** A
+- **The whole journey, against real databases rather than fixtures.** A
   PostgreSQL 16 container, a schema with an enum type, identity primary keys, a
   cascading foreign key, a composite unique constraint, an index on
   `lower(note)`, and comments on a table and a column. Then the four steps:
