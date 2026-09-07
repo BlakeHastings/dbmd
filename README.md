@@ -177,7 +177,7 @@ shortcut that builds and then opens this repository's own `examples/shop`, which
 is the fastest way to get the picture above onto your own screen.
 [`CONTRIBUTING.md`](CONTRIBUTING.md) takes that from a clean clone.
 
-## The seven commands
+## The commands
 
 In the order you meet them. Every block below is real output, and all of it is
 on stderr: **stdout is data and stderr is narration**, in every command, so
