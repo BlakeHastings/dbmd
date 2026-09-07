@@ -322,6 +322,18 @@ rather than by reading.
   - Each colour swatch's tooltip is the line it writes, down to
     `no colour: the file has no \`color\` key`.
 
+- **The index editor writes what you type, and the error teaches the rest.**
+  `Add index` appends a nameless, columnless row and writes it immediately, which
+  produces two `empty-value` warnings that the panel also shows inline where you
+  are editing. Typing an expression into the columns field writes a bare column
+  name, and the resulting error is one of the best in the tool: it names the
+  column, says the table does not have it, and **tells you to write
+  `{ expression: lower(email) }` instead.** The studio cannot author an
+  expression key, but it **carries one it did not write**: with that key on
+  `customers`, moving the table wrote only the `layout:` line and the key came
+  through byte-identical. Filed as a P4 because the asymmetry is real and the
+  workaround is one message away.
+
 
 ## What is waiting on the owner
 
