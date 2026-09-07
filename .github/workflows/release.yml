@@ -59,7 +59,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           # All history and every branch, because the ancestry check below needs
-          # `origin/main` to exist locally and a tag checkout is shallow.
+          # `origin/main` to exist locally and a tag checkout is shallow. If it
+          # is missing anyway, that step says so by name rather than blaming the
+          # tag for it.
           fetch-depth: 0
 
       - uses: actions/setup-node@v7
@@ -88,7 +90,43 @@ jobs:
           echo "${GITHUB_REF_NAME} and package.json both say ${version}."
 
       - name: the tagged commit is on main
+        # This step can fail two ways and they are not the same problem, so they
+        # do not get the same message. `git merge-base --is-ancestor` exits 1
+        # when the commit is genuinely off `main`, and 128 when the ref it was
+        # handed does not resolve at all. `if !` catches both, and the one
+        # message this step used to print said "not an ancestor of origin/main"
+        # either way. So a correct tag, pushed from `main`, into a checkout that
+        # somehow lacked the ref, would be told its tag was not on `main`: the
+        # owner would go looking at the tag, the branch and the history, and
+        # none of it would be wrong.
+        #
+        # This is the only thing in the whole of CI that reads `origin/anything`,
+        # and it has never run, because no tag has ever been pushed here. Whether
+        # `actions/checkout@v7` populates `refs/remotes/origin/main` on a tag
+        # push is therefore unobserved rather than known. The failure is safe
+        # either way, since 128 is not 0 and nothing gets published; what the ref
+        # check buys is a message that names the checkout instead of the tag.
+        #
+        # The ref is verified under the same name it is compared under, so what
+        # resolves here is exactly what `merge-base` is handed below.
+        #
+        # `git fetch origin main` in this step would also make it pass, and is
+        # the wrong fix: it would hide whether the checkout did its job, and the
+        # `fetch-depth: 0` comment above would then be describing something this
+        # workflow no longer relies on.
+        #
+        # The version comparison stays ahead of this step. It is the cheap check
+        # and the likely mistake, and a ref check in front of it would report a
+        # mismatched version as a checkout problem. ADR 0060.
         run: |
+          if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+            echo "::error::origin/main is not in this checkout, so the tag was never judged"
+            echo "Nothing was published, and this is not a verdict on the tag: the"
+            echo "ancestry check did not run at all. origin/main is here only because"
+            echo "the checkout step asks for fetch-depth: 0, so that is the line to look"
+            echo "at rather than the tag or the branch it was pushed from."
+            exit 1
+          fi
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
             echo "::error::${GITHUB_SHA} is not an ancestor of origin/main"
             echo "Nothing was published. A release is cut from a commit that went"
