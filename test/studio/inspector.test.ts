@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Table } from '../../src/model/types.js'
+import type { Group, Note, Table } from '../../src/model/types.js'
 import {
   endingOf,
   indexKeysText,
@@ -10,6 +10,7 @@ import {
   toModelBody,
 } from '../../src/studio/client/fields.js'
 import {
+  mentionsOf,
   referrersTo,
   referrerText,
   renamePlan,
@@ -35,20 +36,37 @@ import {
  * offering the rename.
  */
 
-function table(name: string, columns: Table['columns']): Table {
+function table(name: string, columns: Table['columns'], body = '\n'): Table {
   return {
     kind: 'table',
     name,
     path: `tables/${name}.md`,
-    body: '\n',
+    body,
     complete: true,
     columns,
     indexes: [],
   }
 }
 
-/** In the reader's order, which is by name, because that is the order it walks. */
+function note(name: string, body: string): Note {
+  return { kind: 'note', name, path: `notes/${name}.md`, body, complete: true }
+}
+
+function group(name: string, body: string): Group {
+  return { kind: 'group', name, path: `groups/${name}.md`, body, complete: true }
+}
+
+/**
+ * In the reader's order, which is by name, because that is the order it walks.
+ *
+ * Every body here is prose-free, which is what keeps the ref sentences the last
+ * thing this model's confirmation says. The prose is a fixture of its own below,
+ * so a test about refs cannot be moved by a test about paragraphs.
+ */
 const model = {
+  body: '',
+  notes: [],
+  groups: [],
   tables: [
     table('addresses', [
       { name: 'id', type: 'uuid', pk: true },
@@ -245,10 +263,112 @@ describe('what the rename confirmation says', () => {
   })
 
   it('says nothing about other files when nothing refs the table', () => {
-    const plan = renamePlan({ tables: [] }, 'orders', 'purchases')
+    const plan = renamePlan({ body: '', tables: [], notes: [], groups: [] }, 'orders', 'purchases')
     expect(lastLine(plan)).toBe(
       'Nothing else in the model refs this table, so no other file changes.',
     )
+  })
+})
+
+/**
+ * The prose a rename leaves behind, said before the button rather than after.
+ *
+ * dbmd-x82. A rename edits every file that **refs** the old table and leaves
+ * every sentence that **mentions** it, and no check will ever say so: ADR 0003
+ * makes a body opaque, so a model whose paragraphs have started lying reads
+ * `no problems` and exits 0. The narrow answer, and the only one ADR 0044 takes,
+ * is to say it at the one moment the mistake is being made.
+ *
+ * The fixture is `examples/shop` at the two names that matter. `_model.md` names
+ * `subscriptions` in backticks and never names `addresses` at all, so one rename
+ * has something to say and the other must say nothing.
+ */
+describe('what the rename confirmation says about prose', () => {
+  const shop = {
+    body: '\nThat gap is why `orders.status` is not a warehouse state, and why\n`subscriptions` has no `product_id`.\n',
+    tables: [
+      table('addresses', [{ name: 'id', type: 'uuid', pk: true }]),
+      table(
+        'subscriptions',
+        [{ name: 'id', type: 'uuid', pk: true }],
+        // Two spans, and only one of them is a claim about the table. An index
+        // is not renamed by a table rename, and `subscriptions_due_idx` is the
+        // span in `examples/shop` that a substring match would have called a
+        // mention.
+        '\n`subscriptions_due_idx` exists for the roast job. A row in `subscriptions` is never deleted.\n',
+      ),
+    ],
+    notes: [note('there-is-no-stock-column', '\nStock is derived, never stored.\n')],
+    groups: [group('warehouse', '\nWhat `subscriptions` renews is picked here.\n')],
+  }
+
+  it('names the files whose sentences will still say the old name', () => {
+    const said = lastLine(renamePlan(shop, 'subscriptions', 'plans'))
+    expect(said).toContain('3 mentions of `subscriptions` in backticks stay as they are')
+    // `_model.md` and the group's prose are left alone; the renamed table's own
+    // body is copied into the file this rename is about to write, so that is the
+    // file to go and fix rather than the one being deleted.
+    expect(said).toContain('in _model.md, tables/plans.md, groups/warehouse.md.')
+    expect(said).not.toContain('tables/subscriptions.md')
+  })
+
+  it('says nothing at all when nothing names the table, which is most renames', () => {
+    // A warning that fires when there is nothing to fix is worse than no
+    // warning: it is the one that gets read past.
+    const plan = renamePlan(shop, 'addresses', 'postal_addresses')
+    expect(plan.kind).toBe('confirm')
+    if (plan.kind !== 'confirm') return
+    for (const line of plan.lines) expect(line).not.toContain('in backticks')
+  })
+
+  it('does not block the rename, because stale prose is not a broken model', () => {
+    const plan = renamePlan(shop, 'subscriptions', 'plans')
+    // A refusal is the shape reserved for a decision that was never available.
+    // This one is available, and the paragraph is the last thing said before it.
+    expect(plan.kind).toBe('confirm')
+  })
+
+  it('agrees the verb with the count, the way the ref sentence had to learn to', () => {
+    const one = lastLine(renamePlan({ ...shop, groups: [] }, 'subscriptions', 'plans'))
+    expect(one).toContain('2 mentions of `subscriptions` in backticks stay as they are')
+    const alone = lastLine(renamePlan({ ...shop, body: '', groups: [] }, 'subscriptions', 'plans'))
+    expect(alone).toContain('1 mention of `subscriptions` in backticks stays as it is')
+    expect(alone).not.toMatch(/\b1 mentions\b/)
+  })
+})
+
+/**
+ * The one string a body is read for, and the four ways it is not read.
+ *
+ * ADR 0036's reasoning one word along: a backtick is the marker an author has
+ * already written, and everything outside one is prose that this tool does not
+ * read. The cases below are the ones that decide whether that rule is honest.
+ */
+describe('which backticked spans name a table', () => {
+  const of = (body: string, table: string): number =>
+    mentionsOf({ body, tables: [], notes: [], groups: [] }, table)[0]?.count ?? 0
+
+  it('reads a span that is the name, and a column qualified by it', () => {
+    expect(of('The `orders` table.\n', 'orders')).toBe(1)
+    expect(of('`orders.status` is not a warehouse state.\n', 'orders')).toBe(1)
+    expect(of('Both `orders` and `orders.status`.\n', 'orders')).toBe(2)
+  })
+
+  it('does not read the bare word, because a bare word is English', () => {
+    // The whole reason this is narrow. "orders" is a noun, and warning about it
+    // would make every rename of a table with an ordinary name unreadable.
+    expect(of('Rows in orders are append-only.\n', 'orders')).toBe(0)
+  })
+
+  it('does not read a span the name is merely inside', () => {
+    expect(of('`subscriptions_due_idx` exists for that job.\n', 'subscriptions')).toBe(0)
+    expect(of('`order_items` is a different table.\n', 'order')).toBe(0)
+    expect(of('`orders_archive.id` is somewhere else.\n', 'orders')).toBe(0)
+  })
+
+  it('does not read across a line break, so a fence is not one enormous span', () => {
+    expect(of('```sql\nselect * from orders\n```\n', 'orders')).toBe(0)
+    expect(of('A ` that opens nothing,\nand `orders` on the next line.\n', 'orders')).toBe(1)
   })
 })
 
