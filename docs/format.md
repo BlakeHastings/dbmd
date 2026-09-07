@@ -70,10 +70,28 @@ amounts of it:
   Windows device name such as `con`, `nul`, `aux`, `prn`, `com1` or `lpt1`,
   with or without an extension.
 
-The last two are the ones that bite on a machine that is not yours. Windows
-strips a trailing dot or space, so `orders .md` and `orders.md` are one file
-there and two here, and it resolves `nul.md` to the null device, so writing it
-reports success and reads back empty.
+The last two are refused on suspicion rather than for something you can watch go
+wrong. `con`, `nul` and their friends are reserved in Windows path handling, and
+a trailing dot or space is stripped by some of the ways a path reaches the
+filesystem and not by others, so what such a name does depends on which layer
+opened it: `cmd.exe`, an older Windows, or an API that does not use the extended
+path form. Measured on Windows 11 with Node 24, `tables/nul.md` and
+`tables/orders .md` are both perfectly ordinary files that read back exactly what
+was written to them, and dbmd's own writer creates them without a word. The
+studio refuses them anyway, because it cannot know which path handling the next
+reader of the directory will use. A name that is a file here and a device
+somewhere else is the worst shape a portability bug comes in, because it works
+for the person who created it.
+
+One hazard in this area you *can* watch go wrong, and it is about the identity
+rather than about the writer. **Linux distinguishes case in a file name. Windows
+does not, and neither does macOS unless somebody went out of their way.**
+Measured on Windows 11: creating `Orders.md` and then `orders.md` leaves one
+file, still called `Orders.md`, holding what was written second. So a model with
+a table called `Orders` and a table called `orders` has two tables on Linux and
+one on the machine that checks it out next, with the surviving content decided
+by the order the files arrived in. Lowercase is the safe habit, and it is the
+habit every example on this page keeps.
 
 **The first layer does not tell you off.** A name its writer will not write is
 skipped in silence, and that refusal has no diagnostic code today, so it is not
