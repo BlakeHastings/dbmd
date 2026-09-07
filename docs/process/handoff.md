@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Ninety-four pull requests have merged, all through `merge-pr.mjs`, and the
+One hundred pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -100,12 +100,22 @@ move and will file a defect. It is the note. Move it and the drag works.
   in `orchestrating.md` with what each one cost. The second was found today and
   put a reverted commit onto `main`.
 - **Close items when their branch lands**, in the same motion as the merge.
+- **`bd list` sorts the highest priority first, and I read it with `tail`.** For
+  most of 2026-09-07 I reported the backlog as holding nothing but the owner's
+  decisions. It also held **dbmd-45**, a P2 under the P0 epic `dbmd-1`, which
+  sorts to the **top** of the listing where a `tail` never looks. It was not
+  blocked on anything but a file collision. Read the whole list, or grep it, and
+  do not trust a summary of it that was produced by looking at one end.
 
-## In flight
 
-- **dbmd-aud**, the truncation message, which now names a cause that is wrong
-  for both documented routes, and the test that goes red if somebody rewraps the
-  paragraph.
+## In flight, and what is actually left
+
+- **dbmd-45**, `on delete` on a `ref`, and where the model-not-migration line
+  sits. It waited all day because it touches the reader, the writer, the
+  validator and the contract seam together, and it says so in its own text.
+
+**Everything else open is the owner's**: the three re-import decisions, npm
+publication, and the beads schema recovery.
 
 ## What proved out, and is easy to lose
 
