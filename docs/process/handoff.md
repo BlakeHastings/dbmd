@@ -95,9 +95,13 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-80**, a skill that teaches an agent to drive dbmd. The last item, and it
-  became dispatchable only because a day of using the tool answered three of the
-  four questions its refinement was waiting on.
+- **dbmd-80**, a skill that teaches an agent to drive dbmd. It became
+  dispatchable only because a day of using the tool answered three of the four
+  questions its refinement was waiting on.
+- **dbmd-95n**, a symlinked model file inside a kind directory, which is the
+  `Dirent` problem one level down.
+- **dbmd-4cp**, the sqlcmd recipe the SQL Server query prints, which does not
+  work.
 
 ## What proved out, and is easy to lose
 
@@ -172,6 +176,17 @@ move and will file a defect. It is the note. Move it and the drag works.
   "leave it alone, it is none of dbmd's business" was the wrong answer. The same
   shape survives one level down for a linked `.md` file, which is dbmd-95n.
 
+- **Following the instruction the tool prints is a different test from running
+  the tool.** `dbmd query --engine sqlserver` ships a copyable `sqlcmd` command
+  for saving its result. Run it verbatim against a real SQL Server 2022 and
+  `dbmd import` refuses the file: sqlcmd appends its row-count line, so the file
+  is 2333 bytes of which the JSON is the first 2315. **The payload is perfect and
+  the instruction is wrong**, and the parse error a user gets says "the usual
+  cause is a paste that stopped early", which sends them hunting a truncation
+  that did not happen. Filed as dbmd-4cp with a proven one-line fix. The Postgres
+  query has no such command, so it cannot be wrong in this way and gives less
+  help; whether that asymmetry is right is part of the item.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
@@ -197,7 +212,7 @@ rather than by reading.
 - **`dbmd export` is idempotent** and writes only between its markers.
 - **`dbmd check --json` is machine-independent.** Its `directory` field echoes
   what you typed rather than resolving it, so two machines agree.
-- **The whole journey, against a real database rather than a fixture.** A
+- **The whole journey, against real databases rather than fixtures.** A
   PostgreSQL 16 container, a schema with an enum type, identity primary keys, a
   cascading foreign key, a composite unique constraint, an index on
   `lower(note)`, and comments on a table and a column. Then the four steps:
