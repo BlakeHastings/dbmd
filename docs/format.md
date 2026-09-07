@@ -1061,7 +1061,19 @@ complete is worse than one that says where it ends.
 - **No checking of a type against an engine.** `citext` and `nvarchar(max)` and
   `banana` are all carried through without a word. dbmd does not know what types
   your engine has, and the day it thinks it does is the day it is wrong about
-  one. Structure is validated; vocabulary is not.
+  one. Structure is validated; vocabulary is not. `dbmd import` therefore writes
+  your engine's own spelling with the modifier put back on, `character
+  varying(32)` rather than `string` or `varchar(32)`, which is
+  [ADR 0029][adr29].
+- **No comment on a column, and no identity, generated expression or
+  collation.** A database catalogue reports all four and an import drops all
+  four. The column comment is the one worth wanting back, because it is prose
+  somebody wrote; a table's comment does survive, as the body of its file.
+- **No name on a foreign key, and no way to say that two `ref`s are one
+  constraint.** A composite foreign key arrives from an import as one `ref` per
+  column, paired by position, and `dbmd check` then says
+  `ref-target-not-unique` about each of them, correctly: no one of those columns
+  identifies a row on its own and the format cannot say that the pair does.
 
 ## Where the truth is
 
@@ -1077,6 +1089,9 @@ If this page and the code disagree, the code is right and this page is a bug.
 - `src/model/paths.ts` is the first half of
   [what a file may be called](#naming-a-file), and `src/studio/safe-path.ts` is
   the stricter half.
+- `src/import/model.ts` turns a database catalogue into this format, so it is
+  where every "an import drops it" above is actually true or not.
+  [`docs/import-format.md`](import-format.md) is the other end of the same trip.
 - [`examples/shop`](../examples/shop) is a whole model in this format, eight
   tables of a coffee roastery, byte-canonical and read by the test suite on
   every run.
@@ -1090,5 +1105,6 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr22]: architecture/decisions/0022-engine-sql-in-a-format-that-does-not-read-sql.md
 [adr26]: architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md
 [adr27]: architecture/decisions/0027-an-empty-name-is-a-warning-because-an-error-means-loss.md
+[adr29]: architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md
 [adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
 [prettier]: https://prettier.io

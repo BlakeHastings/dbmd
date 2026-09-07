@@ -451,6 +451,55 @@ revisit condition covers adding it.
   changing.** A model file that changes when nothing was edited is worse than
   useless.
 
+## What `dbmd import` does with it
+
+The document above is what a provider produces. Turning it into a model
+directory is `src/import/model.ts`, and it is a pure function over this shape, so
+it can be tested against a committed fixture with no filesystem in the way.
+[ADR 0029](architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md)
+is the whole argument. Four things are worth knowing here.
+
+**A column's type is written as the engine's own name with its modifier put back
+on.** `native: "character varying"` with `length: 32` becomes
+`type: character varying(32)`. The normalised name is never written: it is lossy
+by construction (ADR 0009) and `string` is not a type any engine has. Nothing is
+tidied, so `character varying` stays that and `((0))` keeps its parentheses,
+which is the rule this page already states for expressions applied to a type.
+
+**A foreign key becomes one `ref:` per column pair.** A model file declares a
+relationship on the referring column and has no registry to put a constraint in,
+so a composite key arrives as two refs, paired by position. The constraint's name
+and the fact that the two refs are one constraint are not carried.
+
+**The document says strictly more than a model file can hold, and the surplus is
+dropped rather than diagnosed.** `checkConstraints`, `includedColumns`,
+`filterExpression`, `isUniqueConstraint`, `isClustered`, a key column's
+`descending`, and a column's `identity`, `generated`, `collation` and `comment`
+all have nowhere to go. `docs/format.md` names those losses under what the format
+does not have, and a warning for each would put a dozen identical lines on every
+clean import of a real schema.
+
+**Three things are diagnosed, because each would otherwise leave a model that
+lies.** They are raised by the import command rather than by the contract, since
+each is about the model the document became rather than about the document:
+
+```
+warning $.tables[0].foreignKeys[0] [import/reference-not-exported] `public.orders` has a foreign key to `public.customers`, which this file does not contain, so no `ref:` was written for it; re-run the query over the whole database if that table belongs in the model
+error $.tables[1].name [import/name-collision] `sales.Order` and `dbo.Order` would both be written to tables/Order.md, and a model directory is flat, so only `dbo.Order` was written; import one schema at a time until the format has somewhere to put the other
+error $.tables[0].name [import/unsafe-name] the table `Ledger: Entry` has no file it can be written to, because no filesystem accepts that name and a checkout could not hold it; rename it in the database or leave it out of the query
+```
+
+A ref that is dropped is dropped rather than written and left for `dbmd check` to
+find, because a partial export is a normal thing to have and a `ref-table-unknown`
+error on somebody's first check would blame them for it.
+
+`import/unsafe-name` is the one to read
+[ADR 0026](architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md)
+about. A *reader* can never raise it, because a filesystem refuses such a name
+before dbmd is involved, so no model on disk can hold one. A catalogue has no
+such rule, which makes an import the one caller that can, and the report is the
+writer's own `WriteSkip` translated rather than a second opinion about names.
+
 ## Writing a provider
 
 One file in `src/import/providers/`, and one line in `src/import/providers/index.ts`.
