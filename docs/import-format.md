@@ -485,8 +485,8 @@ each is about the model the document became rather than about the document:
 
 ```
 warning $.tables[0].foreignKeys[0] [import/reference-not-exported] `public.orders` has a foreign key to `public.customers`, which this file does not contain, so no `ref:` was written for it; re-run the query over the whole database if that table belongs in the model
-error $.tables[1].name [import/name-collision] `sales.Order` and `dbo.Order` would both be written to tables/Order.md, and a model directory is flat, so only `dbo.Order` was written; import one schema at a time until the format has somewhere to put the other
 error $.tables[0].name [import/unsafe-name] the table `Ledger: Entry` has no file it can be written to, because no filesystem accepts that name and a checkout could not hold it; rename it in the database or leave it out of the query
+error $.tables[1].name [import/name-collision] `sales.Order` and `dbo.Order` would both be written to tables/Order.md, and a model directory is flat, so only `dbo.Order` was written; import one schema at a time until the format has somewhere to put the other
 ```
 
 A ref that is dropped is dropped rather than written and left for `dbmd check` to
@@ -499,6 +499,83 @@ about. A *reader* can never raise it, because a filesystem refuses such a name
 before dbmd is involved, so no model on disk can hold one. A catalogue has no
 such rule, which makes an import the one caller that can, and the report is the
 writer's own `WriteSkip` translated rather than a second opinion about names.
+
+## Every diagnostic
+
+Everything on this page that can go wrong goes wrong as a diagnostic rather than
+as an exception, and every stage reports all of them in one pass. A diagnostic
+carries a stable `code`, a `severity`, a `message` a person reads, and an `at`
+that is a JSONPath into the document. `dbmd import` prints them under what it
+wrote, and `dbmd import --json` prints them as objects whose `code` and
+`severity` are the two columns below.
+
+The model reader has its own table, in
+[`docs/format.md`](format.md#every-diagnostic), and the two lists share no
+member. The `import/` prefix is what tells them apart when they arrive in one
+array, which is the case `dbmd check --json` produces and
+[ADR 0014](architecture/decisions/0014-one-diagnostic-and-where-it-points.md)
+is the argument for.
+
+**`error` means it did not make it into the model.** **`warning` means it did,
+and is worth a look anyway.** An error found while reading the document stops
+the import before a single file is written, and the directory is left exactly as
+it was. The three in the second table are found after the model is built, so
+those write every table that can be written and name the ones that could not.
+
+`test/import/docs.test.ts` reads `ImportDiagnosticCode` out of
+`src/diagnostics.ts` and fails when a code has no row here, or a row here names
+no code, so adding a code without adding a row is a red build rather than a gap
+somebody finds a year later.
+
+One failure is not in the table, because it happens before there is a document
+to point into. Text that is not JSON at all never reaches a provider, so
+`dbmd import` says so itself, in one line with no code and no path:
+
+```
+dbmd: trunc.json is not JSON: Expected double-quoted property name in JSON at position 900
+The usual cause is a paste that stopped early. A client that hands a long result
+back in pieces produces JSON that looks finished and is not, which is why the
+comment above the query you ran says how to save its result rather than copy it.
+```
+
+`dbmd import --json` reports it as `input-not-json`, and a file that could not be
+read as `file-unreadable`. Both are failures of the command rather than
+diagnostics about a document, which is why neither carries the `import/` prefix
+and neither is in the table.
+
+### Reading the file
+
+Raised by the envelope, the registry, a provider's `parse`, or the contract
+validator. All of them are about the document, and none of them has seen a model
+directory yet.
+
+| code | severity | what happened | what to do |
+| --- | --- | --- | --- |
+| `import/not-an-object` | error | The file is JSON and is not a JSON object, or the value at that path is not one. Nearly always the whole file: a client that saved the grid it drew rather than the cell the grid was drawn from. | Save the single result cell whole, with no table frame around it. |
+| `import/missing-field` | error | A required field is absent, or present and `null`. The path names it. | Check the path against the shapes above. In a file you did not edit, it is a provider that did not fill the field in. |
+| `import/wrong-type` | error | The field is there and is the wrong sort of JSON value: a string where a list belongs, a number where an object does. | The same. `null` is never this code, because null and absent are the same thing here. |
+| `import/empty-value` | error | A required string or list is there and says nothing: `schema: ""`, a `name` that is the empty string, a primary key or an index whose `columns` is `[]`. | Emptiness is never a fact this contract can keep, so fill it in or leave the object out: omit `primaryKey` for a table that has none. An index with no key columns is one this format cannot describe at all, which is why the SQL Server query leaves those out rather than reporting them. |
+| `import/unsupported-version` | error | `dbmdIntrospection` names a version this build does not read. The message names both numbers and says which of the two is the newer. | Re-run `dbmd query` with this build of dbmd if the file is older, and upgrade dbmd if the file is newer. |
+| `import/unknown-engine` | error | `engine` names no provider in this build. The message lists the ones it has. | Check the spelling. A provider id never changes once shipped, so a name that used to work is a dbmd that is too old. |
+| `import/engine-overridden` | warning | `--engine` disagreed with the file and won. Never silent: [ADR 0007](architecture/decisions/0007-engines-are-providers.md). | Nothing, if you meant it. Drop the flag if you did not: the file knows which engine wrote it, and reading it as the wrong one usually fails a hundred lines later instead. |
+| `import/unknown-field` | warning | A field nothing in this version of the format reads. It is dropped and the import carries on. | Nothing, unless it is your provider and the key is a typo. This is a warning rather than an error so that adding a field to the format is not a breaking change. |
+| `import/duplicate` | error | Two things that have to be told apart are byte-identical: two tables with one `schema` and `name`, two columns of one table, or two indexes of one table. Names are compared byte for byte and never folded, so `Orders` and `orders` are two things, not one. | Fix the query. A duplicate here usually means the catalogue was joined without a filter and every row came back twice. |
+| `import/mismatched-columns` | error | A foreign key's `columns` and `referencedColumns` are different lengths, so the pairs do not pair and no `ref:` can be written from them. | A provider bug rather than a database that can exist. Report it against the provider. |
+| `import/not-in-vocabulary` | error | A value outside a closed list this page defines: a `normalised` that is not one of the fourteen, an `onDelete` that is not one of the five actions, an `identity.generation` that is neither `always` nor `byDefault`. | In a provider, return `other` rather than guessing: `native` still says what the type really was. |
+| `import/conflicting-fields` | error | Both halves of an either/or are given, so there is no single fact to keep. An index key saying both `column` and `expression` is the case it exists for. | Send one. Nothing prefers one over the other, deliberately, because a key naming a column called `lower(code)` and a key over the expression `lower(code)` are different schemas. |
+
+### Building the model
+
+Raised by `dbmd import` rather than by the contract, because each is about the
+model the document became rather than about the document.
+[ADR 0029](architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md)
+is why these three are diagnosed and the other losses are not.
+
+| code | severity | what happened | what to do |
+| --- | --- | --- | --- |
+| `import/unsafe-name` | error | A catalogue handed dbmd a table name that no file can be called, so the table has nowhere to be written. `Ledger: Entry` is a name a database takes and a checkout cannot hold. The rule is `isFileName` in `src/model/paths.ts`: either slash, a control character, a vertical bar, one of `< > : " ? *`, or a name too long to be one path component. | Rename it in the database, or leave it out of the query. Every other table is still written. [ADR 0026](architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md) is why this code exists on the import side and has no counterpart in the model reader. |
+| `import/reference-not-exported` | warning | A foreign key whose referenced table is not in the file. No `ref:` was written for it, and the column is written without one. | Nothing, if you meant to export part of the database. Otherwise re-run the query over the whole of it. The ref is dropped rather than written and left dangling, so `dbmd check` does not blame you for a partial export. |
+| `import/name-collision` | error | Two tables that would be written to one file. `tables/` is flat (ADR 0003), so `dbo.Order` and `sales.Order` are one path, and writing both would silently keep whichever went last. The first in the document's order is the one kept, and the document is sorted, so which one that is does not depend on the machine. | Import one schema at a time until the format has somewhere to put the other. |
 
 ## Writing a provider
 
