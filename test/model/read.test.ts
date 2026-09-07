@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { compareDiagnostics, locationText } from '../../src/diagnostics.js'
 import { readModel } from '../../src/model/read.js'
-import type { Diagnostic } from '../../src/model/types.js'
+import type { Diagnostic, ReadResult } from '../../src/model/types.js'
 import { fixtureModel, withModel } from './helpers.js'
 
 /**
@@ -158,6 +159,118 @@ describe('the directory decides the kind', () => {
     expect(lines(diagnostics)).toEqual([
       'sketches warning unknown-kind-directory: `sketches/` is not a kind of object dbmd knows; its files are ignored',
     ])
+  })
+})
+
+describe('a kind name that is not a directory', () => {
+  test('a kind name that is a plain file is an error, not silence', async () => {
+    // The state this is about: `dbmd check` used to print `0 tables, no
+    // problems` and exit 0 here, which is the least useful true sentence
+    // available to it. ADR 0038.
+    const { model, diagnostics } = await withModel({ tables: 'not a directory\n' })
+
+    expect(lines(diagnostics)).toEqual([
+      "tables error kind-not-a-directory: `tables` is a file rather than a directory, so the model's tables were not read; a `tables/` symlink checked out where symlinks are unsupported looks exactly like this",
+    ])
+    expect(model.tables).toEqual([])
+  })
+
+  test('the message names the kind that was not read, for each of the three', async () => {
+    const { diagnostics } = await withModel({
+      groups: 'x\n',
+      notes: 'x\n',
+      tables: 'x\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      "groups error kind-not-a-directory: `groups` is a file rather than a directory, so the model's groups were not read; a `groups/` symlink checked out where symlinks are unsupported looks exactly like this",
+      "notes error kind-not-a-directory: `notes` is a file rather than a directory, so the model's notes were not read; a `notes/` symlink checked out where symlinks are unsupported looks exactly like this",
+      "tables error kind-not-a-directory: `tables` is a file rather than a directory, so the model's tables were not read; a `tables/` symlink checked out where symlinks are unsupported looks exactly like this",
+    ])
+  })
+
+  test('a model with no kind directories at all stays silent', async () => {
+    // The case that makes this a judgement rather than a rule: an empty model
+    // is a legal model, `dbmd init` writes one, and an imported model has no
+    // `notes/` or `groups/`. Absent is not the same as wrong.
+    const { model, diagnostics } = await withModel({})
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables).toEqual([])
+    expect(model.notes).toEqual([])
+    expect(model.groups).toEqual([])
+  })
+
+  test("a file whose name is not a kind is still nobody's business", async () => {
+    // The complaint is about the three reserved names and nothing else. A
+    // `README`, a `.gitignore` or a stray `sketches` file at the model root is
+    // not a malformed model, and warning about every file here would be the
+    // warning nobody reads.
+    const { diagnostics } = await withModel({
+      '.gitignore': '*.tmp\n',
+      README: 'The billing model.\n',
+      sketches: 'x\n',
+    })
+
+    expect(diagnostics).toEqual([])
+  })
+})
+
+/**
+ * A model directory whose `tables` is a link to a directory somewhere else.
+ *
+ * Made with `symlink` rather than through `withModel`'s literal files, because
+ * what is under test is what the entry *is* rather than what it says.
+ *
+ * The type is `junction`, which Windows needs and every other platform ignores.
+ * A plain directory symlink on Windows wants a privilege an ordinary account
+ * does not have, so `symlink(target, path, 'dir')` fails there with `EPERM` and
+ * this test would only ever run on CI. A junction needs no privilege, and a
+ * `Dirent` for one answers `isDirectory()` false and `isSymbolicLink()` true
+ * exactly as a POSIX symlink to a directory does, which is the property the
+ * test is about.
+ */
+async function withLinkedTables(
+  options: { readonly dangling?: boolean } = {},
+): Promise<ReadResult> {
+  const root = await mkdtemp(join(tmpdir(), 'dbmd-linked-'))
+  try {
+    const model = join(root, 'model')
+    const elsewhere = join(root, 'elsewhere')
+    await mkdir(model)
+    await mkdir(elsewhere)
+    await writeFile(join(model, '_model.md'), '---\nkind: model\nname: test\n---\n')
+    await writeFile(
+      join(elsewhere, 'orders.md'),
+      '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+    )
+    await symlink(elsewhere, join(model, 'tables'), 'junction')
+    if (options.dangling === true) await rm(elsewhere, { recursive: true, force: true })
+    return await readModel(model)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+describe('a kind directory reached through a link', () => {
+  test('a linked kind directory is read', async () => {
+    // The regression that made the guard indefensible rather than merely
+    // unhelpful: this used to report a model with no tables and no problems,
+    // while the tables sat on disk one link away. ADR 0038.
+    const { model, diagnostics } = await withLinkedTables()
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables.map((table) => table.name)).toEqual(['orders'])
+  })
+
+  test('a link that points at nothing is a read failure and says so', async () => {
+    // `file-unreadable` and not `kind-not-a-directory`: a call was made and it
+    // failed, which is exactly what that code means. Nothing was listed and
+    // rejected, so nothing was decided about the shape of the model.
+    const { diagnostics } = await withLinkedTables({ dangling: true })
+
+    expect(diagnostics.map((d) => d.code)).toEqual(['file-unreadable'])
+    expect(diagnostics[0]?.message).toContain('ENOENT')
   })
 })
 

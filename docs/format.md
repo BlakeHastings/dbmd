@@ -52,6 +52,22 @@ db-model/
 - Only `*.md` files are read, and files whose name starts with `.` are skipped.
 - There is one level of directories. `tables/billing/orders.md` is not read,
   and nothing warns you about it.
+- **A kind directory may be a symlink**, and dbmd follows it. What it may not be
+  is a plain file, which is a `kind-not-a-directory` error.
+
+A model with no `tables/` at all is a legal, empty model, and dbmd says nothing
+about it. A `tables` that is a **file** is a different thing and gets the error,
+because the likeliest way to arrive at one is not a typo. Git writes a symlink
+as an ordinary file containing the link's target when the checkout cannot make
+symlinks, which is the default on Windows, so a repository that symlinks its
+kind directories turns into this on somebody else's machine:
+
+```text dbmd-error:tables:kind-not-a-directory
+../shared/db-model/tables
+```
+
+Every table is still on disk and none of them load. Without the error, the
+report is `0 tables, no problems`.
 
 ### Naming a file
 
@@ -981,6 +997,7 @@ leaves the line off.
 | `file-unreadable` | error | A file or a kind directory could not be read. The message says why in words, with the errno beside them: `permission denied (EACCES)`, `no such file or directory (ENOENT)`. The errno is all dbmd prints of the system's error, because the rest of it is an absolute path and [ADR 0006](architecture/decisions/0006-one-cli-three-callers.md) rule 4 wants the same bytes on every machine. | Read the errno rather than assuming permissions. `ENOENT` on a file dbmd had just listed means it went away mid-read: a delete, or a branch changed under the command. |
 | `model-file-missing` | warning | No `_model.md`. | Add one, or accept a model with no name. |
 | `unknown-kind-directory` | warning | A directory that is not `tables`, `notes` or `groups`. | Move the files, or delete the directory. |
+| `kind-not-a-directory` | error | `tables`, `notes` or `groups` is there and is a plain file, so nothing of that kind was read. A symlinked kind directory is fine and is followed; this is about a file. | Look at what is in the file. A path in it means a symlink that was checked out as text, and the fix is a checkout that can make symlinks. Otherwise rename the file out of the way. |
 | `frontmatter-absent` | error | The file does not start with a `---` line. | Add the frontmatter. Check for a blank first line. |
 | `frontmatter-unterminated` | error | An opening `---` with no closing one. | Add the closing `---`. |
 | `frontmatter-empty` | error | Two delimiters with nothing between them. | Say what the file is. |
