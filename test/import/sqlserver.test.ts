@@ -83,6 +83,22 @@ describe('the query', () => {
     .map((line) => (line.trimStart().startsWith('--') ? '' : line))
     .join('\n')
 
+  /**
+   * The comment block as one run of words.
+   *
+   * The assertions below are on sentences, and a sentence in a block wrapped to
+   * 80 columns breaks wherever it happens to break. Reflowing a comment is not a
+   * regression and is not worth a red build, so the markers come off and the
+   * whitespace flattens: what is asserted is then what the block says rather
+   * than where it wraps. Asserted against the raw text, `Results to File` and
+   * `stopped early` both went red the first time somebody improved the
+   * paragraph, which teaches people not to improve it. dbmd-aud.
+   *
+   * The one thing still asserted line by line is the sqlcmd invocation, which
+   * has to stay on one line to be copyable and is found as a line on purpose.
+   */
+  const prose = sql.replace(/^--\s?/gm, '').replace(/\s+/g, ' ')
+
   it('is one statement, so it pastes into any client', () => {
     expect(withoutComments.match(/;/g)).toHaveLength(1)
     expect(withoutComments.trimEnd().endsWith(';')).toBe(true)
@@ -134,13 +150,13 @@ describe('the query', () => {
     // result out of the grid is certainly looking, and not only in a document.
     // If this assertion is ever in the way, the fix is to move the warning, not
     // to delete it.
-    expect(sql).toMatch(/2033-character/)
-    expect(sql).toMatch(/SSMS/)
-    expect(sql).toMatch(/Results to File/)
+    expect(prose).toMatch(/2033-character/)
+    expect(prose).toMatch(/SSMS/)
+    expect(prose).toMatch(/Results to File/)
     // And what happens on a server too old for FOR JSON, named rather than left
     // as a syntax error nobody can interpret.
-    expect(sql).toMatch(/SQL Server 2016 or later/)
-    expect(sql).toMatch(/Incorrect syntax near 'JSON'/)
+    expect(prose).toMatch(/SQL Server 2016 or later/)
+    expect(prose).toMatch(/Incorrect syntax near 'JSON'/)
   })
 
   it('gives a sqlcmd recipe that produces a file dbmd import accepts', () => {
@@ -162,11 +178,11 @@ describe('the query', () => {
     expect(recipe).toMatch(/-i\s+\S+\s+-i\s+\S+/)
     // And the block has to say what the second file holds, or the command is
     // uncopyable.
-    expect(sql).toMatch(/SET NOCOUNT ON;/)
-    expect(sql).toMatch(/\(1 rows affected\)/)
+    expect(prose).toMatch(/SET NOCOUNT ON;/)
+    expect(prose).toMatch(/\(1 rows affected\)/)
     // -h -1 is the obvious alternative and sqlcmd refuses it beside -y 0, which
     // is worth one sentence so nobody spends an afternoon rediscovering it.
-    expect(sql).toMatch(/-h/)
+    expect(prose).toMatch(/-h/)
 
     // SET NOCOUNT ON is named in the comment block and is not in the query, so
     // the query is still one statement and the read-only list above is still
@@ -178,9 +194,11 @@ describe('the query', () => {
   it('tells a footer apart from a truncation, because the position does', () => {
     // A file that is too long and a file that is too short both arrive as "not
     // JSON", and until ADR 0041 the block said it was always the second. The
-    // position `dbmd import` prints is what separates them.
-    expect(sql).toMatch(/stopped early/)
-    expect(sql).toMatch(/row count/)
+    // position `dbmd import` prints is what separates them here, and `dbmd
+    // import` now separates them itself from the file's two ends: ADR 0045.
+    // Neither may go back to promising a truncation.
+    expect(prose).toMatch(/stopped early/)
+    expect(prose).toMatch(/row count/)
   })
 
   it('wraps its FOR JSON so the server cannot split the result across rows', () => {
