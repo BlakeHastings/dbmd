@@ -56,6 +56,7 @@ import {
   type GroupPatch,
   type NotePatch,
   type TablePatch,
+  type WireConflict,
   type WireModel,
   type WireModelResponse,
   type WireStatus,
@@ -107,10 +108,10 @@ function nameOf(key: string): string {
 /**
  * A refusal, with the server's code as well as its words.
  *
- * The words are for the developer and the code is for the page: `stale` and
- * `conflicted` mean the model moved and the page has to re-read, and everything
- * else means the edit is still the page's to retry. A page that could only read
- * the sentence would be matching on prose.
+ * The words are for the developer and the code is for the page: `stale`,
+ * `conflicted` and `unreadable` mean the page has to re-read rather than retry,
+ * and everything else means the edit is still the page's to retry. A page that
+ * could only read the sentence would be matching on prose.
  */
 export class RequestFailed extends Error {
   constructor(
@@ -121,9 +122,21 @@ export class RequestFailed extends Error {
     this.name = 'RequestFailed'
   }
 
-  /** Whether the answer is to re-read the model rather than to try again. */
+  /**
+   * Whether the answer is to re-read the model rather than to try again.
+   *
+   * Three codes and two sentences. `unreadable` is here because retrying it is
+   * as pointless as retrying the other two and the page has as little to show
+   * for it, and it is a separate code because what the page should *say* about
+   * it is the opposite of what it says about them: nothing on disk changed.
+   */
   get isStale(): boolean {
-    return this.code === 'stale' || this.code === 'conflicted'
+    return this.code === 'stale' || this.code === 'conflicted' || this.code === 'unreadable'
+  }
+
+  /** Whether the file could not be read at all, which is a different sentence. */
+  get wasUnreadable(): boolean {
+    return this.code === 'unreadable'
   }
 }
 
@@ -155,6 +168,51 @@ export function staleNotice(what: string): string {
     `Nothing was written and the change on disk is intact. The page is re-reading the model; ` +
     `make the change again on top of what it then shows.`
   )
+}
+
+/**
+ * The sentence beside that one, for the refusal that is not about a change.
+ *
+ * `staleNotice` is right about a file somebody else edited and wrong about a
+ * file nothing could open: it says the files changed and tells the reader to
+ * make the change again on top of what the page then shows, and there is
+ * nothing to make it on top of. Both used to arrive here, because both leave
+ * the file differing from what the edit was made against. dbmd-e6e.
+ *
+ * It names no cause, for the reason the server's version of it names none: a
+ * file is unreadable for whatever reason the operating system gives, and
+ * "another program has it open" is a guess. It points at the diagnostics
+ * instead, which is where the reader has already said what it saw, and which is
+ * two inches below this line on the page.
+ */
+export function unreadableNotice(what: string): string {
+  return (
+    `${what} was refused because this page could not read the file just now. ` +
+    `Nothing was written and the file is exactly as it was. The diagnostics below say what the ` +
+    `reader saw; make the change again once the file can be read.`
+  )
+}
+
+/**
+ * The line above the list of refused writes, which has to be true of all of
+ * them.
+ *
+ * It used to say every one of them was dropped rather than written over a
+ * change on disk, which for a file the studio could not read is the studio
+ * contradicting the sentence in the list two lines under it. So it counts what
+ * it has and says only what it can: the list itself carries the file and the
+ * reason, one line each, and this is the line that stops a developer reading
+ * the wrong one.
+ */
+export function conflictSummary(conflicts: readonly WireConflict[]): string {
+  const dropped = `${conflicts.length} edit${conflicts.length === 1 ? ' was' : 's were'} dropped`
+  if (conflicts.every((conflict) => conflict.reason === 'unreadable')) {
+    return `${dropped} rather than written over a file the studio could not read.`
+  }
+  if (conflicts.every((conflict) => conflict.reason === 'changed')) {
+    return `${dropped} rather than written over a change on disk.`
+  }
+  return `${dropped} rather than written. Each line below says why.`
 }
 
 /** What the server answered a mutation with: the object, and where the writes stand. */

@@ -60,7 +60,9 @@ import {
   renameTable,
   RenameStopped,
   RequestFailed,
+  conflictSummary,
   staleNotice,
+  unreadableNotice,
 } from './write.js'
 // The two values this page imports from outside its own directory. ADR 0014
 // says a consumer that only wants to print where a diagnostic points should not
@@ -147,7 +149,8 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
 }
 
 /**
- * Say that the model moved, in the page's own words, and keep the server's.
+ * Say that the edit did not happen, in the page's own words, and keep the
+ * server's.
  *
  * Both paths that can meet this refusal come through here, so the person who
  * meets it twice reads the same sentence twice. What the server said goes to
@@ -155,10 +158,31 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
  * first thing worth having when the guard itself is suspected of being wrong,
  * and the last thing worth reading when it is working, which is every time a
  * developer sees this.
+ *
+ * Which sentence it is comes off the code rather than out of the message. A
+ * file another program has open and a file somebody else edited arrive here by
+ * the same route and are opposite facts about the disk, and saying the second
+ * about the first sends a developer looking for a change nobody made. dbmd-e6e.
+ *
+ * The code answers it for a delete, which is refused as `unreadable`, and it
+ * cannot for an edit: a file that will not open moves the model, so the next
+ * patch of a drag is refused as `stale`, which is true and says nothing about
+ * why. So the page asks the reader, whose answer it is already holding and
+ * already showing in the panel below this line. A diagnostic that is not there
+ * leaves this exactly as it was.
  */
-function sayStale(what: string, failure: RequestFailed): void {
+function sayStale(what: string, failure: RequestFailed, path?: string): void {
   console.warn(`dbmd studio: ${failure.code}: ${failure.message}`)
-  say(staleNotice(what), 'bad')
+  const unreadable =
+    failure.wasUnreadable ||
+    (path !== undefined &&
+      readerDiagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === 'file-unreadable' &&
+          diagnostic.at.in === 'file' &&
+          diagnostic.at.path === path,
+      ))
+  say(unreadable ? unreadableNotice(what) : staleNotice(what), 'bad')
 }
 
 const writer = new ObjectWriter({
@@ -176,7 +200,7 @@ const writer = new ObjectWriter({
       // files had moved on from, and the edit was refused rather than written
       // over the change. Saying it as an error would send a developer looking
       // at their disk.
-      sayStale(`The edit to ${kind} \`${table}\``, failure)
+      sayStale(`The edit to ${kind} \`${table}\``, failure, `${kind}s/${table}.md`)
       // Through `catchUp` rather than straight to `reload`, because a refusal in
       // the middle of a drag is exactly when redrawing every box would be worst:
       // the pointer is holding one of them. The re-read happens on the pointerup
@@ -562,7 +586,7 @@ async function remove(kind: ObjectKind, name: string): Promise<void> {
     // straight through, which for a `conflicted` delete is readable and for a
     // `stale` one is the `/api/model` instruction the writer's path also gave.
     if (error instanceof RequestFailed && error.isStale) {
-      sayStale(`The delete of ${path}`, error)
+      sayStale(`The delete of ${path}`, error, path)
       // A delete refused because the model moved leaves a page showing
       // something the developer was told they were deleting. Re-reading is what
       // puts the question back where they can ask it again.
@@ -758,9 +782,7 @@ function showStatus(status: WireStatus): void {
   // the line that stops a developer reading the wrong one.
   if (status.conflicts.length > 0) {
     statusText.dataset['tone'] = 'bad'
-    statusText.textContent = `${status.conflicts.length} edit${
-      status.conflicts.length === 1 ? ' was' : 's were'
-    } dropped rather than written over a change on disk.`
+    statusText.textContent = conflictSummary(status.conflicts)
     return
   }
   statusText.dataset['tone'] = 'plain'
@@ -774,7 +796,7 @@ function showStatus(status: WireStatus): void {
 }
 
 /**
- * The edits this session dropped rather than write over a change on disk.
+ * The edits this session dropped rather than write over the file on disk.
  *
  * ADR 0019 put these on the status and said a refusal is visible or it is not a
  * refusal, and then nothing rendered them, so until now a developer learned
