@@ -96,6 +96,13 @@ CI runs one check, named `check`, and it is `npm run check`. One entry point
 rather than four jobs, so that what CI runs and what you can run are the same
 thing by construction. It is a required status check on `main`.
 
+A second workflow, `model`, also runs on every pull request. It is the recipe
+from [`docs/ci.md`](../ci.md) pointed at [`examples/shop`](../../examples/shop),
+so the recipe this project publishes cannot quietly go stale. It is **not** a
+required check and must not become one: it is an opinion about the example model
+rather than about your change, and `check` is the thing that decides whether
+anything merges. [ADR 0028](../architecture/decisions/0028-the-ci-recipe-is-pinned-and-this-repository-runs-it.md).
+
 **GitHub enforces the first half, and this repository the second.** A ruleset on
 `main` requires a pull request and a green `check`, allows squash merges only,
 forbids deletion and force-push, and has an empty bypass list. The owner cannot

@@ -25,8 +25,12 @@ diagnostic at all with `--strict`. `--json` gives the same answer and the same
 exit code in a shape a script can read. `npx dbmd export` writes the model as a
 mermaid diagram into `db-model/README.md`, between two markers, so a pull
 request that changes a table shows a changed picture that GitHub renders for
-anybody who opens it; `--stdout` prints it instead of writing. What is
-decided is in
+anybody who opens it; `--stdout` prints it instead of writing.
+[`docs/ci.md`](docs/ci.md) is those last two as a GitHub Actions workflow, with
+the version-pinning decision argued, a reason for every line that is not
+obvious, and a note saying which of its lines do not work today and what to run
+instead.
+What is decided is in
 [`docs/architecture/decisions/`](docs/architecture/decisions/), and why the
 format is shaped this way is
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md).
