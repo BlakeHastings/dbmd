@@ -93,6 +93,12 @@ tests, and a build, in that order. It is the only mechanical gate, and it is
 exactly what CI runs, so green here and green there mean the same thing. There
 is no second list of things to remember.
 
+**`npm run check` is not `dbmd check`.** They are a keystroke apart and you will
+meet both. This one is this repository's gate over this repository's source.
+`dbmd check` is a command the tool ships, and it reads somebody's model
+directory and reports what is wrong with it; `dbmd check --help` is the whole
+story on that one.
+
 The pieces run on their own when you want a faster loop: `npm run typecheck`,
 `npm run format` (which writes; `npm run format:check` only complains),
 `npm run test`, `npm run build`.
