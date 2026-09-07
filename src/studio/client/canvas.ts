@@ -22,6 +22,12 @@
  *    a write can never be waiting inside this file for an event that is not
  *    coming. The debounce lives in the server (ADR 0004), which is not affected
  *    by the tab losing focus, and there is deliberately not a second one here.
+ * 4. **Where a column's row sits is measured here and nowhere else.** ADR 0018.
+ *    An edge lands on a row rather than on a box, and a row's position is a
+ *    fact about the rendered page rather than about the model, so this is the
+ *    file that can know it. It is taken once per layout and kept as an offset
+ *    inside the box, so a drag carries it along for free and only a change to
+ *    what a box contains asks for it again.
  *
  * What is not here: the inspector (dbmd-32), which attaches to `onSelect`, and
  * notes and groups (dbmd-34), which attach as two more layers inside the scene,
@@ -29,7 +35,7 @@
  */
 
 import type { Column, Table } from '../../model/types.js'
-import { edgeSpecsOf, routeEdges, type EdgeSpec, type RoutedEdge } from './edges.js'
+import { edgeSpecsOf, routeEdges, type EdgeSpec, type RoutedEdge, type TableBox } from './edges.js'
 import {
   boundsOf,
   clampScale,
@@ -39,7 +45,6 @@ import {
   toModel,
   zoomAbout,
   type Point,
-  type Rect,
   type Viewport,
 } from './geometry.js'
 
@@ -79,6 +84,17 @@ interface Box {
   position: Point
   /** Measured from the DOM: a table's size is a consequence of its columns. */
   size: { w: number; h: number }
+  /**
+   * Each column's row centre, as an offset down from the box's top.
+   *
+   * Measured for the same reason and on the same pass as `size`. An edge is
+   * anchored at `position.y` plus this, so a drag carries the anchor with the
+   * box without re-reading the DOM, and only a change to what the box contains
+   * needs a fresh measurement. `measure` is the only writer.
+   */
+  rows: Map<string, number>
+  /** The header's centre, where an edge goes when this box has no such column. */
+  header: number
   readonly draggable: boolean
 }
 
@@ -110,6 +126,26 @@ export class Canvas {
   private drag: Drag | undefined
   private selected: string | null = null
   private frame: number | undefined
+
+  /**
+   * A box changed shape, so its rows moved and its edges have to be re-measured.
+   *
+   * `show` re-measures everything, and a model that arrives from the server goes
+   * through it. This is for the other case: the inspector (dbmd-32) adds and
+   * removes columns from a table that is already on the canvas, and a row offset
+   * taken at load and kept would leave every arrow below the edit pointing one
+   * row out. Observed size is layout size and a CSS transform does not change
+   * it, so pan, zoom and drag do not wake this up.
+   */
+  private readonly rowSizes = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const name = entry.target instanceof HTMLElement ? entry.target.dataset['table'] : undefined
+      const box = name === undefined ? undefined : this.boxes.get(name)
+      if (box !== undefined) measure(box)
+    }
+    this.drawEdges()
+    this.describeEdges()
+  })
 
   constructor(
     private readonly host: HTMLElement,
@@ -151,6 +187,7 @@ export class Canvas {
 
   /** Replace everything on the canvas. dbmd-33's watcher will call this again. */
   show(tables: readonly Table[], positions: ReadonlyMap<string, Point>): void {
+    this.rowSizes.disconnect()
     this.boxes.clear()
     this.boxLayer.replaceChildren()
 
@@ -163,6 +200,8 @@ export class Canvas {
         position,
         // Replaced by a measurement below, once the browser has laid it out.
         size: { w: 220, h: 120 },
+        rows: new Map(),
+        header: 0,
         // A table whose file did not parse holds less in memory than on disk,
         // and the server refuses to write it (ADR 0013). Refusing the drag here
         // is the same refusal, said before the developer has moved anything.
@@ -172,22 +211,22 @@ export class Canvas {
     }
 
     for (const box of this.boxes.values()) {
-      box.size = { w: box.element.offsetWidth, h: box.element.offsetHeight }
+      measure(box)
+      this.rowSizes.observe(box.element)
     }
 
     this.specs = edgeSpecsOf(tables)
-    this.edges = routeEdges(this.specs, this.rects())
-    this.edgePaths = this.edges.map((edge) => {
+    this.edges = routeEdges(this.specs, this.boxRects())
+    this.edgePaths = this.edges.map(() => {
       const path = document.createElementNS(SVG, 'path')
       path.setAttribute('class', 'edge')
       path.setAttribute('marker-end', 'url(#dbmd-arrowhead)')
-      const title = document.createElementNS(SVG, 'title')
-      title.textContent = `${edge.from.table}.${edge.from.column} references ${edge.to.table}.${edge.to.column}`
-      path.append(title)
+      path.append(document.createElementNS(SVG, 'title'))
       return path
     })
     this.edgeLayer.replaceChildren(...this.edgePaths)
     this.drawEdges()
+    this.describeEdges()
     this.markSelection()
   }
 
@@ -225,7 +264,7 @@ export class Canvas {
 
   /** Show everything, or reset the view when there is nothing to show. */
   fit(): void {
-    const content = boundsOf(this.rects().values())
+    const content = boundsOf(this.boxRects().values())
     const rect = this.host.getBoundingClientRect()
     if (content === undefined) {
       this.setViewport({ pan: { x: 0, y: 0 }, scale: 1 })
@@ -354,10 +393,17 @@ export class Canvas {
     this.scene.style.transform = `translate(${this.view.pan.x}px, ${this.view.pan.y}px) scale(${this.view.scale})`
   }
 
-  private rects(): Map<string, Rect> {
-    const rects = new Map<string, Rect>()
+  private boxRects(): Map<string, TableBox> {
+    const rects = new Map<string, TableBox>()
     for (const [name, box] of this.boxes) {
-      rects.set(name, { x: box.position.x, y: box.position.y, w: box.size.w, h: box.size.h })
+      rects.set(name, {
+        x: box.position.x,
+        y: box.position.y,
+        w: box.size.w,
+        h: box.size.h,
+        rows: box.rows,
+        header: box.header,
+      })
     }
     return rects
   }
@@ -379,9 +425,27 @@ export class Canvas {
   private drawEdges(): void {
     // Routed from the specs every time rather than from the last routing, so
     // an edge keeps the path element `show` created for it.
-    this.edges = routeEdges(this.specs, this.rects())
+    this.edges = routeEdges(this.specs, this.boxRects())
     this.edges.forEach((edge, index) => {
       this.edgePaths[index]?.setAttribute('d', edge.d)
+    })
+  }
+
+  /**
+   * What each edge says about itself, which changes only when the model does.
+   *
+   * Separate from `drawEdges` because that one runs on every animation frame of
+   * a drag and this one writes text. Whether an end found its row depends on
+   * which columns exist, not on where the boxes are, so the two have different
+   * reasons to run and it is the cheaper one that has to run often.
+   */
+  private describeEdges(): void {
+    this.edges.forEach((edge, index) => {
+      const path = this.edgePaths[index]
+      if (path === undefined) return
+      const title = path.querySelector('title')
+      if (title !== null) title.textContent = edgeTitle(edge)
+      path.classList.toggle('unanchored', edge.unanchored.length > 0)
     })
   }
 
@@ -428,6 +492,10 @@ function renderTable(table: Table): HTMLElement {
 
 function renderColumn(column: Column): HTMLElement {
   const row = document.createElement('li')
+  // How `measure` finds this row again. By name rather than by position,
+  // because an edge is about a named column and a list that has had a column
+  // inserted into it would otherwise silently renumber every anchor below it.
+  row.dataset['column'] = column.name
   if (column.pk === true) row.classList.add('pk')
   if (column.ref !== undefined) row.classList.add('fk')
 
@@ -444,6 +512,41 @@ function renderColumn(column: Column): HTMLElement {
 
   row.append(name, type)
   return row
+}
+
+/**
+ * Read a box's size and the position of every row in it, out of the DOM.
+ *
+ * `offsetTop` and `offsetHeight` rather than `getBoundingClientRect`, because
+ * these are layout numbers and the rectangle is a painted one: the scene is
+ * scaled by a CSS transform, so a rectangle would come back multiplied by the
+ * zoom and would have to be divided back out in the one place a scale factor
+ * must not appear. These are the same numbers at every zoom level, which is what
+ * makes an anchor at 300% the same anchor as at 25%.
+ *
+ * `offsetTop` is measured from inside the offsetParent's border, and
+ * `position` names the border box's corner, so the box's own border width is
+ * added back.
+ */
+function measure(box: Box): void {
+  const element = box.element
+  box.size = { w: element.offsetWidth, h: element.offsetHeight }
+  const border = element.clientTop
+  box.rows.clear()
+  element.querySelectorAll<HTMLElement>('li[data-column]').forEach((row) => {
+    const name = row.dataset['column']
+    if (name === undefined) return
+    box.rows.set(name, border + row.offsetTop + row.offsetHeight / 2)
+  })
+  const header = element.querySelector<HTMLElement>(':scope > header')
+  box.header =
+    header === null ? box.size.h / 2 : border + header.offsetTop + header.offsetHeight / 2
+}
+
+function edgeTitle(edge: RoutedEdge): string {
+  const said = `${edge.from.table}.${edge.from.column} references ${edge.to.table}.${edge.to.column}`
+  if (edge.unanchored.length === 0) return said
+  return `${said}. Drawn at the table's name because there is no ${edge.unanchored.join(' and no ')}.`
 }
 
 function placeElement(element: HTMLElement, position: Point): void {
