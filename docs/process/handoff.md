@@ -8,9 +8,10 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Seventy-two pull requests have merged, all through `merge-pr.mjs`, and the
-provenance audit is clean across every commit on `main`. **43 items closed, 18
-open, 1 blocked, none in progress that is not dispatched.**
+Seventy-six pull requests have merged, all through `merge-pr.mjs`, and the
+provenance audit is clean across every commit on `main`. **64 items closed, 9
+open.** Five of the seven epics are closed. Of what is left, two are dispatched,
+two wait on the owner, and one is an epic nobody has started.
 
 From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
@@ -94,10 +95,14 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-d6u**, a check that fails the build when documentation names a command,
-  script or npm task that does not exist. The detection layer for dbmd-7nb.
-- **dbmd-c8p**, whether the watcher's filename filter can be pinned on Windows
-  at all. P4, and the likeliest right answer is a comment rather than a change.
+- **dbmd-3ip**, a check that fails the build when a class used by both the canvas
+  and the inspector has an unscoped rule. That collision broke the page twice in
+  one day.
+- **dbmd-wxh**, whether a kind name that is a file rather than a directory
+  deserves a diagnostic. Genuinely open, and the symlink case may settle it.
+
+**After these two the queue is empty of anything that is not an epic or waiting
+on the owner.**
 
 ## What proved out, and is easy to lose
 
@@ -154,6 +159,15 @@ move and will file a defect. It is the note. Move it and the drag works.
   different directories and demand the same bytes**, which fails for a path no
   test names.
 
+- **An item written from somebody else's observation can have its premise
+  backwards.** dbmd-c8p said the watcher's filename filter reliably ignored a
+  `.tmp` on Windows. Measured over twelve rounds, the same file in a **freshly
+  copied** directory woke it 0 times and in a **long-lived** one 11 times. The
+  quiet was an artifact of the test harness handing every case a directory the
+  watcher had only just attached to, which is never the shape a running studio
+  is in. The right outcome was a corrected comment and a renamed test, and
+  nothing in the watcher moved.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
@@ -179,6 +193,20 @@ rather than by reading.
 - **`dbmd export` is idempotent** and writes only between its markers.
 - **`dbmd check --json` is machine-independent.** Its `directory` field echoes
   what you typed rather than resolving it, so two machines agree.
+- **The whole journey, against a real database rather than a fixture.** A
+  PostgreSQL 16 container, a schema with an enum type, identity primary keys, a
+  cascading foreign key, a composite unique constraint, an index on
+  `lower(note)`, and comments on a table and a column. Then the four steps:
+  print the query, run it through `psql`, import what came back, check it. Clean,
+  and clean under `--strict`. What survived is the interesting part: the enum
+  kept its own spelling and its `'draft'::shop.order_state` default, the
+  expression index came through as `{ expression: lower(note) }`, `timestamp
+  with time zone` and `timestamp without time zone` stayed distinct where the
+  normalised vocabulary would have collapsed them, and the table with a comment
+  got it as prose while the table without one got the prompt line instead. The
+  studio then drew both with the arrow on `orders.account_id` pointing at
+  `accounts.id` rather than at the box.
+
 
 ## What is waiting on the owner
 
