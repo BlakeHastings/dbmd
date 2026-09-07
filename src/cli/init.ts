@@ -83,7 +83,7 @@ async function runInit(argv: readonly string[], out: Output): Promise<number> {
  *
  * `parseArgs` with `strict` is what rejects an unknown flag, which is a thing
  * the CLI has to do and not a thing worth a dependency: the whole surface is
- * four commands and a handful of flags.
+ * a handful of commands and flags.
  */
 function parseInitArgs(argv: readonly string[]): string {
   let positionals: string[]

@@ -2,7 +2,7 @@
  * The entry point's logic, with the shebang and the exit left to `src/cli.ts`.
  *
  * There is no argument-parsing library here and there will not be one. The
- * surface is four commands and a handful of flags, `parseArgs` is in the
+ * surface is small, a handful of commands and flags, `parseArgs` is in the
  * standard library, and this is a tool people run with `npx`, where install
  * time is a feature (AGENTS.md).
  *
