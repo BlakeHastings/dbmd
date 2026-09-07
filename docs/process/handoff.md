@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with four agents in flight and no pull request open.**
+**As of 2026-09-07, with two agents in flight and no pull request open.**
 
 ## Where the work is
 
-Fifty-five pull requests have merged, all through `merge-pr.mjs`, and the
+Sixty-four pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -16,17 +16,24 @@ From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
 
 ```bash
-node dist/cli.js import   # a catalogue JSON becomes a model directory
+node dist/cli.js query    # prints your engine's introspection SQL, for you to run
+node dist/cli.js import   # the JSON that returns becomes a model directory
 node dist/cli.js init     # scaffolds a model directory
 node dist/cli.js check    # validates it, exits 1 on an error, --strict promotes warnings
 node dist/cli.js export   # a mermaid diagram GitHub renders in a pull request
 node dist/cli.js studio   # a canvas: drag, edit, rename across files, add and delete tables
 ```
 
-**`dbmd import` closes the argument the project was built to make.** A database
-becomes markdown becomes a picture you can drag, and no credential and no driver
-is ever the tool's business: you run the query, it reads what your client
-printed.
+**The journey runs end to end for the first time.** `dbmd query` prints the SQL,
+you run it with the client you already trust, and `dbmd import` reads what came
+back. It was proved against a PostgreSQL 16 container: query, run, import,
+`dbmd check` clean. No credential and no driver is ever this tool's business.
+
+Until 2026-09-07 that journey had no first step. `dbmd query` was named by four
+error messages, the format page, ADR 0007 and `AGENTS.md`, and did not exist.
+**The tool told people to run a command it then rejected**, and there was no
+backlog item to build it. Look for that shape: a thing referred to so
+consistently that nobody checks it is there.
 
 **It is not published to npm** and `package.json` is `"private": true` on purpose.
 `AGENTS.md` and `README.md` both say so. Two files claimed otherwise for a day and
@@ -87,15 +94,11 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-7nb**, `dbmd query`. **P1, and the most important thing open.** `dbmd
-  import` closes this project's argument and its only documented input is a
-  command that does not exist, which the tool's own error messages tell people
-  to run.
-- **dbmd-17**, a group's computed box enclosing things that are not members.
-  Newly reachable, because groups only started drawing today.
-- **dbmd-0s1**, breaking each enforcement guard on purpose to prove it still
-  fails.
-- **dbmd-mua**, the README still calling the import path unfinished.
+- **dbmd-49**, four small studio wrongnesses, the worst of which is a
+  confirmation dialog that states something untrue at the moment the user
+  decides.
+- **dbmd-3xq**, the last four sleeps in the watcher tests, and whether the three
+  behaviours they guard can fail at all.
 
 ## What proved out, and is easy to lose
 
@@ -122,7 +125,39 @@ move and will file a defect. It is the note. Move it and the drag works.
   first blank line, so a blank line put in to space out a doc comment drops
   codes from the check. There is a length guard, and it catches a blank line
   near the top of the list and not one near the bottom. That is why nobody
-  looked again for months. Reproduced, filed as dbmd-8ms, in flight.
+  looked again for months. Fixed by dbmd-8ms, which also found that the check
+  matched a bare mention anywhere on the page rather than a table row.
+- **A boundary looser than the writer reports success for a write that never
+  happens.** The studio's name check refused four characters and the writer
+  refuses nine, so `POST /api/table` with `a<b` answered **201 Created**, wrote
+  nothing, and the very next read of the model did not contain it. The page is
+  told the table exists and the disk never hears of it. Found by asserting the
+  two rules against one list, which is the only way it was ever going to
+  surface: each half was correct about itself.
+
+## Audited on 2026-09-07, so a successor need not redo it
+
+All clean unless a line says otherwise. Each was checked by breaking something
+rather than by reading.
+
+- **Every enforcement guard fails when neutered.** Now a suite rather than an
+  afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
+- **Every diagnostic code is emitted and, with two exceptions, exercised.**
+  `file-unreadable` and `import/empty-value` are the exceptions, filed as
+  dbmd-f3p and dbmd-ft5.
+- **Every `npm run`, every `scripts/*.mjs` and every `dbmd` subcommand named in
+  markdown exists.** The only unreal ones are written as hypothetical, "a future
+  `dbmd fmt`". Nothing repeats this check, which is filed.
+- **Every relative link and every anchor in 101 markdown files resolves.**
+- **The studio's five security properties hold**, checked with raw sockets
+  because `fetch` rewrites the `Host` header: loopback bind only and unreachable
+  on the LAN address, an unknown `Host` refused, no `Host` refused, a form post
+  refused, and no CORS headers on a preflight. All five have tests.
+- **The CI recipe in `docs/ci.md` runs**, with the local substitution the page
+  itself tells you to make.
+- **`dbmd export` is idempotent** and writes only between its markers.
+- **`dbmd check --json` is machine-independent.** Its `directory` field echoes
+  what you typed rather than resolving it, so two machines agree.
 
 ## What is waiting on the owner
 
