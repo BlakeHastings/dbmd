@@ -94,6 +94,33 @@ describe('validateIntrospectionDocument', () => {
     ])
   })
 
+  it('rejects a foreign key whose column list carries an empty name alongside real ones', () => {
+    // readStringList() backs a primary key's columns, an index's includedColumns,
+    // and both sides of a foreign key; a foreign key's columns is the
+    // representative because a catalogue join that resolves most column names
+    // but not one (an orphaned constraint row, say) is a real shape for a
+    // provider's query to produce, not just a hand edit.
+    const result = validateIntrospectionDocument(
+      document(
+        table({
+          foreignKeys: [
+            {
+              name: 'fk_orders_customer',
+              columns: ['customer_id', ''],
+              referencedSchema: 'public',
+              referencedTable: 'customers',
+              referencedColumns: ['id'],
+            },
+          ],
+        }),
+      ),
+    )
+    expect(result.ok).toBe(false)
+    expect(formatDiagnostics(result.diagnostics)).toEqual([
+      'error $.tables[0].foreignKeys[0].columns[1] [import/empty-value] a column name must be a non-empty string, got ""',
+    ])
+  })
+
   it('rejects a primary key that names no columns, and says to omit it instead', () => {
     const result = validateIntrospectionDocument(
       document(table({ primaryKey: { name: 'pk_orders', columns: [] } })),
@@ -119,6 +146,18 @@ describe('validateIntrospectionDocument', () => {
     expect(result.ok).toBe(false)
     expect(formatDiagnostics(result.diagnostics)).toEqual([
       'error $.tables[0].schema [import/missing-field] `schema` is required',
+    ])
+  })
+
+  it('rejects a schema that is present but empty, the mistake of leaving it out because a default applies', () => {
+    // requiredString() backs schema, name and a column's native spelling alike;
+    // schema is the representative here because the contract already warns
+    // against exactly this slip: a default schema is not the absence of one, so
+    // writing `schema: ""` to mean "use the default" is still empty, not absent.
+    const result = validateIntrospectionDocument(document(table({ schema: '' })))
+    expect(result.ok).toBe(false)
+    expect(formatDiagnostics(result.diagnostics)).toEqual([
+      'error $.tables[0].schema [import/empty-value] `schema` is an empty string',
     ])
   })
 
