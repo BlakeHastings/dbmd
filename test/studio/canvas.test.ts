@@ -13,16 +13,23 @@ import {
   type Viewport,
 } from '../../src/studio/client/geometry.js'
 import { placeTables } from '../../src/studio/client/place.js'
-import { edgeSpecsOf, routeEdges } from '../../src/studio/client/edges.js'
+import {
+  edgeSpecsOf,
+  routeEdges,
+  type EdgeSpec,
+  type RoutedEdge,
+  type TableBox,
+} from '../../src/studio/client/edges.js'
 
 /**
  * The canvas without a browser.
  *
  * Everything a screenshot cannot prove and a click can only prove once: the
  * coordinate conversion at zoom levels other than 1, the placement of a table
- * whose file has no `layout`, and the fact that two relationships between the
- * same pair of tables are two lines. The drawing and the pointer handling are
- * in `canvas.ts`, need a DOM, and are proven by driving the studio.
+ * whose file has no `layout`, and the fact that an edge starts and ends on the
+ * rows of the two columns it is about and stays there when a box moves. The
+ * drawing, the measurement of a row and the pointer handling are in
+ * `canvas.ts`, need a DOM, and are proven by driving the studio.
  */
 
 const ORIGIN: Point = { x: 37, y: 61 }
@@ -46,6 +53,13 @@ function table(name: string, columns: Table['columns'], layout?: { x: number; y:
 
 function starts(d: string): Point {
   const match = /^M (-?[\d.]+),(-?[\d.]+)/.exec(d)
+  if (match === null) throw new Error(`not a path: ${d}`)
+  return { x: Number(match[1]), y: Number(match[2]) }
+}
+
+/** The last point of the curve, which is the end the arrowhead is on. */
+function ends(d: string): Point {
+  const match = /(-?[\d.]+),(-?[\d.]+)$/.exec(d)
   if (match === null) throw new Error(`not a path: ${d}`)
   return { x: Number(match[1]), y: Number(match[2]) }
 }
@@ -155,10 +169,62 @@ describe('placement', () => {
 })
 
 describe('edges', () => {
-  const boxes = new Map<string, Rect>([
-    ['orders', { x: 0, y: 0, w: 220, h: 160 }],
-    ['customers', { x: 600, y: 0, w: 220, h: 160 }],
+  /**
+   * A box, with a row per column, standing in for a measurement of the page.
+   *
+   * `canvas.ts` reads these offsets out of the DOM, because how tall a row is
+   * depends on the font the browser picked. What the arithmetic here needs is
+   * only that each column has a distinct offset inside its box, so the numbers
+   * are made up and evenly spaced. ADR 0018.
+   */
+  const HEADER = 14
+  const FIRST_ROW = 30
+  const ROW_PITCH = 20
+
+  function boxOf(x: number, y: number, columns: readonly string[]): TableBox {
+    return {
+      x,
+      y,
+      w: 220,
+      h: FIRST_ROW + columns.length * ROW_PITCH + 8,
+      header: HEADER,
+      rows: new Map(columns.map((name, index) => [name, FIRST_ROW + index * ROW_PITCH])),
+    }
+  }
+
+  function rowY(box: TableBox, column: string): number {
+    const row = box.rows.get(column)
+    if (row === undefined) throw new Error(`the fixture has no row for ${column}`)
+    return box.y + row
+  }
+
+  function only(routed: readonly RoutedEdge[]): RoutedEdge {
+    const edge = routed[0]
+    if (edge === undefined || routed.length !== 1) {
+      throw new Error(`one edge was expected, got ${routed.length}`)
+    }
+    return edge
+  }
+
+  function both(routed: readonly RoutedEdge[]): readonly [RoutedEdge, RoutedEdge] {
+    const [first, second] = routed
+    if (first === undefined || second === undefined || routed.length !== 2) {
+      throw new Error(`two edges were expected, got ${routed.length}`)
+    }
+    return [first, second]
+  }
+
+  const orders = boxOf(0, 0, ['id', 'customer_id', 'billed_to', 'parent_id'])
+  const customers = boxOf(600, 0, ['id', 'email', 'last_order'])
+  const canvas = new Map<string, TableBox>([
+    ['orders', orders],
+    ['customers', customers],
   ])
+
+  const ordersToCustomers: EdgeSpec = {
+    from: { table: 'orders', column: 'customer_id' },
+    to: { table: 'customers', column: 'id' },
+  }
 
   it('reads every ref, in the order the model holds them', () => {
     const specs = edgeSpecsOf([
@@ -175,80 +241,150 @@ describe('edges', () => {
     ])
   })
 
-  it('draws two relationships between one pair of tables as two lines', () => {
+  it('leaves and arrives at the rows of the two columns, not the middles of the boxes', () => {
+    const edge = only(routeEdges([ordersToCustomers], canvas))
+    expect(starts(edge.d).y).toBe(rowY(orders, 'customer_id'))
+    expect(ends(edge.d).y).toBe(rowY(customers, 'id'))
+    // The bug this replaced, named so that reintroducing it fails here rather
+    // than in a screenshot: both ends were the centre of their box.
+    expect(starts(edge.d).y).not.toBe(orders.y + orders.h / 2)
+    expect(ends(edge.d).y).not.toBe(customers.y + customers.h / 2)
+    expect(edge.unanchored).toEqual([])
+  })
+
+  it('keeps both ends on their rows when a box moves, which is the half that is hard', () => {
+    const moved = new Map(canvas)
+    moved.set('orders', { ...orders, x: orders.x + 137, y: orders.y + 240 })
+    const before = only(routeEdges([ordersToCustomers], canvas))
+    const after = only(routeEdges([ordersToCustomers], moved))
+    expect(starts(after.d).y).toBe(starts(before.d).y + 240)
+    expect(starts(after.d).x).toBe(starts(before.d).x + 137)
+    // And the end did not move, because the box it is on did not.
+    expect(ends(after.d)).toEqual(ends(before.d))
+  })
+
+  it('draws two refs on different columns from the two rows they are about', () => {
     const routed = routeEdges(
       [
-        {
-          from: { table: 'orders', column: 'customer_id' },
-          to: { table: 'customers', column: 'id' },
-        },
-        {
-          from: { table: 'orders', column: 'billed_to' },
-          to: { table: 'customers', column: 'id' },
-        },
+        ordersToCustomers,
+        { from: { table: 'orders', column: 'billed_to' }, to: ordersToCustomers.to },
       ],
-      boxes,
+      canvas,
     )
-    expect(routed).toHaveLength(2)
-    const [first, second] = routed
-    if (first === undefined || second === undefined) throw new Error('two edges were expected')
+    const [first, second] = both(routed)
+    expect(starts(first.d).y).toBe(rowY(orders, 'customer_id'))
+    expect(starts(second.d).y).toBe(rowY(orders, 'billed_to'))
     expect(first.d).not.toBe(second.d)
-    // Far enough apart to be two lines rather than a thick one, at the ends as
-    // well as in the middle: two arrowheads on one pixel read as one edge.
-    expect(Math.abs(starts(first.d).y - starts(second.d).y)).toBeGreaterThanOrEqual(16)
   })
 
   it('separates a mutual reference, which is the pair most often drawn as one', () => {
     const routed = routeEdges(
       [
-        {
-          from: { table: 'orders', column: 'customer_id' },
-          to: { table: 'customers', column: 'id' },
-        },
+        ordersToCustomers,
         {
           from: { table: 'customers', column: 'last_order' },
           to: { table: 'orders', column: 'id' },
         },
       ],
-      boxes,
+      canvas,
     )
-    expect(routed).toHaveLength(2)
-    const [first, second] = routed
-    if (first === undefined || second === undefined) throw new Error('two edges were expected')
-    // Not `d`, which differs the moment the ends are swapped even when the two
-    // lines lie on top of each other. This pair is the one that reads as a
-    // single double-headed arrow if the sideways offset is taken from the
-    // direction each edge is read in, because the two offsets then cancel.
-    expect(Math.abs(first.at.y - second.at.y)).toBeGreaterThanOrEqual(16)
+    const [first, second] = both(routed)
+    // Four rows, so four anchors, so two lines. The sideways offset is not what
+    // separates these any more and is deliberately not applied: the row each leg
+    // leaves is already somewhere the other leg is not.
+    expect(starts(first.d).y).toBe(rowY(orders, 'customer_id'))
+    expect(ends(first.d).y).toBe(rowY(customers, 'id'))
+    expect(starts(second.d).y).toBe(rowY(customers, 'last_order'))
+    expect(ends(second.d).y).toBe(rowY(orders, 'id'))
+    expect(first.at).not.toEqual(second.at)
   })
 
-  it('loops a self reference out of the side of its own box', () => {
+  it('fans the one pair the rows cannot separate: two edges on the same two columns', () => {
+    // Each side names the other's exact column, so both legs run between the
+    // same two points and only the sideways offset tells them apart. The offset
+    // is taken from the two table names in a fixed order rather than from the
+    // direction each edge is read in (ADR 0015); derived from the edge it flips
+    // on the return leg, the two shifts cancel, and this is drawn as one line.
     const routed = routeEdges(
-      [{ from: { table: 'orders', column: 'parent_id' }, to: { table: 'orders', column: 'id' } }],
-      boxes,
+      [ordersToCustomers, { from: ordersToCustomers.to, to: ordersToCustomers.from }],
+      canvas,
     )
-    expect(routed).toHaveLength(1)
-    expect(starts(routed[0]?.d ?? '').x).toBeGreaterThanOrEqual(220)
+    const [first, second] = both(routed)
+    expect(Math.abs(first.at.y - second.at.y)).toBeGreaterThanOrEqual(16)
+    // And the fan did it by bowing the curve, so both ends are still on their
+    // rows. Moving an end sideways to make room is the change this undoes.
+    expect(starts(first.d).y).toBe(rowY(orders, 'customer_id'))
+    expect(ends(second.d).y).toBe(rowY(orders, 'customer_id'))
+    expect(ends(first.d).y).toBe(rowY(customers, 'id'))
+    expect(starts(second.d).y).toBe(rowY(customers, 'id'))
+  })
+
+  it('loops a self reference from one of its rows to another', () => {
+    const edge = only(
+      routeEdges(
+        [{ from: { table: 'orders', column: 'parent_id' }, to: { table: 'orders', column: 'id' } }],
+        canvas,
+      ),
+    )
+    expect(starts(edge.d).x).toBeGreaterThanOrEqual(orders.w)
+    expect(starts(edge.d).y).toBe(rowY(orders, 'parent_id'))
+    expect(ends(edge.d).y).toBe(rowY(orders, 'id'))
+  })
+
+  it('takes the same side of both boxes when one is stacked above the other', () => {
+    const below = new Map<string, TableBox>([
+      ['orders', orders],
+      ['customers', boxOf(orders.x, orders.y + 400, ['id', 'email', 'last_order'])],
+    ])
+    const edge = only(routeEdges([ordersToCustomers], below))
+    // Crossing both boxes to reach the far edge is longer and reads as a line
+    // that missed, so the two anchors are on the same border.
+    expect(starts(edge.d).x).toBe(ends(edge.d).x)
+    expect(starts(edge.d).x).toBeGreaterThan(orders.x + orders.w)
+  })
+
+  it('points at the table name, and says which column is missing, when there is no row', () => {
+    const edge = only(
+      routeEdges(
+        [
+          {
+            from: { table: 'orders', column: 'customer_id' },
+            to: { table: 'customers', column: 'nope' },
+          },
+        ],
+        canvas,
+      ),
+    )
+    // The header, which is visibly the table rather than a column. The centre of
+    // the box is the one answer ruled out: that is the old bug in a disguise.
+    expect(ends(edge.d).y).toBe(customers.y + HEADER)
+    expect(ends(edge.d).y).not.toBe(customers.y + customers.h / 2)
+    expect(edge.unanchored).toEqual(['customers.nope'])
+  })
+
+  it('keeps an anchor on the box when a row offset is older than the box it is in', () => {
+    // A column removed from a live table shrinks the box before the next
+    // measurement lands, so an offset can name a row past the bottom.
+    const stale = new Map<string, TableBox>([
+      ['orders', orders],
+      ['customers', { ...customers, h: 40 }],
+    ])
+    const edge = only(routeEdges([ordersToCustomers], stale))
+    expect(ends(edge.d).y).toBeLessThanOrEqual(customers.y + 40)
+    expect(ends(edge.d).y).toBeGreaterThanOrEqual(customers.y)
   })
 
   it('drops an edge to a table that is not on the canvas rather than drawing to nowhere', () => {
     const routed = routeEdges(
       [{ from: { table: 'orders', column: 'x' }, to: { table: 'gone', column: 'id' } }],
-      boxes,
+      canvas,
     )
     expect(routed).toEqual([])
   })
 
   it('starts and ends outside the boxes it joins', () => {
-    const routed = routeEdges(
-      [
-        {
-          from: { table: 'orders', column: 'customer_id' },
-          to: { table: 'customers', column: 'id' },
-        },
-      ],
-      boxes,
-    )
-    expect(starts(routed[0]?.d ?? '').x).toBeGreaterThan(220)
+    const edge = only(routeEdges([ordersToCustomers], canvas))
+    expect(starts(edge.d).x).toBeGreaterThan(orders.x + orders.w)
+    expect(ends(edge.d).x).toBeLessThan(customers.x)
   })
 })

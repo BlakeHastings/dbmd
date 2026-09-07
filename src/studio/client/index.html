@@ -92,6 +92,12 @@
         stroke: var(--accent);
         stroke-width: 2.5;
       }
+      /* An end that could not find its column is drawn at the table's name, and
+         has to be readable as that rather than as an ordinary arrow. Hover it
+         for which column is missing. */
+      .edge.unanchored {
+        stroke-dasharray: 5 4;
+      }
       marker path {
         fill: var(--edge);
         /* Follows the edge's own stroke where the browser supports it, so a
