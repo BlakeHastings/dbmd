@@ -1,0 +1,217 @@
+/**
+ * The entry point and `dbmd init`.
+ *
+ * The two streams are stubbed at `src/cli/streams.ts` rather than at
+ * `process.stdout`, so what these tests assert is which stream a line was
+ * addressed to, which is the half of ADR 0006 rule 1 that a command can get
+ * wrong. That the data stream really is file descriptor 1 is proven by running
+ * the packed tarball, which is in the pull request rather than here: a test
+ * that spawns a process can only test the source tree, and the source tree is
+ * exactly what hides a broken `bin` mapping.
+ */
+
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { exampleModel } from '../../src/cli/example.js'
+import { main } from '../../src/cli/main.js'
+import { readModel } from '../../src/model/read.js'
+import { writeModel } from '../../src/model/write.js'
+
+const captured = vi.hoisted(() => ({ out: '', err: '' }))
+
+vi.mock('../../src/cli/streams.js', () => ({
+  writeOut: (text: string) => {
+    captured.out += text
+  },
+  writeErr: (text: string) => {
+    captured.err += text
+  },
+}))
+
+interface Run {
+  readonly code: number
+  readonly out: string
+  readonly err: string
+}
+
+async function run(...argv: string[]): Promise<Run> {
+  captured.out = ''
+  captured.err = ''
+  const code = await main(argv)
+  return { code, out: captured.out, err: captured.err }
+}
+
+const temporaries: string[] = []
+
+/** A directory that does not exist yet, inside one that does. */
+async function vacantPath(): Promise<string> {
+  const parent = await mkdtemp(join(tmpdir(), 'dbmd-cli-'))
+  temporaries.push(parent)
+  return join(parent, 'db-model')
+}
+
+afterEach(async () => {
+  for (const directory of temporaries.splice(0)) {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+describe('the entry point', () => {
+  test('no arguments prints the usage to stdout and exits 0', async () => {
+    const { code, out, err } = await run()
+    expect(code).toBe(0)
+    expect(out).toContain('Usage: dbmd <command>')
+    expect(out).toContain('init')
+    expect(err).toBe('')
+  })
+
+  test('--help and -h are the same as no arguments', async () => {
+    const bare = await run()
+    expect(await run('--help')).toEqual(bare)
+    expect(await run('-h')).toEqual(bare)
+  })
+
+  test('--version prints the installed version to stdout and nothing else', async () => {
+    const manifest = JSON.parse(
+      await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+    ) as { version: string }
+
+    const { code, out, err } = await run('--version')
+    expect(code).toBe(0)
+    expect(out).toBe(`${manifest.version}\n`)
+    expect(err).toBe('')
+  })
+
+  test('an unknown command exits non-zero, on stderr, naming what was expected', async () => {
+    const { code, out, err } = await run('validate')
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toContain('unknown command "validate"')
+    expect(err).toContain('init')
+  })
+
+  test('an unknown global flag exits non-zero and says a command was expected', async () => {
+    const { code, out, err } = await run('--quiet')
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toContain('unknown option "--quiet"')
+    expect(err).toContain('init')
+  })
+
+  test('a command gets its own --help, on stdout', async () => {
+    const { code, out, err } = await run('init', '--help')
+    expect(code).toBe(0)
+    expect(out).toContain('Usage: dbmd init')
+    expect(out).toContain('db-model')
+    expect(err).toBe('')
+  })
+})
+
+describe('dbmd init', () => {
+  test('writes a model directory that reads back with no diagnostics', async () => {
+    const directory = await vacantPath()
+
+    const { code, out, err } = await run('init', directory)
+    expect(code).toBe(0)
+    expect(out).toBe('')
+    expect(err).toContain(directory)
+
+    const { model, diagnostics } = await readModel(directory)
+    expect(diagnostics).toEqual([])
+    expect(model.name).toBe('example')
+    expect(model.tables.map((table) => table.name)).toEqual(['accounts', 'api_keys'])
+    expect(model.notes).toHaveLength(1)
+  })
+
+  test('what it wrote is already canonical, so writing the model back writes nothing', async () => {
+    const directory = await vacantPath()
+    await run('init', directory)
+
+    const { written, skipped } = await writeModel(directory, exampleModel())
+    expect(written).toEqual([])
+    expect(skipped.every((skip) => skip.reason === 'unchanged')).toBe(true)
+  })
+
+  test('the example demonstrates a ref and carries its prose', async () => {
+    const directory = await vacantPath()
+    await run('init', directory)
+
+    const text = await readFile(join(directory, 'tables', 'api_keys.md'), 'utf8')
+    expect(text).toContain('ref: accounts.id')
+    expect(text).toContain('Revoking a key does not delete its row')
+
+    const { model } = await readModel(directory)
+    expect(model.referencesTo.get('accounts')).toEqual([
+      {
+        from: { table: 'api_keys', column: 'account_id' },
+        to: { table: 'accounts', column: 'id' },
+      },
+    ])
+  })
+
+  test('it narrates every file it wrote, on stderr, in a stable order', async () => {
+    const first = await run('init', await vacantPath())
+    const second = await run('init', await vacantPath())
+    const lines = (text: string) => text.split('\n').filter((line) => line.startsWith('  '))
+
+    expect(lines(first.err)).toEqual([
+      '  _model.md',
+      '  notes/there-are-no-passwords-here.md',
+      '  tables/accounts.md',
+      '  tables/api_keys.md',
+    ])
+    expect(lines(second.err)).toEqual(lines(first.err))
+  })
+
+  test('it refuses a directory that already has something in it', async () => {
+    const directory = await vacantPath()
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'notes.txt'), 'mine\n', 'utf8')
+
+    const { code, out, err } = await run('init', directory)
+    expect(code).toBe(1)
+    expect(out).toBe('')
+    expect(err).toContain('is not empty')
+
+    expect(await readdir(directory)).toEqual(['notes.txt'])
+  })
+
+  test('a path that is a file rather than a directory is refused too', async () => {
+    const path = await vacantPath()
+    await writeFile(path, 'mine\n', 'utf8')
+
+    const { code, err } = await run('init', path)
+    expect(code).toBe(1)
+    expect(err).toContain('already exists')
+    expect(await readFile(path, 'utf8')).toBe('mine\n')
+  })
+
+  test('an existing empty directory is fine', async () => {
+    const directory = await vacantPath()
+    await mkdir(directory, { recursive: true })
+
+    const { code } = await run('init', directory)
+    expect(code).toBe(0)
+    expect(await readdir(directory)).toContain('_model.md')
+  })
+
+  test('an unknown flag exits non-zero and writes nothing', async () => {
+    const directory = await vacantPath()
+
+    const { code, out, err } = await run('init', '--force', directory)
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toContain('unknown option "--force"')
+    expect(err).toContain('dbmd init --help')
+
+    await expect(readdir(directory)).rejects.toThrow()
+  })
+
+  test('a second directory is a mistake worth naming', async () => {
+    const { code, err } = await run('init', 'one', 'two')
+    expect(code).toBe(2)
+    expect(err).toContain('at most one directory')
+  })
+})
