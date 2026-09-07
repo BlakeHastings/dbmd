@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Eighty-six pull requests have merged, all through `merge-pr.mjs`, and the
+Eighty-eight pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -21,6 +21,7 @@ node dist/cli.js query    # prints your engine's introspection SQL, for you to r
 node dist/cli.js import   # the JSON that returns becomes a model directory
 node dist/cli.js init     # scaffolds a model directory
 node dist/cli.js check    # validates it, exits 1 on an error, --strict promotes warnings
+node dist/cli.js refs     # what points at this table, and from which column
 node dist/cli.js export   # a mermaid diagram GitHub renders in a pull request
 node dist/cli.js studio   # a canvas: drag, edit, rename across files, add and delete tables
 ```
@@ -95,8 +96,6 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-81**, a command that answers what points at a table. The model already
-  holds the answer and nothing on the command line exposes it.
 - **dbmd-pqd**, the Postgres query telling nobody how to save its result, when
   the obvious command produces a file the importer refuses.
 
