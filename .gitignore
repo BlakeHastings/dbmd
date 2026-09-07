@@ -1,6 +1,12 @@
 node_modules/
 dist/
 coverage/
+
+# The studio client built with the feedback overlay in it, by
+# `node scripts/build-client.mjs --dev`. It is a build output like `dist/`, and
+# it is deliberately not under `dist/`: `files` in package.json is `["dist"]`,
+# so a sibling directory is one npm cannot pack. ADR 0064.
+.studio-dev/
 *.tsbuildinfo
 .DS_Store
 

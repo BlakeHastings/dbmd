@@ -1025,10 +1025,60 @@ export class Canvas {
  * sentence in place of the rows, and it has to: "did not parse" sends somebody
  * to a file with nothing wrong in it. dbmd-c7q.
  */
+/**
+ * Say, on the element itself, which object a person is pointing at.
+ *
+ * **These two attributes exist to be pointed at, and nothing in this codebase
+ * reads either of them.** The code finds an object by `data-table`,
+ * `data-note`, `data-group` or `data-column`, and it goes on doing that; these
+ * are additional and deliberately separate, so that changing what a person sees
+ * cannot change what a drag or a hit test finds.
+ *
+ * The reader is the feedback overlay `npm run studio:dev` puts on the page. It
+ * builds a selector from the id, then a class, then a position, and it takes
+ * the element's name from `data-element`; it never looks at any other data
+ * attribute. Measured on 2026-09-07 against `examples/shop`: a click on the
+ * `shipments` box came back as `box` at `#canvas > .scene > .boxes > .box`,
+ * which is the path all eight boxes share, and the word `shipments` never
+ * appeared even though it was on the element. With these two it comes back as
+ * `table shipments` at `#canvas > .scene > .boxes > #table-shipments`. That is
+ * the difference between "the shipments box is too tall" and "one of the eight
+ * boxes is too tall". ADR 0064.
+ *
+ * The id is prefixed by kind and only set for the kinds below, whose names are
+ * one per file and so unique in the document. A column's is not: every table
+ * has a column called `id`, and two elements sharing one would hand the overlay
+ * a selector that matches the wrong element. So a column gets the label and no
+ * id, and its path resolves through its table's, which is `#table-shipments >
+ * ul > li`. The prefix is what keeps a note and a table of the same name apart,
+ * and what keeps either away from `#canvas` and `#inspector`.
+ *
+ * A name comes from a file name and so from `isFileName` (ADR 0026), which
+ * permits spaces and brackets: `Ledger [Entry]` is a real imported table. Such
+ * a name makes a legal id and an awkward one, and the overlay writes it into a
+ * path unescaped. That is left as it is on purpose. A path somebody has to
+ * quote before pasting still names the object, and refusing the id for those
+ * names would hand back the shared `.box` path instead, which names nothing.
+ */
+function nameForPointing(element: HTMLElement, kind: PointableKind, name: string): void {
+  element.dataset['element'] = `${kind} ${name}`
+  // An empty name is a warning rather than an error (ADR 0027), and two objects
+  // with one would share an id. A missing id is what the overlay already copes
+  // with, and it is what every element on this page has today.
+  if (name !== '' && UNIQUE_BY_NAME.has(kind)) element.id = `${kind}-${name}`
+}
+
+/** What `nameForPointing` will call something. */
+type PointableKind = 'table' | 'note' | 'group' | 'column'
+
+/** The kinds whose names are one per file, and so unique in the document. */
+const UNIQUE_BY_NAME = new Set<PointableKind>(['table', 'note', 'group'])
+
 function renderTable(table: Table, said: string | undefined): HTMLElement {
   const element = document.createElement('article')
   element.className = table.complete ? 'box' : 'box broken'
   element.dataset['table'] = table.name
+  nameForPointing(element, 'table', table.name)
 
   const header = document.createElement('header')
   header.textContent = table.name
@@ -1072,6 +1122,7 @@ function renderColumn(column: Column): HTMLElement {
   // because an edge is about a named column and a list that has had a column
   // inserted into it would otherwise silently renumber every anchor below it.
   row.dataset['column'] = column.name
+  nameForPointing(row, 'column', column.name)
   if (column.pk === true) row.classList.add('pk')
   if (column.ref !== undefined) row.classList.add('fk')
   row.title = columnTitle(column)
@@ -1111,6 +1162,7 @@ function renderNote(note: Note, said: string | undefined): HTMLElement {
   element.className = `note-card ${tintClass(note.color)}`
   if (!note.complete) element.classList.add('broken')
   element.dataset['note'] = note.name
+  nameForPointing(element, 'note', note.name)
   element.title = note.path
 
   if (!note.complete) {
@@ -1153,6 +1205,7 @@ function renderGroupShell(group: Group): HTMLElement {
   const element = document.createElement('div')
   element.className = `group ${tintClass(group.color)}`
   element.dataset['group'] = group.name
+  nameForPointing(element, 'group', group.name)
 
   const header = document.createElement('header')
   const label = document.createElement('span')
