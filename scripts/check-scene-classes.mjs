@@ -58,6 +58,17 @@
 // to satisfy a check is restyling it. The intersection is the smaller claim and
 // it is the one the two defects actually had in common.
 //
+// HOW IT READS THE TWO SCENE FILES
+// With the TypeScript compiler, as a tree. It used to read them a line at a
+// time, and a line is not where a class name lives: the inspector writes its
+// `ref` field through a `textField(...)` call wrapped over five lines, and the
+// check never saw the class and the call on one line, so it did not know the
+// name was written at all. The count was one short, which is the symptom. The
+// gap is that a rule anchored today could stop being anchored tomorrow without
+// this noticing, because the call that writes the class happened to be wrapped
+// by a formatter. A detection layer that a Prettier setting can silence is not
+// one. Nothing about where the newlines fall reaches the tree.
+//
 // WHAT IT CANNOT SEE, STATED PLAINLY
 // It reads literals. A class name assembled at run time is invisible to it, and
 // the `tint-*` classes are exactly that: `tintClass()` in `palette.ts` returns
@@ -78,6 +89,25 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+/**
+ * The parser, imported for its message when it is not there.
+ *
+ * `typescript` is a devDependency and is already what `npm run typecheck`
+ * runs, so this asks for nothing the repository did not have. On a checkout
+ * with no `node_modules` the bare specifier fails with a module-resolution
+ * error naming a path, and this check's whole subject is a guard that stops
+ * seeing its subject, so it says which thing is missing instead.
+ */
+let ts
+try {
+  ts = (await import('typescript')).default
+} catch (cause) {
+  throw new Error(
+    'This check parses the two scene files with the TypeScript compiler, which is a devDependency. Run `npm ci` first.',
+    { cause },
+  )
+}
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -114,48 +144,24 @@ function read(relative) {
 // What each scene calls things
 // ---------------------------------------------------------------------------
 
-/** A quoted string of any of the three kinds, as one alternation. */
-const STRING = String.raw`'([^'\n]*)'|"([^"\n]*)"|` + '`([^`]*)`'
-
 /**
- * An assignment to `className`, whose whole right-hand side is read.
- *
- * Every string in it, rather than the one that follows the `=`, because the
- * canvas writes `element.className = table.complete ? 'box' : 'box broken'` and
- * `box` is the class that anchors four other rules. Reading only the first
- * literal saw `boxes` and not `box`, and the check then reported `.box li .type`
- * as belonging to neither scene, which is the opposite of true.
- *
- * A template literal is read for its static text with the interpolations
- * blanked: the canvas writes `` `note-card ${tintClass(note.color)}` ``, and
- * `note-card` is a name this must see even though the tint is not.
- */
-const CLASS_NAME_ASSIGNMENT = /\.className\s*=\s*(.*)$/
-
-/**
- * The other places a class name is written, where only the first argument is
- * one. `classList.toggle('selected', this.isSelected('table', name))` has two
+ * The `classList` methods whose first argument is a class name, and only the
+ * first. `classList.toggle('selected', this.isSelected('table', name))` has two
  * strings in it and one of them is a class.
  */
-const SITES = [
-  {
-    what: 'classList',
-    pattern: new RegExp(
-      String.raw`\.classList\.(?:add|remove|toggle|replace|contains)\(\s*(?:${STRING})`,
-      'g',
-    ),
-  },
-]
+const CLASS_LIST_METHODS = new Set(['add', 'remove', 'toggle', 'replace', 'contains'])
 
 /**
- * Local helpers that take a class name as an argument, declared because a
- * regular expression cannot infer one.
+ * Local helpers that take a class name as an argument, declared because nothing
+ * short of following the value can infer one.
  *
  * `el('p', 'notes')` is how the inspector writes almost every class it has, and
  * a check that read only `className` would have found one shared name where
  * there are three. `textField(item, 'name', ...)` is the second: it passes its
  * key straight to `el` as the class, so `name` and `type` are inspector classes
  * even though neither string is ever written next to the word class.
+ *
+ * `argument` counts from one, the way somebody reading the call counts.
  *
  * Each one is verified to still be declared in the file it belongs to, so this
  * throws on the day somebody renames it rather than silently seeing fewer
@@ -167,65 +173,155 @@ const HELPERS = [
   { file: 'src/studio/client/inspector.ts', call: 'textField', argument: 2 },
 ]
 
-/** The static tokens of a class-name expression, with interpolations dropped. */
+/** The static tokens of a class-name expression. */
 function tokens(raw) {
-  return raw
-    .replace(/\$\{[^}]*\}/g, ' ')
-    .split(/\s+/)
-    .filter((token) => /^-?[_a-zA-Z][\w-]*$/.test(token))
+  return raw.split(/\s+/).filter((token) => /^-?[_a-zA-Z][\w-]*$/.test(token))
+}
+
+/**
+ * One scene file, parsed, or a sentence saying it was not.
+ *
+ * A file that did not parse yields a partial tree, and a partial tree is a
+ * check that sees fewer classes than there are and passes. `npm run typecheck`
+ * would have caught that first, but this script is also run on its own, so it
+ * says so rather than relying on the order of a script in `package.json`.
+ *
+ * `parseDiagnostics` is how the parser reports that, and it is asserted to
+ * still be an array for the same reason: the day it stops being one, a missing
+ * property reads as no errors, which is the quiet answer this check exists to
+ * refuse.
+ */
+function parse(file) {
+  const source = ts.createSourceFile(
+    file,
+    read(file),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  )
+  const diagnostics = source.parseDiagnostics
+  if (!Array.isArray(diagnostics)) {
+    throw new Error(
+      'typescript no longer reports parseDiagnostics on a source file, so this check can no longer tell a file ' +
+        'it read from a file it failed to read. Fix scripts/check-scene-classes.mjs before trusting it again.',
+    )
+  }
+  if (diagnostics.length > 0) {
+    const first = diagnostics[0]
+    const line = source.getLineAndCharacterOfPosition(first.start ?? 0).line + 1
+    throw new Error(
+      `${file}:${line} did not parse (${ts.flattenDiagnosticMessageText(first.messageText, ' ')}), ` +
+        'so this check would see fewer classes than there are.',
+    )
+  }
+  return source
+}
+
+/** The static text of a string or template literal, and nothing for anything else. */
+function staticText(node) {
+  if (node === undefined) return undefined
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
+  if (ts.isTemplateExpression(node)) {
+    return [node.head.text, ...node.templateSpans.map((span) => span.literal.text)].join(' ')
+  }
+  return undefined
+}
+
+/**
+ * Every literal in an expression, not descending into a template's holes.
+ *
+ * The whole right-hand side rather than the first literal, because the canvas
+ * writes `element.className = table.complete ? 'box' : 'box broken'` and `box`
+ * is the class that anchors four other rules. Reading only the first literal
+ * saw `boxes` and not `box`, and the check then reported `.box li .type` as
+ * belonging to neither scene, which is the opposite of true.
+ *
+ * A template contributes its static text and not what is interpolated into it:
+ * the canvas writes `` `note-card ${tintClass(note.color)}` ``, and `note-card`
+ * is a name this must see even though the tint is not.
+ */
+function literalsIn(node, into) {
+  const text = staticText(node)
+  if (text !== undefined) {
+    into.push({ text, at: node })
+    return
+  }
+  node.forEachChild((child) => literalsIn(child, into))
+}
+
+/** Whether the file still declares a function of this name. */
+function declares(source, name) {
+  let yes = false
+  const visit = (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) yes = true
+    else node.forEachChild(visit)
+  }
+  visit(source)
+  return yes
 }
 
 /**
  * Every class name one scene file writes, and the line it first writes it on.
  *
- * Line by line rather than over the whole text, because the line is what a
- * failure has to print: "these two files share a name" is a fact somebody then
- * has to go and find.
+ * The line is what a failure has to print: "these two files share a name" is a
+ * fact somebody then has to go and find. It is the line of the literal itself
+ * rather than of the statement around it, so a wrapped call points at the
+ * string and not at the open bracket four lines above it.
  */
 function classesIn(file) {
-  const text = read(file)
-  const sites = [...SITES]
+  const source = parse(file)
 
+  const helpers = new Map()
   for (const helper of HELPERS) {
     if (helper.file !== file) continue
-    const declared = new RegExp(String.raw`function\s+${helper.call}\s*[<(]`)
-    if (!declared.test(text)) {
+    if (!declares(source, helper.call)) {
       throw new Error(
         `${file} no longer declares ${helper.call}(), which this check reads class names from. ` +
           'Update HELPERS in scripts/check-scene-classes.mjs, or it will see fewer classes than there are.',
       )
     }
-    const skipped = String.raw`(?:[^,()]*,\s*){${helper.argument - 1}}`
-    sites.push({
-      what: `${helper.call}()`,
-      pattern: new RegExp(
-        String.raw`(?<![\w.$])${helper.call}\(\s*${skipped}(?:${STRING})`,
-        'g',
-      ),
-    })
+    helpers.set(helper.call, helper.argument)
   }
 
-  const every = new RegExp(String.raw`(?:${STRING})`, 'g')
   const found = new Map()
-  const keep = (token, line, what) => {
-    if (!found.has(token)) found.set(token, { line, what })
+  const keep = ({ text, at }, what) => {
+    const line = source.getLineAndCharacterOfPosition(at.getStart(source)).line + 1
+    for (const token of tokens(text)) {
+      if (!found.has(token)) found.set(token, { line, what })
+    }
+  }
+  const keepArgument = (node, what) => {
+    const text = staticText(node)
+    if (text !== undefined) keep({ text, at: node }, what)
   }
 
-  text.split(/\r?\n/).forEach((line, index) => {
-    const assigned = CLASS_NAME_ASSIGNMENT.exec(line)
-    if (assigned) {
-      for (const match of assigned[1].matchAll(every)) {
-        const raw = match[1] ?? match[2] ?? match[3] ?? ''
-        for (const token of tokens(raw)) keep(token, index + 1, 'className')
+  const visit = (node) => {
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left) &&
+      node.left.name.text === 'className'
+    ) {
+      const literals = []
+      literalsIn(node.right, literals)
+      for (const literal of literals) keep(literal, 'className')
+    }
+    if (ts.isCallExpression(node)) {
+      const called = node.expression
+      if (
+        ts.isPropertyAccessExpression(called) &&
+        CLASS_LIST_METHODS.has(called.name.text) &&
+        ts.isPropertyAccessExpression(called.expression) &&
+        called.expression.name.text === 'classList'
+      ) {
+        keepArgument(node.arguments[0], 'classList')
+      } else if (ts.isIdentifier(called) && helpers.has(called.text)) {
+        keepArgument(node.arguments[helpers.get(called.text) - 1], `${called.text}()`)
       }
     }
-    for (const { what, pattern } of sites) {
-      for (const match of line.matchAll(pattern)) {
-        const raw = match[1] ?? match[2] ?? match[3] ?? ''
-        for (const token of tokens(raw)) keep(token, index + 1, what)
-      }
-    }
-  })
+    node.forEachChild(visit)
+  }
+  visit(source)
   return found
 }
 

@@ -164,3 +164,99 @@ see the anchor and pass.
 - **The canvas half of the stylesheet is being rewritten anyway.** That is the
   moment the rejected rule becomes cheap, and requiring every canvas rule to be
   scoped is a stronger claim than this one.
+
+## Amended by dbmd-86c, once somebody noticed the count was one short
+
+An amendment rather than a record of its own, because the decision above is
+unchanged and the way it was enforced was wrong. **The check read the two scene
+files a line at a time, and a class name does not live on a line.**
+
+`classesIn` split the file on newlines and applied every site pattern to each
+line in turn. The inspector writes its `ref` field like this, because that is
+where Prettier puts the arguments:
+
+    const ref = textField(
+      item,
+      'ref',
+      column.ref === undefined ? '' : `${column.ref.table}.${column.ref.column}`,
+      'ref (table.column)',
+    )
+
+No line holds both `textField(` and `'ref'`, so no pattern matched, and the
+check did not know the inspector wrote that class at all.
+
+**The count in the passing line was the symptom and not the defect.** `ref` was
+missing from the intersection, so the check said three names where there were
+four. What it costs is the next line: a name only one scene appears to write
+becomes an _anchor_, and an anchor makes rules pass. Once dbmd-fnl.1 landed the
+canvas half, `.box li .ref` and `#inspector ol > li .ref`, this rule:
+
+    .ref {
+      grid-column: 1 / -1;
+    }
+
+was the exact defect this record is about, and the check exited 0 on it. That was
+not a thought experiment: it was tried on `main`, on the real stylesheet, and it
+passed. Collapse the wrapped call onto one line, change nothing else, and the
+same check exits 1 and names it. **A guard whose answer depends on where a
+formatter put the newlines is a guard a formatter setting can switch off**, and
+this one is the detection layer under two defects that were invisible in a diff
+and in a test and were only ever found by driving the page.
+
+The hazard is general rather than about `ref`. `this.edgePaths[index]?.classList.toggle(`
+in the canvas is already wrapped over four lines, and every site this check knows
+gets wrapped the moment the call gains an argument.
+
+### It reads the two files as a tree, with the TypeScript compiler
+
+`ts.createSourceFile`, then a walk: an assignment whose left side is a
+`className` property access, a call whose callee is
+`<something>.classList.add/remove/toggle/replace/contains`, and a call to one of
+the two named helpers. The literal's own line is what a failure prints, so a
+wrapped call points at the string and not at the open bracket above it. Nothing
+about the formatting reaches the tree.
+
+Two candidates were rejected. **Requiring the calls to stay on one line** is a
+rule nobody can enforce and Prettier undoes on the next save. **Widening the
+patterns until the wrapped call matched** buys the four names by matching more
+than four things, and a check that fires on rules that are fine is a check that
+gets deleted.
+
+**Reading the built bundle**, where esbuild has already collapsed the call, was
+the other real option and it was rejected on staleness: `check:scenes` runs
+before `npm run build` in `npm run check`, so the artefact it read would be the
+one from the previous run, and a guard that reports on code that is no longer
+there is worse than the hole it closes.
+
+### What that costs, plainly
+
+- **A devDependency, at run time.** `typescript` is already what `npm run
+  typecheck` runs, so nothing new is installed, but the script no longer runs on
+  a checkout with no `node_modules`. It says which thing is missing rather than
+  failing with a module-resolution path.
+- **About 0.3s rather than about 0.1s**, nearly all of it loading the compiler.
+  The consequence above that says 0.1s is now wrong.
+- **The guard's scratch trees need `node_modules` linked in**, which
+  `scratchWith` now does with a junction. `rm` unlinks a junction rather than
+  descending into it, which was checked rather than assumed.
+- **A scene file that does not parse is now an error rather than a file with no
+  classes in it.** `parseDiagnostics` is read for that, and asserted to still be
+  an array, because a missing property would read as no errors.
+
+### What is unchanged
+
+The invariant, the anchors and the stylesheet's brace scan. What moved is the
+list in the passing line, from three names to **four: `.name`, `.notes`, `.ref`
+and `.type`**, every rule naming one anchored. Two things happened at once, so
+both the context's "exactly three class names" and the consequence that repeats
+them are now wrong: dbmd-fnl.1 gave the canvas a `ref` class, and this made the
+inspector's half of it visible. The fourth name is the check seeing what was
+already written, not the page gaining a class it did not have.
+
+The consequence above that says **eight cases** in
+`test/guards/broken-on-purpose.test.ts` now says twelve. The four added are a
+wrapped helper call, a wrapped `classList` call and a wrapped `className`
+assignment, a class name written inside a comment (which reading a tree gets
+right for free, and which is the evidence the fix was not a wider pattern), and a
+file that did not parse. All four fail against the previous script and pass
+against this one.
