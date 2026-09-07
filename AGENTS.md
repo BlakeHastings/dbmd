@@ -24,13 +24,20 @@ human produced by running a query themselves.
 MIT licensed and developed at
 `github.com/BlakeHastings/dbmd`.
 
-**It is not published to npm.** `package.json` says `"private": true`, on
-purpose, and nobody has asked for it to be published. The name is free as of
-2026-09-07. So `npx dbmd` does not work for anybody yet, and a document, a
-recipe or a message that says it does is wrong: run it from a checkout with
-`node dist/cli.js`. dbmd-50 made the package ready and deliberately left that one
-line in place, so publishing is a decision somebody makes rather than something
-that happens.
+**You run it from a checkout, never from an install.** `node dist/cli.js` is the
+command written as `dbmd` everywhere, and that holds whatever is on the registry:
+an agent working an issue is changing the code in front of it, and an installed
+copy is a different program that would hide the change.
+
+**Releases are a tag the owner pushes.** `.github/workflows/release.yml`
+publishes on a pushed `v*` tag and nothing else does; no agent here pushes a tag
+or publishes, and the npm token is a repository secret only the owner can add.
+**Do not write a publication status or a version number into a page** as though
+it were a fact you can check from this tree:
+`npm view dbmd versions` is what says which releases exist, and a copy of that
+answer written into prose goes stale without anybody touching it. Two files once
+claimed the package was published when it was not, and that false claim is why a
+CI recipe invented a version number out of nothing. ADR 0051.
 
 ## What exists today
 

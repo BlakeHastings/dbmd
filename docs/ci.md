@@ -18,10 +18,9 @@ schema and never connects to one.
 
 ## Copy this
 
-**It does not run as written.** `dbmd` is not published to npm, so the two `npx`
-lines below cannot resolve a package today. Read [the next
-section](#dbmd-is-not-on-npm) before you copy this, because it is the difference
-between a workflow that fails on its first run and one that works.
+Two things in it are worth reading before you paste it: which version to pin,
+[below](#the-version-in-that-recipe), and why pinning one at all is a decision
+rather than a formality, [after that](#why-the-version-is-pinned).
 
 ```yaml
 name: db-model
@@ -61,27 +60,33 @@ jobs:
 `db-model` is the default directory and the argument is there so that a
 repository which keeps its model somewhere else changes one word twice.
 
-## `dbmd` is not on npm
+## The version in that recipe
 
-`package.json` is `"private": true` at version `0.0.0`. Nothing has been
-published, the name is still free, and whether this is ever published is an open
-question rather than a date. So the two `npx` lines above are the **shape** the
-recipe takes once there is a package, and today they would fail to resolve one.
+`0.1.0` is the number chosen for the first release. It used to be a placeholder
+standing in for a number nobody had chosen, and
+[ADR 0051](architecture/decisions/0051-the-first-release-is-a-tag-a-person-pushes.md)
+chose it, partly so that this page would become true rather than become wrong a
+second way.
 
-**`0.1.0` is a placeholder, not a chosen number.** Nobody has decided what the
-first published version will be, and this page has no standing to decide it. It
-is written as a specific version rather than as `<version>` only because the
-point of the line is that a real version goes there rather than `@latest`, and a
-recipe with an angle bracket in it teaches the wrong habit. If a first release
-happens under some other number, this page is the thing that is wrong and this
-paragraph is where to fix it.
+**The current version comes from `npm view dbmd versions` and not from this
+page.** A list of releases written into prose is a second copy of something
+the registry already holds, and the second copy is the one that goes stale
+without anybody touching it. So move the number in the recipe when you want a
+newer one, and read it from there rather than from here. If `npx` cannot resolve
+what the recipe pins, that command is the first place to look: releases are cut
+by pushing a tag and
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) is the whole
+of the mechanism, but the registry is the authority on what has actually shipped.
 
-What works today is a checkout of `github.com/BlakeHastings/dbmd`,
-`npm ci && npm run build`, and `node dist/cli.js` wherever the recipe says
-`npx --yes dbmd@0.1.0`. That is exactly what
+A checkout of `github.com/BlakeHastings/dbmd`, `npm ci && npm run build`, and
+`node dist/cli.js` wherever the recipe says `npx --yes dbmd@0.1.0` does the same
+work with no install. That is exactly what
 [`.github/workflows/model.yml`](../.github/workflows/model.yml) in this
 repository does, against [`examples/shop`](../examples/shop), on every pull
-request, which is how this page stays true.
+request, which is how this page stays true. It stays a checkout on purpose and
+does not become an install: running the published package here would test npm
+rather than the code in the pull request, which is backwards. ADR 0028 said so
+before it was a choice anybody had.
 
 ## Why the version is pinned
 

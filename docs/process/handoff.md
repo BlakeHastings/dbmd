@@ -38,9 +38,16 @@ error messages, the format page, ADR 0007 and `AGENTS.md`, and did not exist.
 backlog item to build it. Look for that shape: a thing referred to so
 consistently that nobody checks it is there.
 
-**It is not published to npm** and `package.json` is `"private": true` on purpose.
-`AGENTS.md` and `README.md` both say so. Two files claimed otherwise for a day and
-that false claim is why a CI recipe invented a version number.
+**Publishing was decided on 2026-09-07**, so `"private": true` came out of
+`package.json` and the version is `0.1.0`. Nothing is on the registry yet. A
+release is a `v*` tag the owner pushes,
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) is the
+whole of the mechanism, and it needs an `NPM_TOKEN` repository secret that only
+the owner can add. ADR 0051. The older lesson still stands: two files claimed the
+package was published when it was not, and that false claim is why a CI recipe
+invented a version number.
+`npm view dbmd versions` is the answer to "is it out" that a page cannot get
+wrong.
 
 **`examples/shop` has four uncommitted edits from the owner**, one `layout` line
 each, all four written at 04:32 on 2026-09-07 and untouched since. The model

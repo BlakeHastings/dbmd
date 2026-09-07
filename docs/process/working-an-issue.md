@@ -85,6 +85,11 @@ If you are an agent working an issue, these are prohibited, without exception:
 - `git push` to the default branch, including `git push origin HEAD:main`
 - `git merge` while standing on the default branch
 - merging through `gh api`
+- `npm publish`, and pushing a tag, which is the thing that triggers one
+
+That last one is the same rule wearing a different hat: a release goes to a
+public registry and cannot be taken back, so the person who owns the consequence
+pushes the tag. ADR 0051.
 
 Push your branch, open the PR, report back, and stop. The orchestrator reviews
 and merges. This holds even when your checks are green, even when the change is

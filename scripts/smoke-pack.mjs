@@ -21,6 +21,12 @@
 // installed package, and the assertion below is skipped on Windows because the
 // bit does not exist there.
 //
+// It also reads two fields out of the manifest inside the tarball. `private`
+// and `bin` are the difference between a package a stranger can run and one
+// they cannot, and neither is observable from anything else here: a package
+// with `"private": true` packs, installs and runs, and only a real publish
+// refuses it. ADR 0051.
+//
 // WHY IT IS PART OF `npm run check`
 // It costs about six seconds and it is the only thing in the repository that
 // looks at the artefact users get. `prepublishOnly` runs `npm run check`, so on
@@ -101,6 +107,8 @@ async function smoke() {
 
   console.log(`Installed it into ${install}.`)
   checkTheEntryPoint(install)
+  checkItCanBePublished(install)
+  console.log('Read the packaged manifest for "private" and "bin".')
   const commands = await checkTheCommands(install, manifest.version)
   console.log(`Ran the installed binary: ${commands.join(', ')}.`)
   await checkTheStudio(install)
@@ -187,6 +195,46 @@ function checkTheEntryPoint(install) {
   }
   if (!WINDOWS && (statSync(entry).mode & 0o111) === 0) {
     failures.push('dist/cli.js is not executable after install, so the bin link is a dead file')
+  }
+}
+
+/**
+ * The manifest npm would upload, asked whether npm would accept it.
+ *
+ * `"private": true` was the line standing between this repository and an
+ * accidental publish, and it came out when the owner decided to release
+ * (ADR 0051). Putting it back is a one-word edit that nothing else in this file
+ * would notice: `npm pack` packs a private package, `npm install` installs one,
+ * the shim runs, the studio serves its page, and every assertion around this one
+ * stays green. `npm publish --dry-run` does not notice either. It was run
+ * against this package on 2026-09-07 while `private` was still set, and it
+ * printed the tarball contents and exited 0. The only thing that says no is a
+ * real publish, which happens once, on a tag, in a job that has already spent
+ * its minutes getting there.
+ *
+ * `bin` is read here for the other half of the same claim. Every command below
+ * goes through `node_modules/.bin/dbmd`, so a missing `bin` entry does fail this
+ * script, but it fails it by being unable to spawn a file that is not there,
+ * which is a stack trace rather than a sentence. `npx dbmd` resolves through
+ * this field and nothing else, so it is worth one line that says so.
+ *
+ * Both read the manifest inside the installed package rather than the one in
+ * the checkout, because the tarball is what ships. ADR 0024.
+ */
+function checkItCanBePublished(install) {
+  const path = join(install, 'node_modules', 'dbmd', 'package.json')
+  const packaged = JSON.parse(readFileSync(path, 'utf8'))
+  if (packaged.private === true) {
+    failures.push(
+      'the packaged package.json says "private": true, so npm publish would refuse this ' +
+        'tarball and no release can be cut from it',
+    )
+  }
+  if (typeof packaged.bin?.dbmd !== 'string') {
+    failures.push(
+      'the packaged package.json declares no "bin".dbmd, so an install links no command ' +
+        'and npx dbmd has nothing to run',
+    )
   }
 }
 
