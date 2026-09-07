@@ -302,6 +302,26 @@ rather than by reading.
   ADR 0019's protection working against a second **writer** rather than a hand
   edit, which is the case `wire.ts` says the revision exists for.
 
+- **The whole note and group lifecycle, driven, and the model came back
+  byte-identical.** A note created by pointing, named, recoloured, given a
+  markdown body and deleted; a group created with a label and a colour, a table
+  joined from its own panel, the table taken out again, the group deleted. After
+  each, only the files that should have changed had. After both, `diff -rq`
+  against the original found nothing.
+  - **The group file never gains a member list or a coordinate.** Membership is
+    one `group:` line in the member's own file, and the group file carries `kind`
+    and `color` and stops. Joining a table changed `tables/customers.md` and not
+    `groups/billing.md`.
+  - **A group whose last member leaves draws a dashed placeholder** rather than
+    vanishing, and `dbmd check` warns `group-empty` with the sentence that names
+    the likely cause: an empty group is usually a rename that missed a file.
+  - **A note the studio writes is canonical.** It has no blank line after the
+    frontmatter where the committed notes do, which looks wrong and is not: the
+    blank line belongs to the body, bodies are preserved byte for byte, and the
+    canonical writer reports the file `unchanged`.
+  - Each colour swatch's tooltip is the line it writes, down to
+    `no colour: the file has no \`color\` key`.
+
 
 ## What is waiting on the owner
 
