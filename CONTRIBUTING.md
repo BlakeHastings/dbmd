@@ -84,6 +84,54 @@ shows up in `git status` like any other edit, and dragging one table's box is
 one changed line in that table's file. `git checkout examples/shop` puts it back,
 which is the undo.
 
+### Pointing at the page instead of describing it
+
+```bash
+npm run studio:dev
+```
+
+The same studio, with a feedback toolbar in the bottom-right corner. Click it to
+activate, then click anything on the page, write a sentence, and copy: it gives
+you markdown naming the element and its selector, which is what an agent needs
+to find the code you mean. It takes the same arguments as `npm run studio`, so
+`npm run studio:dev -- --no-open` and `npm run studio:dev -- ../my-model` both
+work.
+
+**For an annotation to reach an agent rather than only your clipboard, the
+companion server has to be running:** `agentation-mcp server` listens on
+`http://127.0.0.1:4747`, keeps the annotations, and offers them over MCP.
+`npm run studio:dev` posts to that address and says on startup whether anything
+answered:
+
+```
+dbmd studio  http://127.0.0.1:57818/
+  model      examples/shop
+  overlay    agentation 3.0.2, from .studio-dev, which never ships
+  annotate   http://127.0.0.1:4747, which answered
+```
+
+If that last line says it is not answering, `agentation-mcp doctor` is what
+checks the setup. Nothing breaks either way: with no server the toolbar still
+annotates, still copies markdown and still keeps everything in the browser.
+Point it somewhere else with `DBMD_AGENTATION_ENDPOINT`, or set that to an empty
+string for clipboard only.
+
+Registering the MCP server with your agent is a separate step and a decision
+about your machine rather than about this repository, so nothing here does it
+for you. `agentation-mcp init` is the wizard.
+
+The toolbar is [`agentation`](https://www.npmjs.com/package/agentation), it is a
+devDependency, and **it never ships**. It is built from its own entry point into
+`.studio-dev/`, which is outside `dist/` and so outside what `npm pack` carries;
+the released bundle has no import path to it, and `npm run check` fails if any
+of it reaches the tarball.
+[ADR 0064](docs/architecture/decisions/0064-the-feedback-overlay-is-a-second-entry-point.md)
+is the arrangement and the guard. Its licence is PolyForm Shield, which is not
+an open source licence; that is fine for a package nobody distributes, and it is
+why nobody distributes this one.
+
+Stop it with Ctrl-C, the same way and for the same reason as `npm run studio`.
+
 ## The one command you have to remember
 
 ```bash

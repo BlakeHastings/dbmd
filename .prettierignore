@@ -1,4 +1,5 @@
 dist/
+.studio-dev/
 node_modules/
 coverage/
 .beads/

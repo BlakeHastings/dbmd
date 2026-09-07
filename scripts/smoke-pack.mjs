@@ -62,6 +62,43 @@ const WINDOWS = process.platform === 'win32'
  */
 const MAY_POINT_AT_A_MISSING_MAP = ['dist/studio/client/main.js']
 
+/**
+ * Strings that are in the development bundle and in nothing this repository
+ * ships, each with what it belongs to.
+ *
+ * The first is esbuild's own path comment, which it writes above every module
+ * it inlines out of `node_modules`. It is the broad net: the studio client has
+ * no runtime dependencies at all, so any third-party module reaching it is
+ * caught by this whether or not it is one of the two below. Measured on
+ * 2026-09-07: 0 of these in the release bundle, 11 in the dev one.
+ *
+ * It is the bare directory name and not the whole `// node_modules/` comment,
+ * which is what it was first written as and what `check:guards` immediately
+ * found wrong. esbuild writes that path relative to the working directory, and
+ * the guard builds in a scratch copy whose `node_modules` is a junction, so the
+ * comments came out as `// ../../../..//node_modules/react/index.js` and the
+ * marker matched none of them. A net that only works when the build happens to
+ * be rooted where you expected is not one.
+ *
+ * The other two are named because the broad net rests on esbuild writing a
+ * comment, which is behaviour rather than a promise, and because a failure that
+ * names the package is worth more than one that says a path comment appeared.
+ * `Symbol.for("react.element")` is how a React build tags an element and has
+ * been in every version since 16; `--agentation-color-` is the prefix of the
+ * custom properties the overlay writes into `:root`.
+ *
+ * They are three because they do not all fire together. `agentation` declares
+ * `sideEffects: false`, so an import of the overlay that never calls it is
+ * partly tree-shaken and lands React without the colour tokens; that is the
+ * case `check-pack-guard.mjs` fires, and the first two markers are what catch
+ * it. Any one of them is a refusal.
+ */
+const MUST_NOT_BE_IN_THE_CLIENT_BUNDLE = [
+  { marker: 'node_modules/', what: "esbuild's comment above a module it inlined" },
+  { marker: 'Symbol.for("react.element")', what: 'React' },
+  { marker: '--agentation-color-', what: "agentation's colour tokens" },
+]
+
 /** Long enough for `npm install` on a cold cache, short enough that CI fails rather than hangs. */
 const INSTALL_TIMEOUT_MS = 180_000
 /** A command that has printed its answer and not exited is a bug worth failing on. */
@@ -136,6 +173,8 @@ async function smoke() {
   // check`, which said `no problems` about models that had them.
   const read = checkTheSourceMapReferences(install)
   console.log(`Read the ${read} shipped .js files for source-map references.`)
+  checkTheClientBundleIsTheReleaseOne(install)
+  console.log('Read the shipped studio client bundle for the development overlay.')
   const commands = await checkTheCommands(install, manifest.version)
   console.log(`Ran the installed binary: ${commands.join(', ')}.`)
   await checkTheStudio(install)
@@ -308,6 +347,51 @@ function checkTheSourceMapReferences(install) {
     )
   }
   return files.length
+}
+
+/**
+ * The shipped client bundle, asked whether the development overlay is in it.
+ *
+ * `agentation` is the owner's tool for pointing at the studio and saying what
+ * is wrong with it, and it exports React components and nothing else, so
+ * hosting it means hosting React. None of that is anybody's business who runs
+ * `npx dbmd studio`: it is a devDependency, it is under a licence that is not
+ * open source, and it is roughly ten times the size of the bundle it would be
+ * riding in. ADR 0064 has the arrangement that keeps it out.
+ *
+ * That arrangement is two structural facts, and this is what notices either of
+ * them stopping being true. `src/studio/client/main.ts` has no import path to
+ * `feedback.ts`, so `bundle: true` cannot reach it; and the dev bundle is
+ * written to `.studio-dev/` rather than under `dist/`, so `files` cannot carry
+ * it. One import added to `main.ts` undoes the first, and it is a one-line edit
+ * that type-checks, builds, packs, installs, starts and serves a page that
+ * works. Nothing else here would see it: the page is fine, the bundle is fine,
+ * it is only three times the size and carrying somebody else's licence.
+ *
+ * The markers are named rather than counted, so that a failure says what got in
+ * and not only that the file grew. They are read out of the installed package
+ * rather than out of `dist/`, because the tarball is what ships. ADR 0024.
+ */
+function checkTheClientBundleIsTheReleaseOne(install) {
+  const path = join(install, 'node_modules', 'dbmd', 'dist', 'studio', 'client', 'main.js')
+  let bundle
+  try {
+    bundle = readFileSync(path, 'utf8')
+  } catch {
+    // The bundle not being there at all is the other check's sentence, and it
+    // is reported by the studio fetching `/main.js` further down. Two failures
+    // about one missing file is one more than is useful.
+    return
+  }
+  const found = MUST_NOT_BE_IN_THE_CLIENT_BUNDLE.filter(({ marker }) => bundle.includes(marker))
+  if (found.length > 0) {
+    failures.push(
+      `the shipped studio client bundle carries the development feedback overlay: ` +
+        `${found.map(({ marker, what }) => `"${marker}" (${what})`).join(', ')}. ` +
+        'Only src/studio/client/dev.ts may reach feedback.ts, and its bundle belongs in ' +
+        '.studio-dev/ rather than under dist/. ADR 0064.',
+    )
+  }
 }
 
 /** Every `.js` under a directory, depth first. */
