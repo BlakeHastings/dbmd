@@ -270,3 +270,61 @@ still working is an agent whose next push is still coming.
 in this case reported the merge as its own race lost by a minute. It was not. An
 orchestrator who lets that stand teaches the next agent to push more defensively,
 which is a real cost paid to protect a mistake that was not theirs.
+
+## The handoff is printed into context, so keep it about where the work stopped
+
+`docs/process/handoff.md` is injected whole after every compaction. That makes
+it the one process document whose length is a recurring cost rather than a
+one-off, and it is also the document that grows fastest, because topping it up
+is part of every pass.
+
+On 2026-09-07 it had reached 500 lines and about a third of them were not a
+handoff at all. They were durable facts about how this codebase and this
+platform break: a `Dirent` that cannot say whether a link is a directory, a
+colon in a Windows filename that opens an alternate data stream, a stylesheet
+shared by two scenes. Real, expensive to relearn, and **nothing put them in
+front of the person who needed them**, because an implementation agent never
+reads the orchestrator's handoff. Two agents found the same stylesheet
+collision on the same day without knowing about each other, which is that gap
+showing up as duplicated work.
+
+They now live in `docs/process/gotchas.md`, and `working-an-issue.md` sends
+every agent there before they start. The split is the point:
+
+- **The handoff answers "where did this stop".** In flight, waiting on the
+  owner, what a successor would otherwise reconstruct. It decays fast and is
+  supposed to.
+- **Gotchas answers "how does this break".** It does not decay, and an entry
+  comes out when its cause is fixed and something enforces it.
+
+If a paragraph you are about to add to the handoff would still be true and
+useful next month, it belongs in the other file.
+
+**It happened again the same afternoon, and bigger.** The file reached 620 lines,
+of which **four fifths were evidence**: what had been driven in a browser or
+against a real database, what had been audited by breaking a guard, and a list
+of ways the codebase had broken. All worth keeping, none of it a handoff. It
+went to `docs/process/verified.md` and the file came back to 140 lines.
+
+**I got the second split wrong first, and an agent caught it.** The ways-it-broke
+list went into a new `docs/process/gotchas.md`, which was a second home for a
+section `AGENTS.md` already has. The agent's report said so plainly: the gotchas
+section is in `AGENTS.md`. That file is deliberately short, an entry earns its
+place by having bitten twice, and it is deleted once something enforces the fix.
+A parallel file with a looser bar competes with it, which is the "do not invent a
+document type" failure with a different name on it. The list is in `verified.md`
+now, where its actual bar, *somebody looked and this is what they found*, is the
+same as everything around it.
+
+So: two documents beside the records, and one test for which is which.
+
+- **`handoff.md` answers "where did this stop".** In flight, waiting on the
+  owner, what a successor would otherwise reconstruct. It decays in hours.
+- **`verified.md` answers "has anybody actually tried it".** It is the answer to
+  the owner's question about whether the studio was validated by using it, and
+  an entry says what was true on a day rather than what is true now.
+- **`AGENTS.md` keeps the gotchas**, because that is the file an agent reads
+  first and a trap is only useful before the work starts.
+
+**The tell that a paragraph is in the wrong file is that it would still be worth
+reading next month.** A handoff paragraph should not be.

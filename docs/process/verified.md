@@ -1,0 +1,692 @@
+# Verified
+
+What has actually been checked against reality, and how, so nobody spends an
+afternoon finding it out again. Split off from `handoff.md` on 2026-09-07, when
+four fifths of that file had become evidence and one fifth was where the work
+stopped. Those are different documents with different readers and different
+half-lives, which is the test.
+
+**Two kinds of entry, and the difference matters.** The first half is what was
+driven: somebody ran the thing, in a browser or against a real database, and
+pasted what came back. The second half is what was audited by breaking it:
+a guard neutered, a rule reverted, a fixture mutated, to find out whether the
+check that is supposed to catch it does.
+
+**An entry decays.** It says what was true on the day, against the code of that
+day. Where it disagrees with the repository, the repository is right. When a
+change makes an entry false, correct it rather than deleting it, and say what
+moved: an entry that quietly vanishes takes the reason for the test with it.
+
+## What has been driven, not just tested
+
+The owner asked whether the studio was validated by actually interacting with
+it. It was, on a copy of `examples/shop`, through a real browser, on
+2026-09-07. Every one of these wrote the file named and left every other file
+in the model byte-identical to where it started:
+
+| Action | What it wrote |
+| --- | --- |
+| Drag a table | that table's `layout` line, and nothing else |
+| Add table | a new file at the exact placement coordinates |
+| Add column | one appended column, nameless, on the table's own file |
+| Remove column | the column gone from that file |
+| Delete this table | the file gone, behind a confirmation step |
+| Drag a note | that note’s own file, including its `w` and `h` |
+| Drag a group header | every member’s layout line, in one write, and nothing in the group file |
+
+### The whole journey against a live database, driven on 2026-09-07
+
+Re-run after re-import landed, and this time following the **printed recipe**
+rather than running the tool a way that happens to work. That distinction is the
+one this project has already paid for: both engines' printed invocations were
+wrong once and were found by following them.
+
+PostgreSQL 16 in a container, three tables, a unique constraint, a referential
+action, a descending index and an expression index. Then:
+
+1. `dbmd query --engine postgres` on stdout, its narration on stderr.
+2. The query header's own command, `psql -X -t -A -d db -f query.sql -o out.json`,
+   run verbatim. It produced **exactly what the header promises**: one line,
+   first character `{`, last `}`, no header, no padding, no row count.
+3. `dbmd import` read it first try. `dbmd check` clean.
+4. The expression index came through as `columns: [{ expression: lower(email) }]`
+   and the unique constraint as `unique: true`, both from a real catalogue rather
+   than a fixture.
+5. Two paragraphs written into a table by hand, and its `layout:` moved.
+6. **The real database altered**: a column dropped, a type widened, a column
+   added, a table dropped with cascade.
+7. Re-imported. The delta listed all four kinds against a live catalogue, wrote
+   nothing, and named the prose that would go stale.
+8. `--confirm` touched three files and no others. The two paragraphs and the
+   coordinates came through untouched, and the model still validates.
+
+**The prose scan is cleverer than it looks, and I nearly filed a false finding
+against it.** A bare column name in backticks is only reported inside that
+table's own file, because `qty` in another table's prose could mean anything.
+The **qualified** spelling, `order_items.qty`, is reported wherever it appears in
+the model. Both halves confirmed by putting each spelling in each place.
+
+**One thing ADR 0046 predicted showed up for real.** A row of `dbmd refs` on an
+imported model reads `key  required  on delete: cascade  on update: no action`,
+four marks, two of which say nothing happened. With one referrer it reads fine.
+The record already says where that cost gets paid if it stops reading fine: an
+import option, not a rule about which facts are worth writing.
+
+### And the same against SQL Server 2022, driven on 2026-09-07
+
+The riskier of the two recipes, because it is the one that was outright broken
+once: `sqlcmd` appended `(1 rows affected)` and the JSON was the first 2315 of
+2333 bytes, so the import failed with a message saying the file was probably
+truncated. It was too long.
+
+Followed verbatim this time, `SET NOCOUNT ON;` in its own file and all:
+
+```
+sqlcmd -S server -d shop -y 0 -Y 0 -i nocount.sql -i query.sql -o model.json
+```
+
+One line out, `{` to `}`, no row count, imported first try, `dbmd check` clean.
+
+Three things came through that a fixture would not have exercised:
+
+- **A table literally called `Ledger [Entry]`**, created as `[Ledger [Entry]]]`.
+  It writes to a real file on Windows, reads back, and the diagram quotes it as
+  `"Ledger [Entry]"`. Brackets are legal in a Windows filename, so no refusal was
+  needed, and none happened.
+- **The engine's own type spellings**, `nvarchar(max)`, `datetime2(7)`,
+  `uniqueidentifier`, and a default of `((0))` with SQL Server's own doubled
+  parentheses, kept verbatim rather than normalised.
+- **`on delete: no action` and `on update: no action`** written on a foreign key
+  whose DDL said `on delete no action` and nothing about updates, which is the
+  wall ADR 0046 predicted, seen for real.
+
+### A file another program holds open, driven on 2026-09-07
+
+The Windows case nobody had tried, and the one that found something. An
+exclusive lock taken with `FileShare.None`, which is what an editor, OneDrive, a
+backup agent or antivirus does routinely.
+
+**The command line handles it exactly right.** `dbmd check` reports
+`cannot read the file: the file is in use (EBUSY)` against that file, plus the
+knock-on `ref-table-unknown` from the tables that pointed at it, and exits 1.
+`dbmd export` refuses with an empty stdout, its narration on stderr, and exits 1.
+
+**The studio refuses to write, which is also right, and then says the wrong
+reason.** It answers the edit 200, writes nothing, and reports a conflict saying
+the file "changed on disk after the studio read it". It did not change: I diffed
+it afterwards and it was byte-identical throughout. Its advice, "make the edit
+again", loops until the lock clears. That is **dbmd-e6e**, and it is worth
+knowing that the studio has the true answer in its own diagnostics panel at the
+same moment, two inches away.
+
+Nothing is lost and nothing sticks: once the lock goes, the next edit writes.
+And the page keeps all eight tables on the canvas while it happens, so a locked
+file does not make a box disappear. I checked that specifically, having first
+misread my own probe and nearly recorded the opposite.
+
+### A prose body a naive writer would eat, driven on 2026-09-07
+
+The format's central promise is that a body is carried byte for byte. Tested
+with content chosen to break it: a line that is exactly three hyphens, which is
+what closes frontmatter; a trailing space; a tab; `café`, `日本語` and an emoji;
+a line reading `A line that looks like a key: kind: table`; and three blank
+lines before the end.
+
+`dbmd check` reads it clean. A studio edit then rewrote that file, and the diff
+across the whole file is **one line**, the `layout:` it was asked to change.
+Everything in the body survived, the bare `---` included.
+
+### The note and group lifecycle, re-driven on 2026-09-07 after today's changes
+
+Creating a note through the canvas writes a file with frontmatter and no body,
+the prose box asks for the body with a sentence written for a note rather than a
+generic one, and typing lands in the file. Moving a note rewrites its own file
+and no other, with the rest of the model byte-identical.
+
+**Deleting a group says exactly what it will leave behind.** The confirmation:
+
+> 2 tables still declare `group: warehouse` and are not edited:
+> tables/shipments.md, tables/stock_movements.md. dbmd will report each one as
+> `group-unknown` until you change or remove that line.
+
+It names the files and the diagnostic code a reader will meet. That is the
+answer to a real question, because membership is declared by the member and the
+group file never lists them, so a delete cannot tidy up on the member's behalf
+without editing files the developer did not open.
+
+**A `DELETE` straight at the API does it without that sentence**, and the model
+is then invalid with two `group-unknown` errors. That is the confirmation being
+in the page rather than in the server, which is where the studio puts every
+other confirmation, and it is worth knowing before somebody scripts against the
+API and is surprised.
+
+**Two things about a note's bytes that look wrong and are not.** A note created
+and typed in one go ends without a trailing newline, because the prose box is
+carried byte for byte and never reflowed, and a writer that appended one would
+be reflowing. It is stable: two more rewrites left the body untouched, and
+`dbmd check` is clean. An existing note keeps its own trailing newline through a
+rewrite.
+
+### The index editor and the expression trap, driven on 2026-09-07
+
+Added an index through the panel, typed `lower(email)` into its keys field, and
+walked the whole path a person walks.
+
+- The file gets `columns: [lower(email)]`, and both `dbmd check` and the studio's
+  own footer say the index names a column the table does not have, and teach the
+  spelling: `{ expression: lower(email) }`.
+- **Typing that spelling into the field writes `["{ expression: lower(email) }"]`,
+  a column with those characters in its name.** That is the trap ADR 0047
+  describes, and the loop it used to create has an exit now: the diagnostic no
+  longer offers to wrap it a second time, and says instead that the spelling is
+  right but quoted, so remove the quotes.
+- **The exit that matters is in the row, not the footer.** The editable index row
+  itself says, as it is typed: *"that is how the file spells an expression key,
+  but this field writes column names, so it has been written as a column called
+  that; an expression key is a mapping this one-line field cannot make, so write
+  that one in the file."* That sentence is attached to the field being edited,
+  which is the only place it is actionable. The footer's "remove the quotes" is
+  true and is not something a person can do inside the page.
+
+ADR 0047's decision is implemented as written: the studio carries an expression
+key it cannot author, and says so where it is being asked to author one.
+
+### The CI contract and a re-import under an open page, driven on 2026-09-07
+
+**`--strict` is what a team puts in a pipeline, so it was checked rather than
+assumed.** On a model whose only problem is one column with no type:
+
+| Command | Exit | `ok` |
+| --- | --- | --- |
+| `dbmd check` | 0 | true |
+| `dbmd check --strict` | 1 | false |
+| `dbmd check --strict --json` | 1 | false |
+
+Under `--json` stderr is empty, the report is on stdout, and the envelope
+carries `strict` so a consumer can tell which rule produced the answer rather
+than inferring it from the exit code.
+
+**A re-import under an open studio page behaves.** Imported a model, opened a
+page on it, then re-imported a changed database with `--confirm` while the page
+was up. The page picked the change up on its own: its revision moved, the
+dropped column was gone from what it holds and the widened type was there. The
+next edit from the page then landed normally with no conflict, so the import is
+just another writer as far as the watcher is concerned and leaves nothing stuck.
+
+### A branch switch under an open page, driven on 2026-09-07
+
+The bulk file change people actually make. Two branches differing in **every**
+table file, in both the frontmatter and the prose, with a studio page open on
+the working tree.
+
+`git checkout` of the other branch: the page converged in **one revision**, not
+eight. All eight tables present, every new coordinate, every added paragraph.
+Switching back moved it to revision 2 and the branch-one content was there. An
+edit from the page then landed with no conflict.
+
+So the watcher coalesces a burst rather than storming, and a checkout leaves
+nothing stuck. The only diagnostic afterwards was `unknown-kind-directory` for
+the `.git/` I had put inside the model directory to run the test, which is the
+reader being right about a thing I did.
+
+### A hundred and twenty tables, driven on 2026-09-07
+
+Nobody had ever asked what a large model feels like, and the answer is: fine.
+Generated 120 tables, 13 columns each, chained by a `ref:` with
+`on delete: cascade` so there are 119 edges.
+
+| What | How long |
+| --- | --- |
+| `dbmd check` | 0.36s |
+| `dbmd export`, writing a 36 kB diagram | 0.36s |
+| `dbmd refs` | 0.37s |
+| `GET /api/model`, 287 kB of JSON | 0.012s |
+| The page, opened in a real browser | 1.9s |
+
+The page drew all 120 boxes and all 120 edges with **no console error**, and a
+drag wrote **exactly one file**, one `layout:` line, with the other 119 tables
+byte-identical. So the `only` set holds at scale rather than only on eight
+tables.
+
+Nothing to fix, and it is recorded so nobody spends an afternoon finding that
+out again. The one thing not measured is whether GitHub renders a diagram that
+size, which is a question about their limit rather than about this tool.
+
+### The greenfield journey, driven on 2026-09-07
+
+The user who has no database yet. `dbmd init` into an empty directory, then a
+table built entirely through the canvas: **Add table** armed, a click placing it,
+a name, two columns, a `ref:` typed as `accounts.id`, and `on delete: cascade`
+chosen from the dropdown that appears once the ref is there. Then `dbmd check`
+clean, `dbmd refs accounts` showing the cascade beside the other referrer, and
+`dbmd export` drawing the new edge.
+
+Every step wrote what it said and nothing else. Two things worth knowing:
+
+- **The empty `type` a created column starts with is a warning**, and the studio
+  shows that same diagnostic in its own panel straight away, so the page and the
+  command line agree without anybody switching windows.
+- **A studio-created table has no body at all**, where an imported one carries a
+  line saying nobody has documented it yet. That is dbmd-6yo, and it is a
+  decision to write down rather than a bug: in the studio you are already looking
+  at the inspector and can type, so a prompt line might be noise.
+
+### Spaces and accents, driven on 2026-09-07, and nothing is wrong
+
+Recorded because it is a plausible Windows failure a successor would otherwise
+spend an hour ruling out. A model at `My Models/café shop` works everywhere:
+`check`, `refs`, `export` and the studio all read and write it, and the studio
+renamed `customers` to `clientèle`, wrote `tables/clientèle.md`, edited the
+three referring files and left the model clean. The accented name comes through
+the mermaid diagram quoted, and `refs` prints it with the referential actions
+intact.
+
+One thing that looks like a bug and is not. Launching the studio through
+PowerShell's `Start-Process` with an `ArgumentList` splits a path on its spaces,
+so `dbmd` answers `takes at most one directory, and got 3`, and reading its
+redirected stderr in the default encoding renders `café` as mojibake. Both are
+artifacts of that launcher. Quote the path, or start it from bash.
+
+### Two people editing at once, driven on 2026-09-07
+
+A studio page open on a model, and a file edited by hand on disk underneath it.
+Every part of this behaved:
+
+- **A hand edit to a file the page was not writing survived untouched.** The
+  studio wrote the one table it was asked to and left the other seven files
+  byte-identical, the hand-typed paragraph included.
+- **A hand edit to the file the page then tried to write won.** The server
+  refused with 409, nothing was written, the paragraph stayed, and the page
+  re-read and reverted its own field to what the disk said. The next edit landed
+  normally.
+
+**The status bar says so**, which I nearly filed as missing because I searched
+the page for the wrong words and looked after a later edit had already replaced
+the message. Its wording is the one thing wrong here and it is dbmd-c5g: it
+tells a person to read the model API, in a URL, then gives the same advice
+again in English. The behaviour underneath it is right and is not to be touched.
+
+### The rename, driven end to end on 2026-09-07, after the fix
+
+`orders` renamed to `purchase_orders` in a real browser, on a copy of
+`examples/shop`, with two refs pointing at it: `order_items.order_id` carrying
+`on delete: cascade` and `shipments.order_id` carrying `on delete: restrict`.
+
+**Both actions survived the rename**, which is the data-loss bug dbmd-45 found
+and fixed in `withRefsRetargeted`. Until then that path rebuilt the ref from its
+two halves and would have dropped the cascade from every referring file, and
+nothing would have said so: the model validates clean either way and only a
+delete against a real database would have shown it. A unit test held it; this is
+the first time it was proved through the product.
+
+The rename touched **exactly four files**: one edited line in each of
+`order_items.md` and `shipments.md`, `orders.md` deleted, `purchase_orders.md`
+written. Every other file in the model was byte-identical afterwards, including
+`_model.md`, both notes and the group, so the `only` set that `writeModel` takes
+is doing its job. The `layout:` line came through the rename untouched.
+
+The confirmation panel said what it was about to do before doing it, and named
+the prose it was leaving behind: **"6 mentions of `orders` in backticks stay as
+they are"**, listing the four files. That is the narrow prose scan that shipped
+for rename, seen working rather than asserted.
+
+**Edges leave and arrive at the rows of the two columns, and stay on those rows
+when a box moves.** That was the owner's first complaint and it is the half that
+is hard.
+
+**`Add table` is a two-step mode, and a reviewer who does not know that will
+report it broken.** The button arms placement, the next click on the canvas is a
+coordinate, and a small form then asks for a name. A single click on the button
+looks like nothing happening, and the only visible signal is the button's
+pressed state and a crosshair cursor.
+
+**Notes and groups draw**, as of dbmd-34 landing on 2026-09-07, so the three
+documents that promised them are true again.
+
+**A note can sit on top of a group’s header**, because notes render in front and
+groups behind. The next person to try dragging a group will find it does not
+move and will file a defect. It is the note. Move it and the drag works.
+
+## Audited on 2026-09-07, so a successor need not redo it
+
+All clean unless a line says otherwise. Each was checked by breaking something
+rather than by reading.
+
+- **The studio's four defences, probed rather than read, on 2026-09-07.** Each
+  was attacked from outside the page and each refused:
+  - **Bound to loopback only.** The socket says `127.0.0.1:7314`, not `0.0.0.0`.
+  - **A spoofed `Host` gets 403**, with a code and a sentence naming the host it
+    was asked for. A browser reaching a developer's machine through a DNS name
+    it controls is the attack this closes.
+  - **Anything but `application/json` gets 415**, including the content types a
+    cross-site HTML form is allowed to send without a preflight. That is the
+    layer doing the real work, because the form post is the request no browser
+    will stop.
+  - **No CORS headers on any response**, and a preflight `OPTIONS` gets 405 with
+    none either, so a cross-origin write cannot be negotiated.
+  - **No path traversal**, over five encodings, and **the model directory is not
+    served at all**: a `.env` dropped beside `_model.md` is a 404, as is
+    `_model.md` itself. The page gets the model from `/api/model` as JSON and
+    the server hands out nothing else.
+
+- **`--json` is consistent across all seven commands**, audited on 2026-09-07 by
+  running each one. Every one accepts it, every one answers with a `schema` and
+  an `ok`, and every one exits 1 on a directory that is not there rather than
+  reporting a failure through the envelope alone. `dbmd studio --json` reports a
+  startup refusal that way and otherwise starts the server, which is the only
+  sensible reading for a command that does not end. **Two of the seven do not
+  mention the flag in `--help`**, `import` and `export`, which is a smaller thing
+  than it looked and is why there is no item: `docs/ci.md`, `docs/format.md`,
+  `docs/import-format.md` and the skill all document it, and `--help` is not
+  where this project has promised to be exhaustive.
+- **The studio's API answers its error paths precisely**, probed on 2026-09-07
+  with a request each. Malformed JSON is `bad-request` naming the position; an
+  unknown key is `bad-request` listing the keys a patch does take; deleting a
+  table that is not there is `unknown-table`; creating one that is gives
+  `table-exists`; a five megabyte body is `413 too-large`. **A name the writer
+  refuses is `unsafe-name` rather than a `201 Created` that writes nothing**,
+  which is the bug that shipped once and is the reason this was worth probing
+  rather than assuming.
+- **Every enforcement guard fails when neutered.** Now a suite rather than an
+  afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
+- **Every diagnostic code is emitted and exercised.** The last two exceptions,
+  `file-unreadable` and `import/empty-value`, were closed on 2026-09-07 by
+  dbmd-f3p, dbmd-ft5 and dbmd-lof.
+- **Every `npm run`, every `scripts/*.mjs` and every `dbmd` subcommand named in
+  markdown exists.** The only unreal one is a future `dbmd fmt`.
+  <!-- hypothetical: dbmd fmt -->
+  This one is no longer a sweep: `scripts/check-commands.mjs` repeats it on every
+  run, and ADR 0036 says how it tells a real reference from a hypothetical one.
+- **Every relative link and every anchor in 101 markdown files resolves.**
+- **The studio's five security properties hold**, checked with raw sockets
+  because `fetch` rewrites the `Host` header: loopback bind only and unreachable
+  on the LAN address, an unknown `Host` refused, no `Host` refused, a form post
+  refused, and no CORS headers on a preflight. All five have tests.
+- **The CI recipe in `docs/ci.md` runs**, with the local substitution the page
+  itself tells you to make.
+- **`dbmd export` is idempotent** and writes only between its markers.
+- **`dbmd check --json` is machine-independent.** Its `directory` field echoes
+  what you typed rather than resolving it, so two machines agree.
+- **The whole journey, against real databases rather than fixtures.** A
+  PostgreSQL 16 container, a schema with an enum type, identity primary keys, a
+  cascading foreign key, a composite unique constraint, an index on
+  `lower(note)`, and comments on a table and a column. Then the four steps:
+  print the query, run it through `psql`, import what came back, check it. Clean,
+  and clean under `--strict`. What survived is the interesting part: the enum
+  kept its own spelling and its `'draft'::shop.order_state` default, the
+  expression index came through as `{ expression: lower(note) }`, `timestamp
+  with time zone` and `timestamp without time zone` stayed distinct where the
+  normalised vocabulary would have collapsed them, and the table with a comment
+  got it as prose while the table without one got the prompt line instead. The
+  studio then drew both with the arrow on `orders.account_id` pointing at
+  `accounts.id` rather than at the box.
+
+- **The dbmd skill works when somebody other than its author follows it.** I ran
+  its canonicalise recipe verbatim: a column added in flow style with the wrong
+  key order passed `dbmd check` with **zero diagnostics**, the nine-line script
+  rewrote exactly that one file, a second run reported `unchanged`, and nothing
+  else in the model moved. Then its rename recipe, all five steps: the query in
+  step one printed exactly what the skill shows, moving the file without fixing
+  the refs produced the two `ref-table-unknown` errors and the `name-mismatch`
+  it promises as a safety net, and the finished rename checked green. **The
+  prose hazard is real and table-specific**: `_model.md` names `subscriptions`
+  in backticks, so renaming that table leaves the sentence false with a green
+  check, and renaming `addresses` leaves nothing behind. That is why the skill
+  ends the recipe with a sweep rather than a rule.
+
+- **`dbmd refs` honours the output contract the others do**, checked because it
+  is the newest public surface: `schema: 1`, valid JSON on stdout alone, and
+  byte-identical output from two different directories for the same relative
+  input, because `directory` echoes what you typed rather than resolving it.
+  Its incoming list is sorted and its outgoing list is in **column order**,
+  which is ADR 0006 read correctly rather than ignored: sort where the order is
+  arbitrary, keep it where it means something.
+- **The studio is safe to open on a model that does not fully parse**, which is
+  the case a person is in when they reach for it. With one file carrying a tab
+  in its frontmatter: the page serves, the eight tables that parsed are served,
+  the one diagnostic is reported, and editing a **different** table wrote only
+  that table's file and left the broken one byte-identical. That last part is
+  the data-loss path staying closed, since a whole-model write would have
+  replaced the unparseable file with a model that does not contain it.
+
+- **The contributor path works as written**, tested the way the skill and the
+  query recipes were: `npm run studio -- --no-open --port 8080` builds, binds to
+  the port asked for, prints the URL, opens no browser, serves 200, and writes
+  nothing to the model it is serving. The npm 11 note is still accurate and still
+  relevant: npm here is 11.17.0 and `npm ci` does warn about esbuild's install
+  script, and the build works anyway.
+- **The gate costs about 41 seconds**, measured after a day of adding checks to
+  it: typecheck 3.7s, format 3.3s, the four static checks 0.6s each, tests 9.8s,
+  build 2.1s, `check:pack` 8.5s, `check:guards` 8.4s. **Two thirds of it is the
+  tests and the two that pack a tarball**, and the four static checks together
+  are under three seconds, so the cheap end has room and the expensive end does
+  not.
+
+- **Two studios on one model directory is safe, and the loser is told why.** Both
+  bind, both serve. A edits `orders` and flushes. B, which still holds the old
+  revision and has not noticed, edits the same table: its `PATCH` is accepted at
+  B's own revision, and then B's watcher sees the file changed on disk, reloads,
+  and **drops B's edit rather than writing over A's**. B's status carries the
+  conflict and the sentence a person needs: `the studio has reloaded the file and
+  dropped its own edit to it; make the edit again if you still want it`. The file
+  keeps A's value and only that one file differs from the original. That is
+  ADR 0019's protection working against a second **writer** rather than a hand
+  edit, which is the case `wire.ts` says the revision exists for.
+
+- **The whole note and group lifecycle, driven, and the model came back
+  byte-identical.** A note created by pointing, named, recoloured, given a
+  markdown body and deleted; a group created with a label and a colour, a table
+  joined from its own panel, the table taken out again, the group deleted. After
+  each, only the files that should have changed had. After both, `diff -rq`
+  against the original found nothing.
+  - **The group file never gains a member list or a coordinate.** Membership is
+    one `group:` line in the member's own file, and the group file carries `kind`
+    and `color` and stops. Joining a table changed `tables/customers.md` and not
+    `groups/billing.md`.
+  - **A group whose last member leaves draws a dashed placeholder** rather than
+    vanishing, and `dbmd check` warns `group-empty` with the sentence that names
+    the likely cause: an empty group is usually a rename that missed a file.
+  - **A note the studio writes is canonical.** It has no blank line after the
+    frontmatter where the committed notes do, which looks wrong and is not: the
+    blank line belongs to the body, bodies are preserved byte for byte, and the
+    canonical writer reports the file `unchanged`.
+  - Each colour swatch's tooltip is the line it writes, down to
+    `no colour: the file has no \`color\` key`.
+
+- **The index editor writes what you type, and the error teaches the rest.**
+  `Add index` appends a nameless, columnless row and writes it immediately, which
+  produces two `empty-value` warnings that the panel also shows inline where you
+  are editing. Typing an expression into the columns field writes a bare column
+  name, and the resulting error is one of the best in the tool: it names the
+  column, says the table does not have it, and **tells you to write
+  `{ expression: lower(email) }` instead.** The studio cannot author an
+  expression key, but it **carries one it did not write**: with that key on
+  `customers`, moving the table wrote only the `layout:` line and the key came
+  through byte-identical. Filed as a P4 because the asymmetry is real and the
+  workaround is one message away.
+
+- **The diagram markers refuse rather than guess, and one message forgot the
+  slashes.** A file carrying `<!-- dbmd:diagram -->` without its closing pair is
+  exit 1 with a message naming both markers; a file carrying neither gets the
+  section appended. Both are what `docs/format.md` promises. But that error
+  prints a Windows path where the same report's `--json` and the two success
+  lines all print a slashed one, three lines apart in the same file, whose helper
+  carries a comment explaining exactly why that matters. **`slashed` is
+  export-only and it is one missed call site rather than a pattern**: every other
+  command already prints forward slashes. Filed as a P3.
+
+- **The output contract holds on a model that fails**, which is the case CI
+  depends on. A dangling ref gives exit 1 in both forms; `--json` carries
+  `schema: 1`, `ok: false`, the counts, and a diagnostic with its code, severity
+  and file; and **stderr is empty in `--json` mode**, so a job capturing stdout
+  gets the envelope and nothing leaks past it. No ANSI escapes when piped, with
+  `NO_COLOR`, or with `--no-color`. Colour is not dead code either: `output.ts`
+  detects a TTY per stream and `test/cli/output.test.ts` exists to pin the three
+  inputs to that one decision, which is the part a pty-less session cannot drive.
+
+- **The studio hides things with `[hidden]`, which any class rule beats, and
+  there is exactly one place that mattered.** The page defines no `[hidden]` rule
+  of its own and relies on the browser's, whose specificity is the lowest there
+  is, so a rule setting `display` on a class beats it and the element stays
+  visible. dbmd-45's agent hit that with `#inspector .flags` while driving its
+  own change. I then checked the whole stylesheet against every element the
+  client hides: **nine selectors set `display`, six things get hidden, and
+  `.flags` is the only overlap.** So it is one instance rather than a pattern,
+  and `check:scenes` cannot see this class of thing because the name is used by
+  one scene rather than two.
+
+
+- **Every referential action reaches markdown from a live database, and the
+  command you would ask about them does not mention them.** A PostgreSQL 16
+  schema with all five actions plus `on update` imported clean: `cascade`,
+  `set null`, `set default`, `restrict`, and an undeclared foreign key written
+  explicitly as `no action`. Strict clean, round trip `unchanged`. But
+  `dbmd refs`, whose own record says you ask it immediately before a delete, lists
+  the five referrers and says nothing about which of them cascade, in prose or in
+  `--json`. **Two features that each work, with an empty seam between them**,
+  because `refs` shipped first. Filed.
+
+
+- **The referential actions are editable in the studio and the editor honours the
+  distinction the format makes.** Driven on a copy of `examples/shop`: the panel
+  shows two selects on a column that has a `ref`, carrying the five actions plus
+  an empty option, and the empty one is **not** `no action`. Setting `cascade` to
+  `restrict` wrote one line in one file. Setting it to the empty option **removed
+  the key** rather than writing `no action`, which is ADR 0046's distinction
+  between absent and declared surviving into the editor. Clearing the `ref:`
+  itself took the action with it rather than leaving an orphan the validator
+  would then reject. Every step left the model clean under `--strict`, and no
+  file but the edited one changed.
+
+
+## What proved out, and is easy to lose
+
+Ways this codebase and this platform have actually broken, each found the
+expensive way, plus what looked like a break and was not. **`AGENTS.md` has the
+Gotchas section**, and it is deliberately short: an entry earns a place there by
+having bitten twice, and it is deleted once something enforces the fix. This
+list is looser. Most of these happened once, to somebody who went looking, which
+makes them evidence rather than a rule to remember.
+
+
+- **A studio started from a backgrounded shell gets reaped, and it looks like a
+  crash.** Start one with the tool's background flag and it serves fine, then
+  disappears minutes later with a clean log and no error. I nearly filed that as
+  the studio dying when a directory is deleted underneath it. It is the harness
+  reclaiming the shell's children. `nohup node dist/cli.js studio ... &` with
+  `disown` survives, and the same studio then sat through a `tables/` delete for
+  eighty seconds without noticing. **Reproduce before believing a crash**, and
+  reproduce detached.
+- **`/api/model` carries only the reader's diagnostics, not the validator's.**
+  Its `diagnostics` array is empty for a dangling `ref:` or an empty group, and
+  the page still shows both, because the client derives them from the model it
+  was sent. I nearly filed that as the studio hiding errors. **Look at the page,
+  not at the endpoint**, before saying what a person is told.
+- **A rule written from what a grammar seemed to allow was wrong for months, and
+  nothing could see it.** The mermaid renderer rewrote a word that opened with a
+  digit, on the reasoning that a digit opens a number to the lexer. True, and not
+  the rule: `-`, `.`, `[`, `]`, `(`, `)` and `,` are all legal mid-word and all a
+  parse error at the front. So a column typed `[int]`, which is the SQL Server
+  catalogue's own spelling, drew a diagram GitHub renders as a blank box, with
+  `dbmd check` clean and every test green. Fixed by dbmd-7s6, which put mermaid's
+  own parser behind the tests. **The general shape: a hand-derived rule about
+  somebody else's grammar is a guess until their parser has seen the output.**
+- **A published grammar can get looser, and that is worse than it getting
+  stricter.** ADR 0023 measured `order items {` as a parse error and quoted every
+  entity name because of it. In mermaid 11 that same line parses, as an entity
+  plus an alias. So the failure mode for dropping the quotes moved from a blank
+  box, which somebody notices, to a confident picture of a table nobody has,
+  which nobody notices. **Re-measure a dependency's refusals, not only its
+  acceptances**, when you are relying on one.
+- **The provider seam is real.** SQL Server landed with **zero lines** changed in
+  `src/import/contract.ts` and `src/import/provider.ts`, and `import` then landed
+  on top of both without touching either.
+- **An imported model writes the engine's own type, with its modifier.** Not the
+  normalised vocabulary, because a model file is read by a person holding it
+  against a real database where `string` is not a type any engine has. ADR 0029.
+- **A colon in a table name does not fail on Windows.** It writes an alternate
+  data stream: success reported, content invisible to every listing and to `git`.
+  `src/model/paths.ts` now refuses it.
+- **A test can stop testing without breaking.** Three instances now, and the
+  third was a fence that never fenced: a `GET` that a comment called a barrier is
+  answered from a snapshot and never awaits the write behind it. That one test
+  helper produced a P0 that looked like three different bugs.
+- **A matrix doubles the chance of seeing a flake and dresses it as the
+  version-specific break the matrix was added to find.** Read the failing leg
+  before believing the shape of the failure.
+- **The parser's first error is not its most useful.** Neither emission order nor
+  printed order finds the tab; character position does.
+- **A guard that fires only on the case nobody hits is worse than no guard.**
+  The test behind `docs/format.md` slices its list of diagnostic codes at the
+  first blank line, so a blank line put in to space out a doc comment drops
+  codes from the check. There is a length guard, and it catches a blank line
+  near the top of the list and not one near the bottom. That is why nobody
+  looked again for months. Fixed by dbmd-8ms, which also found that the check
+  matched a bare mention anywhere on the page rather than a table row.
+- **A boundary looser than the writer reports success for a write that never
+  happens.** The studio's name check refused four characters and the writer
+  refuses nine, so `POST /api/table` with `a<b` answered **201 Created**, wrote
+  nothing, and the very next read of the model did not contain it. The page is
+  told the table exists and the disk never hears of it. Found by asserting the
+  two rules against one list, which is the only way it was ever going to
+  surface: each half was correct about itself.
+
+- **One stylesheet for two scenes broke the page twice in a day.** The studio's
+  canvas and its inspector panel share one style block, so a bare class selector
+  matches both. `note` collided with `#inspector .note` and stacked every
+  explanatory sentence in the page corner. Hours later `.notes` collided the same
+  way, and because the unscoped rule was `position: absolute; top: 0; left: 0`
+  and neither inspector rule set `position`, **every red validation paragraph had
+  been rendering behind the toolbar**, including one the create form relies on
+  being read. Singular and plural, one character apart, found by two agents who
+  did not know about each other. Neither was visible in a diff or a test. Both
+  were found by driving the page and noticing something in the wrong place.
+  `.scene >` is the convention now and `npm run check:scenes` enforces it: a
+  class name both files write must have every rule anchored to one scene.
+
+- **An invariant with a comment and no test is a comment.** `messageOf` in the
+  reader threw the system message away because ADR 0006 forbids an absolute path
+  in output, and said so above itself. Nothing asserted it, and the path it
+  guarded was reachable only from two catch blocks no test had ever entered. The
+  test that fixes it is the shape worth copying: **read the same input from two
+  different directories and demand the same bytes**, which fails for a path no
+  test names.
+
+- **An item written from somebody else's observation can have its premise
+  backwards.** dbmd-c8p said the watcher's filename filter reliably ignored a
+  `.tmp` on Windows. Measured over twelve rounds, the same file in a **freshly
+  copied** directory woke it 0 times and in a **long-lived** one 11 times. The
+  quiet was an artifact of the test harness handing every case a directory the
+  watcher had only just attached to, which is never the shape a running studio
+  is in. The right outcome was a corrected comment and a renamed test, and
+  nothing in the watcher moved.
+
+- **A `Dirent` cannot say whether that is a directory.** A junction or a symlink
+  answers `isDirectory() === false` whatever it points at, so a model whose
+  `tables/` was a link had its tables **never read**, and `dbmd check` reported
+  `0 tables, 0 notes, 0 groups, no problems`. Not a malformed model: a correct
+  one the tool refused to read and then called healthy. Found by measuring the
+  symlink case while answering a much smaller question, and it is the reason
+  "leave it alone, it is none of dbmd's business" was the wrong answer. The same
+  shape survived one level down for a linked `.md` file and is fixed too; both
+  now say `a link that resolves to a directory looks exactly like this`.
+
+- **A recipe the tool prints is code, and nothing was running it.** The `sqlcmd`
+  command `dbmd query --engine sqlserver` shipped produced a file ending
+  `(1 rows affected)`, so the JSON was the first 2315 of 2333 bytes and the
+  import failed **with a message saying the file was probably truncated**. It was
+  too long. Then the same question asked of Postgres: its query gives no
+  invocation at all, and the obvious `psql -f q.sql -o out.json` writes a header,
+  a padded column and a `(1 row)` footer, which fails one position earlier with a
+  worse message. **So the asymmetry was never "Postgres is safe", it was
+  "Postgres is silent".** Both found by following the instructions rather than by
+  running the tool, which is a different test and nothing had been doing it.
+
+- **Distance is what goes stale, not counts.** `AGENTS.md` has carried a correct
+  count of the commands through five arrivals, because its count and its list
+  are one sentence. `README.md`'s heading counted entries two hundred lines below
+  it and was wrong twice in three chances. So the heading stopped counting and
+  the entries got a check, which is the split worth copying: **a count is
+  something a person maintains, and an entry is content that has to exist.** A
+  check that reads a heading is the check whose job a rewrite removes.
+
