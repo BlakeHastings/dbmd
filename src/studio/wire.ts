@@ -27,6 +27,7 @@ import type {
   Diagnostic,
   Group,
   Index,
+  IndexKey,
   Layout,
   Model,
   Note,
@@ -295,6 +296,27 @@ function parseColumn(input: unknown, where: string): Parsed<Column> {
 /** The one place that knows what keys an index has, for the same reason. */
 const INDEX_KEYS = ['name', 'columns', 'unique'] as const
 
+/**
+ * One index key: a column name, or `{ expression }` carried through unchanged.
+ *
+ * The inspector cannot edit an expression key and does not try (ADR 0022); it
+ * sends back the one it was given. This has to accept that, or replacing the
+ * index list to rename a neighbouring index would be refused, and the table's
+ * indexes would stop being editable because one of them holds SQL.
+ */
+function parseIndexKey(input: unknown, where: string): Parsed<IndexKey> {
+  if (typeof input === 'string') return { value: input }
+  const map = asMap(input, where)
+  if (isPatchError(map)) return map
+  const unknown = Object.keys(map.value).find((key) => key !== 'expression')
+  if (unknown !== undefined) {
+    return bad(`unknown key \`${unknown}\` on ${where}; an index key takes expression`)
+  }
+  const expression = asString(map.value['expression'], `${where}.expression`)
+  if (isPatchError(expression)) return expression
+  return { value: { expression: expression.value } }
+}
+
 function parseIndex(input: unknown, where: string): Parsed<Index> {
   const map = asMap(input, where)
   if (isPatchError(map)) return map
@@ -306,9 +328,9 @@ function parseIndex(input: unknown, where: string): Parsed<Index> {
   }
   const name = asString(map.value['name'], `${where}.name`)
   if (isPatchError(name)) return name
-  const columns = parseList(map.value['columns'], `${where}.columns`, asString)
+  const columns = parseList(map.value['columns'], `${where}.columns`, parseIndexKey)
   if (isPatchError(columns)) return columns
-  const index: { name: string; columns: readonly string[]; unique?: boolean } = {
+  const index: { name: string; columns: readonly IndexKey[]; unique?: boolean } = {
     name: name.value,
     columns: columns.value,
   }

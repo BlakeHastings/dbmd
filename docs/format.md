@@ -445,11 +445,12 @@ created_at)" }` needs the quotes because of the comma and the apostrophes.
 [Values, quoting and the YAML traps](#values-quoting-and-the-yaml-traps) is the
 same rule and there is no second one for SQL.
 
-One caveat, and it is temporary: **the studio's index editor does not know about
-expression keys yet.** Viewing a model with one is fine and editing anything
-else is fine, but editing *that table's indexes* in the studio will write the
-expression back as though it were a column name. Edit those in your text editor
-until this line goes away.
+One caveat, and it is temporary: **the studio shows an expression key but will
+not let you edit it.** Its keys field is one comma-separated line and an
+expression is a mapping, so the field goes read-only on that index and says why.
+Everything else about the table stays editable, including that index's name and
+its `unique` box, and the expression is carried through untouched. Change the
+expression itself in your text editor until this line goes away.
 
 A `check` constraint is the same question and is not built yet; see
 [What the format does not have](#what-the-format-does-not-have).

@@ -47,6 +47,8 @@ import type { Column, Index, Ref, Table } from '../../model/types.js'
 import type { TablePatch, WireModel } from '../wire.js'
 import {
   endingOf,
+  indexKeysText,
+  keysAreEditableAsText,
   parseIndexColumns,
   parseRef,
   survivesATextarea,
@@ -96,6 +98,14 @@ interface IndexRow {
   readonly columns: HTMLInputElement
   readonly unique: HTMLInputElement
   readonly notes: HTMLParagraphElement
+  /**
+   * The keys this row arrived with, kept only when the one text field cannot
+   * represent them, which today means the row holds an expression key. The
+   * field is read-only in that case and these go back out unchanged, so that
+   * editing this row's name, or any other row, cannot rewrite an expression as
+   * a column called the same characters. ADR 0022.
+   */
+  readonly heldColumns?: Index['columns']
 }
 
 /**
@@ -123,6 +133,17 @@ interface Placement {
    */
   refusal: { readonly name: string; readonly message: string } | null
 }
+
+/**
+ * Why one index's keys are shown and not edited here.
+ *
+ * The keys field is one comma-separated line and an expression key is a mapping
+ * (ADR 0022), so there is no text that would come back as the thing on disk. A
+ * field that accepted an edit would be offering to replace `lower(email)` with
+ * a column called `lower(email)`, which is a different index and a legal one.
+ */
+const INDEX_KEYS_NOT_EDITABLE =
+  'this index has an expression key, which this one-line field cannot hold, so its keys are shown here and changed in the file'
 
 export class Inspector {
   private name: string | null = null
@@ -667,7 +688,13 @@ export class Inspector {
   private indexRow(index: Index): IndexRow {
     const item = el('li')
     const name = textField(item, 'name', index.name, 'index name')
-    const columns = textField(item, 'columns', index.columns.join(', '), 'columns, in order')
+    const editable = keysAreEditableAsText(index.columns)
+    const columns = textField(item, 'columns', indexKeysText(index.columns), 'columns, in order')
+    // Shown and not edited. There is no text a person could type here that
+    // comes back as an expression key, so an editable field would be offering
+    // to replace one with a column of the same characters, which is a different
+    // index and a legal one. ADR 0022.
+    columns.readOnly = !editable
 
     const uniqueLabel = el('label', 'flag')
     const unique = el('input')
@@ -684,8 +711,21 @@ export class Inspector {
 
     const notes = el('p', 'notes')
     item.append(notes)
+    if (!editable) {
+      // Said now rather than only on the next edit, because the refusal is a
+      // property of the row and a person has to see it before they try.
+      notes.textContent = INDEX_KEYS_NOT_EDITABLE
+      notes.hidden = false
+    }
 
-    const row: IndexRow = { item, name, columns, unique, notes }
+    const row: IndexRow = {
+      item,
+      name,
+      columns,
+      unique,
+      notes,
+      ...(editable ? {} : { heldColumns: index.columns }),
+    }
     for (const input of [name, columns]) {
       input.addEventListener('input', () => this.commitIndexes())
     }
@@ -705,8 +745,11 @@ export class Inspector {
 
     const indexes: Index[] = []
     for (const row of this.indexRows) {
-      const columns = parseIndexColumns(row.columns.value)
-      const index: { name: string; columns: readonly string[]; unique?: boolean } = {
+      // A held row's keys never come from the field, so a save prompted by any
+      // other row cannot rewrite them, and this row's name and `unique` stay
+      // editable around keys nothing touched.
+      const columns = row.heldColumns ?? parseIndexColumns(row.columns.value)
+      const index: { name: string; columns: Index['columns']; unique?: boolean } = {
         name: row.name.value,
         columns,
       }
@@ -716,6 +759,7 @@ export class Inspector {
       const said: string[] = []
       if (row.name.value === '') said.push('this index has no name')
       if (columns.length === 0) said.push('this index names no columns')
+      if (row.heldColumns !== undefined) said.push(INDEX_KEYS_NOT_EDITABLE)
       row.notes.textContent = said.join('. ')
       row.notes.hidden = said.length === 0
     }

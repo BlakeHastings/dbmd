@@ -129,12 +129,17 @@ three others already in the contract. dbmd-19 is open about `unique` against
   to it is what makes a consumer that assumed `.name` fail to compile instead of
   reading `undefined`. The JSON and YAML key stays `columns`, because that is
   what every engine's DDL calls it and what a hand-author already wrote.
-- **The studio does not know about expression keys yet**, and its index editor
-  renders a key by joining the list into a text field. A model with an
-  expression index is safe to view and safe to edit anywhere else, and editing
-  *that table's indexes* in the studio would write the expression back as a
-  column name. `src/studio/` is under other work as this lands; the follow-up is
-  named in the pull request and `docs/format.md` says so to a user meanwhile.
+- **The studio shows an expression key and refuses to edit it.** Its keys field
+  is one comma-separated line, and there is no text a person could type into it
+  that comes back as a mapping, so a field that accepted an edit would be
+  offering to replace `lower(email)` with a column called `lower(email)` — a
+  different index, and a legal one. The field goes read-only on that row and
+  says why, the keys go back out unchanged so that editing a neighbouring index
+  cannot flatten them, and everything else about the table stays editable. That
+  is the same instinct as ADR 0018's dashed unanchored edge: an interface that
+  says "I cannot show you this" is honest, and one that silently substitutes
+  something wrong is the defect. Editing an expression in the page is real
+  interface work and is a separate item.
 - **`check` constraints and partial-index predicates are decided here and built
   later.** Both want a new key on a table or an index, every constructor of a
   `Table` would have to grow one, and two of those constructors are in
