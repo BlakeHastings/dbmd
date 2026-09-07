@@ -226,6 +226,19 @@ rather than by reading.
   studio then drew both with the arrow on `orders.account_id` pointing at
   `accounts.id` rather than at the box.
 
+- **The dbmd skill works when somebody other than its author follows it.** I ran
+  its canonicalise recipe verbatim: a column added in flow style with the wrong
+  key order passed `dbmd check` with **zero diagnostics**, the nine-line script
+  rewrote exactly that one file, a second run reported `unchanged`, and nothing
+  else in the model moved. Then its rename recipe, all five steps: the query in
+  step one printed exactly what the skill shows, moving the file without fixing
+  the refs produced the two `ref-table-unknown` errors and the `name-mismatch`
+  it promises as a safety net, and the finished rename checked green. **The
+  prose hazard is real and table-specific**: `_model.md` names `subscriptions`
+  in backticks, so renaming that table leaves the sentence false with a green
+  check, and renaming `addresses` leaves nothing behind. That is why the skill
+  ends the recipe with a sweep rather than a rule.
+
 
 ## What is waiting on the owner
 
