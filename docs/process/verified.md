@@ -456,6 +456,47 @@ rather than by reading.
   that prompted the look: ADR 0028's stale reference was to a *section heading in
   prose*, which no link checker reads. Recorded so the next person who has the
   idea can see it was had, measured and declined, rather than having it again.
+- **The release path was checked short of publishing, on 2026-09-07.** It has
+  never run, and a workflow that has never executed is a guess, so as much of it
+  as can be exercised without uploading to a public registry was:
+  - **GitHub accepts it.** `release` is registered and `active` alongside
+    `check`, `model` and `provenance`, so the file parses and the `tags: ['v*']`
+    trigger is understood. That is the class of failure a first release finds
+    out about at the worst moment.
+  - **The version gate behaves.** `v0.1.0` passes against `package.json`'s
+    `0.1.0`; `v0.2.0` is refused, naming both numbers. A bare `0.1.0` would pass
+    the gate and can never reach it, because the workflow only triggers on `v*`.
+  - **No `NPM_TOKEN` secret exists yet**, so a tag pushed today would reach the
+    publish step and fail there unauthenticated. That is the owner's step and it
+    is the first of the two.
+  - **Nothing is on the registry**: `https://registry.npmjs.org/dbmd` answers
+    404, and no tag has ever been pushed to the repository.
+  - **Not checked, and fail-safe if wrong**: whether `origin/main` exists in a
+    tag checkout for the ancestry gate. `actions/checkout` with `fetch-depth: 0`
+    creates `refs/remotes/origin/*`, and the workflow's own comment says that is
+    why the depth is there. If it were wrong, `git merge-base --is-ancestor`
+    errors, the step fails and nothing is published, which is the right way round.
+- **The import layer was mutation-tested too**, on 2026-09-07, because it is the
+  seam between somebody's real database and their files and a wrong answer there
+  is written down rather than displayed. Three one-line breaks, all caught:
+
+  | What was broken | Tests that failed |
+  | --- | --- |
+  | The SQL Server import never marks an index unique | 93 |
+  | An import writes the normalised vocabulary instead of the engine's spelling | 7 |
+  | The Postgres import never writes an `on delete` | 4 |
+
+  The first number is large because a unique index is load bearing in three
+  places at once: the `UK` mark in the diagram, the relationship operator, and
+  what `dbmd refs` says. That is coverage rather than fragility.
+
+  **One thing this settled that had been left open.** Reading `typeText` while
+  mutating it explains the `numeric(2)` I produced this afternoon from a
+  hand-made fixture with a scale and no precision: that is the
+  fractional-seconds path, which both engines write as one number, and a real
+  catalogue cannot report a numeric scale without a precision. The case was
+  correctly declined as unreachable, and now there is a reason on the record
+  rather than a judgement.
 - **Every enforcement guard fails when neutered.** Now a suite rather than an
   afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
 - **Every diagnostic code is emitted and exercised.** The last two exceptions,

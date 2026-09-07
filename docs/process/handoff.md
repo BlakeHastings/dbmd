@@ -4,7 +4,7 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with one agent working on the owner's only P1, and every
+**As of 2026-09-07, with three agents stopped mid-work, no pull request open, and every
 epic closed.**
 
 ## Where the work is
@@ -68,28 +68,29 @@ it is the safe move either way.
 
 ## In flight, and what is actually left
 
-Two agents.
+**Three agents were stopped by the owner mid-work on 2026-09-07.** Nothing was
+lost and nothing was pushed. What each left, in the repository's own object
+store, on local branches that survive their worktrees being removed:
 
-- **dbmd-o69**, the owner's, and the only P1. They asked for a prominent "This
-  was 100% vibe coded using b-fac", a link to
-  [b-fac](https://github.com/BlakeHastings/b-fac), and for the page to convey
-  that they built this as a tool for personal use. Their sentence is quoted on
-  the item and is not to be softened. The second half is the more useful one: a
-  stranger arriving at a public repository assumes it wants users and issues,
-  and this one was built by one person for their own use.
-- **dbmd-c7q**, on pull request #131, rebasing. Reviewed and verified against a
-  real lock on both sides: `main` tells you a file that parsed perfectly "did not
-  parse ... Fix the file and reload", and the branch says it could not be read,
-  while a genuinely broken file still says "did not parse" word for word.
+- **`tooling/what-a-merge-costs-and-what-nobody-breaks`** carries a **finished
+  commit**, `2f69db1`: `merge-pr.mjs` printing which branches a merge is about
+  to make stale, `check-main-provenance.mjs` and the guard suite, and a new
+  decision record. Roughly 1,150 lines added. It was never pushed, so it has had
+  no CI run and no review. **Treat it as unverified**: an agent that stops has
+  not said its work is done, and this loop merges on the report rather than on a
+  diff looking finished.
+- **`docs/records-that-describe-a-future-that-happened`** has seven modified
+  files uncommitted in its worktree: `README.md`, four decision records, ADR
+  0056 and `test/docs/readme.test.ts`. Mid-work.
+- The flaky-watcher-test agent had barely started: one modified file, no commit.
 
-**Five items are ready and held**, each saying why on itself: dbmd-dil,
-dbmd-76x, dbmd-7b6, dbmd-nm5 and dbmd-5pj. Three of them are small, touch
-different files, and should go to one agent as a batch.
+**None of this should be finished by the orchestrator.** When an agent stops
+mid-task the choice is to resume it or discard it, and quietly completing it
+makes the reviewer the author. The three worktrees are under
+`.claude/worktrees/` and the two branches are listed by `git branch`.
 
-**My own process docs are still uncommitted** and land the moment #131 does.
-
-**The visuals epic, dbmd-fnl, is the owner's.** Both measured children have
-landed; what is left is three questions with a recommendation each.
+**The items are all still open and accurate**: dbmd-nm5, dbmd-76x, dbmd-7b6,
+dbmd-5pj, dbmd-joa, dbmd-dil, and the flaky gate test.
 
 ## What is waiting on the owner
 
