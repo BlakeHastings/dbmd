@@ -156,6 +156,43 @@ Post the three-lens review record on the beads item before merging, with
 `bd comment <id> --file review.md`. The pull request body carries the same three
 headings, and the item is where it stays findable once the branch is gone.
 
+## Never tell an agent to borrow the main checkout's `node_modules`
+
+I put this line in eight consecutive briefs, because five agents in a row
+reported `node_modules` in their worktree as empty or absent and junctioning to
+`C:\...\proj-db-md\node_modules` was what each of them did to get moving. It
+worked every time until it silently stopped.
+
+**On 2026-09-07 a dependency was added, and the main checkout was not
+reinstalled.** #160 added `react`, `react-dom` and their types as
+devDependencies. The main checkout's `node_modules` predated that merge. So an
+agent that junctioned to it got a tree missing three packages the tree needed,
+and `npm run typecheck` failed with:
+
+```
+src/studio/client/feedback.ts(35,55): error TS2307: Cannot find module 'react'
+src/studio/client/feedback.ts(36,28): error TS2307: Cannot find module 'react-dom/client'
+```
+
+**That failure does not look like a dependency problem.** It looks like a broken
+source file in the thing under review, in a file the agent may not have touched.
+The agent that hit it worked it out, removed the junction and ran a real
+`npm ci`. It also said so in its report, which is the only reason the advice got
+corrected rather than repeated a ninth time.
+
+My own checkout was in the same state and I did not know until then: `npm run
+typecheck` was failing locally on `main` and I had not run it since the merge.
+
+**So the brief line is `npm ci` in the worktree, and never a junction.** A
+junction makes the worktree's dependencies a function of when somebody last
+installed somewhere else, which is exactly the sort of invisible coupling this
+loop keeps paying for. `npm ci` is slower by a minute and is correct by
+construction.
+
+**And after a merge that changes `package.json`, install in your own checkout
+too.** Nothing tells you: the tests keep passing in CI, which installs every
+time, and the local failure waits until you next run a check by hand.
+
 ## What an agent in a worktree can actually see
 
 Three things have now cost time here, all of them the same mistake in different
