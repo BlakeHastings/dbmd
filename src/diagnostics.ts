@@ -40,8 +40,10 @@ export type Severity = 'error' | 'warning'
  *
  * `docs/format.md` has a row for every member and `test/docs/format.test.ts`
  * reads this union out of this file to prove it, so adding a member here
- * without adding a row there is a red build. Keep it one unbroken run of
- * `| 'code'` lines: that test slices the union at the first blank line.
+ * without adding a row there is a red build, and so is deleting one and leaving
+ * the row behind. Format this declaration however reads best: that test slices
+ * it at the next top-level `export`, so a blank line in it costs nothing. It
+ * used to slice at the first blank line, and dbmd-8ms is what that cost.
  */
 export type ModelDiagnosticCode =
   /** `readModel` was pointed at something that is not a readable directory. */
