@@ -158,3 +158,32 @@ real refusals needs the network and a pull request in a particular state.
   record is that the set is complete and the omissions are named. A new
   enforcement script with nothing breaking it on purpose puts the repository back
   where 2026-09-07 found it.
+
+## Amendment, 2026-09-07: the list of omissions was itself short by one
+
+Two guards are named above as deliberately not covered. There were three
+uncovered, and the third is not in this record at all.
+
+`scripts/check-main-provenance.mjs` is the other network-dependent guard, and it
+is the **detection** half of the merge gate: `guard-merge.mjs` and `merge-pr.mjs`
+prevent and can both be bypassed, and a layer that can be bypassed cannot tell
+you it was bypassed. This one runs on the result, in CI on every push to `main`
+and by hand after every merge. Nothing had ever proved it detects. Had it
+silently stopped failing on a direct push, every run would have printed the same
+reassuring line it prints today.
+
+This is worse than a missing test, because the section above presents itself as
+exhaustive. "The point of this record is that the set is complete and the
+omissions are named" is the last bullet of it, and the set was not complete. A
+list that claims to be and is not is the failure this repository keeps paying
+for, and correcting it is the minimum this amendment exists to do.
+
+The gap is now closed for both scripts rather than for one. The condition
+recorded above — *`merge-pr.mjs` becomes reachable without the network* — is met:
+both scripts keep their decisions in exported functions whose facts are
+arguments, and their `gh` calls in a `main()` that runs only when the file is the
+entry point. **ADR 0058** records that split, what it covers, and what remains
+unproved inside each `main()`. The original decision above stands unchanged; the
+timings, the split between `npm test` and `npm run check`, and the rule that
+every assertion reads the words are all still what this record says they are.
+
