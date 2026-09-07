@@ -147,6 +147,12 @@ export type ImportDiagnosticCode =
   | 'import/mismatched-columns'
   /** A value is outside a closed vocabulary the contract defines. */
   | 'import/not-in-vocabulary'
+  /**
+   * Two fields are given where the shape allows exactly one of them, so there
+   * is no fact to keep. An index key saying both `column` and `expression` is
+   * the case it was added for.
+   */
+  | 'import/conflicting-fields'
 
 /**
  * Every code dbmd can emit. `dbmd check --json` prints diagnostics from both

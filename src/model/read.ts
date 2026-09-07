@@ -37,6 +37,7 @@ import type {
   Diagnostic,
   Group,
   Index,
+  IndexKey,
   Layout,
   Model,
   ModelDiagnosticCode,
@@ -629,29 +630,46 @@ function readIndex(ctx: Ctx, node: unknown): Index | undefined {
   const fields = fieldsOf(ctx, node)
   const name = requiredString(ctx, fields, 'name', offsetOf(node))
   const columnsField = fields.take('columns')
-  const columns: string[] = []
+  const columns: IndexKey[] = []
   if (columnsField === undefined) {
     report(ctx, 'field-missing', 'error', 'an index needs a `columns` key', offsetOf(node))
   } else {
     for (const item of seqItems(ctx, 'columns', columnsField)) {
-      const column = stringValue(item)
-      if (column === undefined) {
-        report(
-          ctx,
-          'field-wrong-type',
-          'error',
-          `an index column must be a string, but YAML read \`${rawOf(ctx, item)}\` as ${describe(item)}`,
-          offsetOf(item),
-        )
-        continue
-      }
-      columns.push(column)
+      const key = readIndexKey(ctx, item)
+      if (key !== undefined) columns.push(key)
     }
   }
   const unique = takeBoolean(ctx, fields, 'unique')
   fields.reportUnknown('an index')
   if (name === undefined || columnsField === undefined) return undefined
   return { name, columns, ...(unique === undefined ? {} : { unique }) }
+}
+
+/**
+ * One entry of an index's `columns` list: a column name, or an expression.
+ *
+ * A string is always a column name and a mapping is always engine SQL, so the
+ * two cannot be confused in either direction. That is the point: a column may
+ * legally be called `lower(email)`, and before this an index on one and an
+ * index on the other were the same characters in the same place. ADR 0022.
+ */
+function readIndexKey(ctx: Ctx, node: unknown): IndexKey | undefined {
+  const column = stringValue(node)
+  if (column !== undefined) return column
+  if (!isMap(node)) {
+    report(
+      ctx,
+      'field-wrong-type',
+      'error',
+      `an index key must be a column name or \`{ expression: ... }\`, but YAML read \`${rawOf(ctx, node)}\` as ${describe(node)}`,
+      offsetOf(node),
+    )
+    return undefined
+  }
+  const fields = fieldsOf(ctx, node)
+  const expression = requiredString(ctx, fields, 'expression', offsetOf(node))
+  fields.reportUnknown('an index key')
+  return expression === undefined ? undefined : { expression }
 }
 
 function readRef(ctx: Ctx, field: Field): Ref | undefined {

@@ -187,6 +187,35 @@ describe('PATCH /api/table/:name', () => {
     })
   })
 
+  it('carries an expression key back out unchanged, so a neighbouring edit cannot flatten it', async () => {
+    // The inspector cannot edit an expression key and does not try (ADR 0022):
+    // it sends back the one it was given, beside whatever the developer did
+    // change. If the wire refused that shape, a table with one expression index
+    // would have no editable indexes at all; if it accepted a flattened one,
+    // renaming a neighbour would rewrite `lower(price_pence)` as a column of
+    // that name, which is a different index and a legal one.
+    await withStudio(async (running) => {
+      const indexes = [
+        { name: 'products_price_lower_idx', columns: [{ expression: 'lower(sku)' }] },
+        { name: 'products_price_idx', columns: ['price_pence'] },
+      ]
+      const { status } = await call(running.studio, '/api/table/products', {
+        method: 'PATCH',
+        ...json({ indexes }),
+      })
+      expect(status).toBe(200)
+      await settle(running)
+
+      const reread = await readModel(running.dir)
+      expect(reread.diagnostics).toEqual([])
+      const written = reread.model.tables.find((table) => table.name === 'products')?.indexes
+      expect(written?.map((index) => index.columns)).toEqual([
+        [{ expression: 'lower(sku)' }],
+        ['price_pence'],
+      ])
+    })
+  })
+
   it('does not write a file it did not change', async () => {
     await withStudio(async (running) => {
       const { body } = await call(running.studio, '/api/model')

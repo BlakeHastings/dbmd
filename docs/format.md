@@ -209,6 +209,8 @@ indexes:
   - name: customers_email_key
     columns: [email]
     unique: true
+  - name: customers_display_name_lower_idx
+    columns: [{ expression: lower(display_name) }]
 group: billing
 layout: { x: 40, y: 40 }
 ---
@@ -219,6 +221,10 @@ exactly that before the type changed.
 
 `credit_limit_pence` of `0` means no credit rather than no limit, which is the
 opposite of what everybody assumes on first reading.
+
+The index on `lower(display_name)` is what the "find a customer" box searches,
+and it is an expression rather than a column, which is why it is written the
+long way. See [An index](#an-index).
 ```
 
 | key | required | value | means |
@@ -384,17 +390,16 @@ indexes:
 | key | required | value | means |
 | --- | --- | --- | --- |
 | `name` | yes | string | The constraint or index name the engine will print. |
-| `columns` | yes | list of strings | In order. Leading column first. |
+| `columns` | yes | list | In order. Leading key first. See below. |
 | `unique` | no | `true` | A unique index. Omit it for a plain one. |
 
 Name it what the database calls it. That name is the payoff for uniqueness
 living here rather than on the column, so an invented one throws the payoff
 away.
 
-`columns` is a list of column names as strings, and they have to be columns of
-this table: a name that is not gets `index-column-unknown`. Two indexes of one
-table under one name get `duplicate-index`, which is worth catching here because
-the engine would refuse the second one and the model happily carries both.
+Two indexes of one table under one name get `duplicate-index`, which is worth
+catching here because the engine would refuse the second one and the model
+happily carries both.
 
 Omit `unique` on a plain index rather than writing `unique: false`. Both are
 read the same way and dbmd keeps a `false` you wrote, so nothing will tidy it
@@ -402,8 +407,52 @@ away for you. Absent is the one canonical spelling of a plain index, and a model
 where some plain indexes say `false` and others say nothing is a model with two
 spellings of the same fact.
 
-There is no way to write an expression index (`lower(email)`) or a `check`
-constraint. Both are deliberately undecided; see
+#### An index key: a column, or an expression
+
+Each entry of `columns` is one key of the index, and it is one of two things.
+
+**A plain string is a column of this table.** A name that is not one of its
+columns gets `index-column-unknown`, which is nearly always a column that was
+renamed and an index that was not.
+
+**A mapping with an `expression` key is engine SQL**, carried exactly as you
+wrote it and never read:
+
+```yaml
+indexes:
+  - name: entry_lower_code
+    columns: [tenant_id, { expression: lower(ledger_code) }]
+```
+
+The two spellings exist because a column can legally be *called*
+`lower(ledger_code)`, so a bare string cannot mean both. These are two different
+schemas and they are two different files:
+
+```yaml
+columns: [{ expression: lower(ledger_code) }]   # an index on the expression
+columns: [lower(ledger_code)]                   # an index on a column with that name
+```
+
+dbmd does not parse SQL. It stores the expression, shows it, and writes it back
+unchanged; it has no idea which columns it mentions, so it says nothing at all
+about one. `index-column-unknown` cannot fire on an expression, and a
+single-column unique index over an expression does not make any column unique,
+because `unique (lower(email))` leaves `email` free to repeat in another case.
+
+Quote the expression the way you would quote any other value: `{ expression:
+lower(email) }` is fine as it stands, and `{ expression: "date_trunc('day',
+created_at)" }` needs the quotes because of the comma and the apostrophes.
+[Values, quoting and the YAML traps](#values-quoting-and-the-yaml-traps) is the
+same rule and there is no second one for SQL.
+
+One caveat, and it is temporary: **the studio shows an expression key but will
+not let you edit it.** Its keys field is one comma-separated line and an
+expression is a mapping, so the field goes read-only on that index and says why.
+Everything else about the table stays editable, including that index's name and
+its `unique` box, and the expression is carried through untouched. Change the
+expression itself in your text editor until this line goes away.
+
+A `check` constraint is the same question and is not built yet; see
 [What the format does not have](#what-the-format-does-not-have).
 
 ### Refs
@@ -709,12 +758,14 @@ its first save, and so a file you write in this shape never changes at all.
 | a table | `kind`, `table`, `columns`, `indexes`, `group`, `layout` |
 | a column | `name`, `type`, `pk`, `nullable`, `default`, `ref` |
 | an index | `name`, `columns`, `unique` |
+| an index key | a bare string, or `{ expression: ... }` |
 | a note | `kind`, `layout`, `color` |
 | a group | `kind`, `label`, `color` |
 
 **Block style everywhere, with exactly two exceptions.** ADR 0003's own example
 mixes styles and this settles it: `layout` is flow (`{ x: 480, y: 340 }`) and an
-index's `columns` is flow (`[customer_id, status]`). A layout only earns the
+index's `columns` is flow (`[customer_id, status]`), an expression key inside
+it included (`[{ expression: lower(email) }]`). A layout only earns the
 right to be a line a reviewer skips if it is one line. Everything else, columns
 and indexes included, is block:
 
@@ -855,7 +906,7 @@ And about the model, with a path and no line:
 | `duplicate-table` | error | Two tables in one model under one name. A directory cannot do this; an import of two schemas can. | Rename one of them. |
 | `duplicate-column` | error | Two columns of one table under one name. | Delete one. Both are carried, so neither wins. |
 | `duplicate-index` | error | Two indexes of one table under one name. | Rename one. The database would refuse the second. |
-| `index-column-unknown` | error | An index names a column its own table does not have. | Usually the column was renamed and the index was not. |
+| `index-column-unknown` | error | An index names a column its own table does not have. Never fires on an expression key. | Usually the column was renamed and the index was not. If you meant an expression, write `{ expression: ... }`. |
 | `primary-key-missing` | warning | A table with columns and no `pk: true` on any of them. | Add `pk: true`, or accept a keyless table. |
 | `group-empty` | warning | A group file no table declares itself a member of. | Add `group:` to a table, or delete the group file. |
 
@@ -870,9 +921,15 @@ under `--strict`. [ADR 0020][adr20] is why the boundary is there.
 Named here so you stop looking, and because a reference that pretends to be
 complete is worse than one that says where it ends.
 
-- **No `check` constraints, and no expression indexes.** Both are engine SQL that
-  dbmd could carry but could not read, render or compare, and they want one
-  answer between them rather than two conventions.
+- **No `check` constraints yet.** They are engine SQL dbmd can carry but cannot
+  read, render or compare, which is the same question as
+  [an expression index](#an-index-key-a-column-or-an-expression). That question
+  is now answered ([ADR 0022][adr22]) and `checks:` is the key they will get,
+  with `name` and `expression` on each entry. It is not built, so writing it
+  today gets `unknown-key`.
+- **No `where` on an index**, so a partial or filtered index loses its
+  predicate. The same answer covers it when somebody builds it: a plain string,
+  since nothing but SQL can stand there.
 - **No `on delete` behaviour on a `ref`.** `on delete cascade` says what the
   database *does*, and this is a model rather than a migration.
 - **No schemas.** Table files are flat, so two schemas with a table of the same
@@ -908,4 +965,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr5]: architecture/decisions/0005-the-canvas-holds-more-than-tables.md
 [adr17]: architecture/decisions/0017-the-validator-is-a-second-opinion.md
 [adr20]: architecture/decisions/0020-what-dbmd-check-fails-on.md
+[adr22]: architecture/decisions/0022-engine-sql-in-a-format-that-does-not-read-sql.md
 [prettier]: https://prettier.io

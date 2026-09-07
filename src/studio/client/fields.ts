@@ -8,7 +8,7 @@
  * are where the mistakes are, and a test can hold them without a browser.
  */
 
-import type { Ref } from '../../model/types.js'
+import type { IndexKey, Ref } from '../../model/types.js'
 
 /** LF or CRLF: which ending a body arrived with, and therefore must leave with. */
 export type LineEnding = '\n' | '\r\n'
@@ -84,4 +84,31 @@ export function parseIndexColumns(text: string): string[] {
     .split(',')
     .map((name) => name.trim())
     .filter((name) => name !== '')
+}
+
+/**
+ * Whether one comma-separated field can hold these keys and give them back.
+ *
+ * It can hold column names and nothing else. An expression key is a mapping in
+ * the format (ADR 0022) and there is no text a person could type into this
+ * field that would come back as one, so a field that offered to edit it would
+ * be offering to replace it with a column called something like
+ * `lower(display_name)`, which is a different index and a legal one. The
+ * inspector shows such a row and refuses to edit it, which is ADR 0016's
+ * "shows rather than refuses" reaching the case where showing is all it can
+ * honestly do.
+ */
+export function keysAreEditableAsText(columns: readonly IndexKey[]): boolean {
+  return columns.every((key) => typeof key === 'string')
+}
+
+/**
+ * The keys as the model file spells them, for a field that shows rather than
+ * edits. A column is its name and an expression is the mapping the file holds,
+ * so what the field shows is what is on disk.
+ */
+export function indexKeysText(columns: readonly IndexKey[]): string {
+  return columns
+    .map((key) => (typeof key === 'string' ? key : `{ expression: ${key.expression} }`))
+    .join(', ')
 }

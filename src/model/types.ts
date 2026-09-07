@@ -49,9 +49,38 @@ export interface Column {
   readonly ref?: Ref
 }
 
+/**
+ * Engine SQL standing where a column name could stand, written
+ * `{ expression: "lower(email)" }` in an index's `columns` list.
+ *
+ * It is a mapping and not a string because the string is already taken: a
+ * column may legally be called `lower(email)`, so a bare string that sometimes
+ * meant a column and sometimes meant SQL would be a fact dbmd could not read
+ * back. ADR 0022, and the reason it happened is dbmd-18.
+ *
+ * The text is carried and never interpreted. dbmd does not parse SQL, so it
+ * cannot say which columns an expression mentions, and the validator therefore
+ * says nothing about one rather than guessing.
+ */
+export interface IndexExpression {
+  readonly expression: string
+}
+
+/**
+ * One key of an index: a column of this table by name, or an expression.
+ *
+ * A plain string is the column, because that is what a hand-author types and
+ * what nearly every index is. The introspection contract spells the same key
+ * `{ column: 'email' }` (`IndexKey` in `src/import/contract.ts`), and the
+ * asymmetry is deliberate: a file is written by a person and a wire format is
+ * written by a provider, and an unlabelled string in the wire format is exactly
+ * the bug this union exists to close.
+ */
+export type IndexKey = string | IndexExpression
+
 export interface Index {
   readonly name: string
-  readonly columns: readonly string[]
+  readonly columns: readonly IndexKey[]
   /**
    * `unique: true`. Absent means the file did not say, which is a plain index.
    *

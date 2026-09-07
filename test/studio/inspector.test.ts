@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Table } from '../../src/model/types.js'
 import {
   endingOf,
+  indexKeysText,
+  keysAreEditableAsText,
   parseIndexColumns,
   parseRef,
   survivesATextarea,
@@ -122,6 +124,31 @@ describe('the columns of an index, typed as one field', () => {
     expect(parseIndexColumns('customer_id, placed_at')).toEqual(['customer_id', 'placed_at'])
     expect(parseIndexColumns('customer_id,')).toEqual(['customer_id'])
     expect(parseIndexColumns('')).toEqual([])
+  })
+
+  /**
+   * The guard that stops the field corrupting what it cannot hold.
+   *
+   * Before it, an expression key reached the field as `[object Object]` and
+   * touching the row wrote that back, so a hand-written `lower(display_name)`
+   * index became an index on a column called `[object Object]`. The field is
+   * one comma-separated line and an expression key is a mapping (ADR 0022), so
+   * the honest answer is to show it and refuse the edit rather than to accept
+   * an edit that means something else.
+   */
+  it('can be edited as text when every key is a column, and not when one is not', () => {
+    expect(keysAreEditableAsText(['customer_id', 'placed_at'])).toBe(true)
+    expect(keysAreEditableAsText([{ expression: 'lower(display_name)' }])).toBe(false)
+    // One expression among columns is still not editable: the field would have
+    // to give back a mixture and there is no text that says so.
+    expect(keysAreEditableAsText(['tenant_id', { expression: 'lower(email)' }])).toBe(false)
+  })
+
+  it('shows the keys the way the file spells them, never as a stringified object', () => {
+    expect(indexKeysText(['tenant_id', { expression: 'lower(email)' }])).toBe(
+      'tenant_id, { expression: lower(email) }',
+    )
+    expect(indexKeysText([{ expression: 'lower(email)' }])).not.toContain('[object Object]')
   })
 })
 

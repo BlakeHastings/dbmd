@@ -205,7 +205,7 @@
           "is_constraint": false,
           "key_columns": [
             {
-              "column_name": "lower(note)",
+              "expression": "lower(note)",
               "is_descending": false
             }
           ],

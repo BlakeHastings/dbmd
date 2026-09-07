@@ -16,7 +16,7 @@ import type {
   ForeignKey,
   Identity,
   Index,
-  IndexColumn,
+  IndexKey,
   IntrospectionDocument,
   NormalisedType,
   PrimaryKey,
@@ -180,12 +180,16 @@ SELECT json_strip_nulls(json_build_object(
           'predicate', pg_catalog.pg_get_expr(i.indpred, i.indrelid),
           'key_columns', (
             SELECT json_agg(json_build_object(
-              -- An expression index has no attribute behind the key column, so
-              -- the expression itself stands in for a name.
-              'column_name', COALESCE(
-                ia.attname,
-                pg_catalog.pg_get_indexdef(i.indexrelid, k.ord, true)
-              ),
+              -- An expression key has no attribute behind it, and that absence
+              -- is the only thing that tells the two apart: a column really can
+              -- be called lower(ledger_code) itself. So they are reported as two
+              -- fields, exactly one of which is ever non-null, rather than
+              -- coalesced into one string nobody downstream can decode.
+              'column_name', ia.attname,
+              'expression', CASE
+                WHEN ia.attname IS NULL
+                THEN pg_catalog.pg_get_indexdef(i.indexrelid, k.ord, true)
+              END,
               'is_descending', (i.indoption[k.ord - 1] & 1) = 1
             ) ORDER BY k.ord)
             FROM generate_series(1, i.indnkeyatts::int) AS k(ord)
@@ -410,18 +414,22 @@ function primaryKey(raw: unknown): PrimaryKey | undefined {
   return { ...optional('name', str(raw['constraint_name'])), columns }
 }
 
-function indexColumn(raw: Raw): IndexColumn {
-  return {
-    name: str(raw['column_name']) ?? '',
-    ...(raw['is_descending'] === true ? { descending: true } : {}),
-  }
+/**
+ * One index key. `column_name` is null exactly when the key is an expression,
+ * which is the query's own doing and the only way the two can be told apart.
+ */
+function indexKey(raw: Raw): IndexKey {
+  const direction = raw['is_descending'] === true ? { descending: true } : {}
+  const column = str(raw['column_name'])
+  if (column !== undefined) return { column, ...direction }
+  return { expression: str(raw['expression']) ?? '', ...direction }
 }
 
 function index(raw: Raw): Index {
   const included = names(raw['included_columns'])
   return {
     name: str(raw['index_name']) ?? '',
-    columns: list(raw['key_columns']).map((item) => indexColumn(obj(item))),
+    columns: list(raw['key_columns']).map((item) => indexKey(obj(item))),
     ...(included.length > 0 ? { includedColumns: included } : {}),
     isUnique: raw['is_unique'] === true,
     ...optional('filterExpression', str(raw['predicate'])),

@@ -7,6 +7,8 @@ export type {
   Column,
   Group,
   Index,
+  IndexExpression,
+  IndexKey,
   Layout,
   Model,
   Note,
