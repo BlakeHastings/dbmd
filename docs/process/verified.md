@@ -408,6 +408,34 @@ when it should not have.
 All clean unless a line says otherwise. Each was checked by breaking something
 rather than by reading.
 
+- **The whole check, run locally on `main` at the end of 2026-09-07**, after
+  forty-odd merges in one day. This is the command `release.yml` runs through
+  `prepublishOnly`, so it is the nearest thing to a rehearsal of the publish that
+  does not touch the registry.
+
+   what                                  | result
+  ---------------------------------------|--------------------------------------
+   exit code                             | 0
+   test files                            | 43
+   tests                                 | 1,093 passed, 1 skipped
+   tarball                               | 77 files, 241.3 kB packed, 811.7 kB unpacked
+   commands driven from the installed binary | 16
+   pack guard rounds that refused        | both
+
+  **The installed binary is driven through sixteen commands**, which is the line
+  worth reading rather than the count: `--version`, `--help`, every command's own
+  `--help`, then `init`, `check`, `check --strict`, `export --stdout`,
+  `refs accounts`, `query --engine postgres`, and `import` with nothing on
+  standard input. Six of the seven commands are exercised for real; `import` is
+  the seventh and its refusal is what is checked, because a real import needs
+  JSON only a live database produces.
+
+  **Both guard rounds refuse.** One mutates `files` so the studio bundle is not
+  in the tarball; the other puts the development overlay back on the release
+  entry point. A tarball that is still 77 files under the second mutation is why
+  that guard reads bytes rather than counting files.
+
+
 - **The studio's HTTP surface, attacked on 2026-09-07 rather than read.** A
   studio on a copy of `examples/shop`, and every case below was sent by hand.
   **Nothing was found**, which is worth recording precisely because the next
