@@ -46,7 +46,7 @@ CI recipe invented a version number out of nothing. ADR 0051.
 
 ## What exists today
 
-Four pieces. `src/model/` turns a `db-model/` directory into a typed
+`src/model/` turns a `db-model/` directory into a typed
 model plus a list of diagnostics, says where that model disagrees with itself,
 writes one back canonically, and `src/index.ts` exports all three. `src/import/` holds the introspection contract, the provider
 seam, the PostgreSQL and SQL Server providers behind it, and the pure function

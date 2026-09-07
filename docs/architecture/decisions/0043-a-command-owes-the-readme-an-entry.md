@@ -160,3 +160,41 @@ against a registry, `package.json` and the filesystem. A check that counted bold
 paragraphs would be guessing at what a list is, and it would be the second
 mechanism in this repository for a problem whose first mechanism is writing the
 sentence properly.
+
+## A third count, found an hour after the second, and it is the same shape again
+
+Appended rather than edited, and appended a second time on the same day because
+the thing being recorded is a prediction coming true twice rather than a
+correction to what is above.
+
+The section above this one reported that `AGENTS.md`'s Invariants count said two
+while five followed it, and concluded that what is reliable is the sentence shape
+rather than the file. **An hour later the same file's "What exists today" opened
+with "Four pieces" and described five**: `src/model/`, `src/import/`,
+`src/cli.ts` with `src/cli/`, `src/studio/` and `src/export/`. Checked against
+the tree rather than by counting the prose: `src/` holds exactly those five
+directories.
+
+So this file now has three counts and the tally is one for three:
+
+| count | shape | right? |
+| --- | --- | --- |
+| commands | number and list in one sentence | **yes**, seven and seven |
+| invariants | number in a lead-in, list five paragraphs below | no |
+| pieces | number in a lead-in, list one paragraph below | no |
+
+**The one that survives is the one whose number you cannot edit the list without
+touching.** Both failures put the number in a lead-in sentence, and in both cases
+the thing that grew was the list. "Four pieces" was presumably true before
+`src/export/` or `src/studio/` existed, which is the README heading's failure
+exactly: a count of entries that end below where the eye stops.
+
+The fix is the same as the entry above prescribes and the same as was applied to
+the invariants: the number is gone rather than corrected to five. Correcting it
+would rebuild the trap with a bigger number in it, and this record now has two
+same-day demonstrations that the trap gets rebuilt.
+
+**Still no check, and now with a stronger reason.** Three counts, three different
+grammatical shapes, one of them safe. A checker would have to decide what a list
+is in prose, and the thing that actually works is a sentence you cannot edit
+halfway.
