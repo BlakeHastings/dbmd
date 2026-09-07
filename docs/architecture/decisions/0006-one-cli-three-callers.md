@@ -80,3 +80,33 @@ the detection is wrong.
   without disturbing anyone.
 - **The JSON contract needs a breaking change.** Then it needs a version field
   in the output before it needs the change, and that is worth noticing early.
+
+## Amended by dbmd-35, once `dbmd studio` was a command somebody could script
+
+The consequence above says a script can start the studio, read the URL from
+stdout, and drive it. **The URL is on stderr.** Rule 1 has not moved: what moved
+is the recognition, in ADR 0011, that the bound URL is narration rather than
+data, so it goes where narration goes. ADR 0011 put every write behind one
+module and gave `startStudio` a `log` that defaults to `narrate`, and that
+default is the line the studio prints. What it did not do is say what that meant
+for this sentence, which is why this paragraph exists rather than a footnote
+there.
+
+What a script does instead: start `dbmd studio --no-open`, read **stderr** for
+`http://127.0.0.1:<port>/`, and drive that. `--port 0` is the default, so with
+no `--port` that line is the only place the real port exists, and a script that
+discards stderr has thrown away the address of the thing it just started. A
+script that would rather not scan for a URL passes `--port` itself and knows the
+answer before it starts.
+
+`--json` does not answer this, and saying so is the honest half of the
+amendment. The studio honours it, but a report is one value a command produces
+when it has finished, so the payload, which carries the directory, the url, the
+port and the signal that stopped it, reaches stdout only once the server has
+stopped. That is no use to a caller that wants the port while the server is
+running, and that caller reads the stderr line.
+
+The gap between those two, structured narration while a long-running command is
+still running, is this record's own "Revisit when" about streaming progress:
+line-delimited JSON on stderr. It is a decision rather than a detail and it is
+not taken here.
