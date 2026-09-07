@@ -9,13 +9,24 @@ epic closed.**
 
 ## Where the work is
 
-One hundred and thirty-one pull requests have merged, all through
+One hundred and thirty-six pull requests have merged, all through
 `merge-pr.mjs`, and the provenance audit is clean across every commit on `main`.
-**99 items closed, 7 open**. One is the owner's and it is the only P1;
-five are P3s I filed by driving the product or by reading the records against
-the tree, and the seventh is the owner's visuals epic. **All eight epics are
-closed**, the last two on 2026-09-07: import, which closed when re-import
-landed, and publishing.
+**100 items closed, 9 open**. **All eight epics are closed**, the last two on
+2026-09-07: import, which closed when re-import landed, and publishing. The one
+P1 is mine rather than the owner's: `dbmd-056`, the flaky watcher test, because
+the publish the owner has been asked to trigger runs the suite it sits in.
+
+**`npm run check` passes on `main` as of 2026-09-07**, run whole and locally:
+typecheck, format, the four content checks, 1,021 tests, the build, the pack
+smoke and the pack guard. That is the command `release.yml` runs through
+`prepublishOnly`, so it is the closest thing there is to a rehearsal of the
+publish.
+
+**Four of the last hundred check runs on `main` went red and nobody noticed**,
+including me. Two were a race the flush repair had already fixed by the time I
+read them; two are live and both are in `test/studio/watch.test.ts`. `dbmd-056`
+carries the evidence and `dbmd-rjd` carries the general problem, which is that
+`merge-pr.mjs` prevents a red merge and nothing detects a red result.
 
 **Nothing is blocked.** That has been true since the owner answered the two
 questions that were, at about 13:20.
@@ -108,10 +119,27 @@ and neither should be re-asked:
   recommendation on the first case, and it is built and merged.
 - **Publishing.** _"Yes let's publish to npm"_, after five asks.
 
-**One step is theirs and the loop cannot take it.** Once #118 lands: add an npm
-token as the repository secret `NPM_TOKEN`, then `git tag v0.1.0` and push it.
-Until they do, `npx dbmd` resolves nothing, and no page in the repository claims
-otherwise.
+**One step is theirs and the loop cannot take it.** Add an npm token as the
+repository secret `NPM_TOKEN`, then `git tag v0.1.0` and push it. Until they do,
+`npx dbmd` resolves nothing, and no page in the repository claims otherwise.
+
+Two things about that step were checked on 2026-09-07 so the owner does not
+discover them at the tag. **The name is free**: `dbmd` returns 404 from the
+registry, and so do `db-md`, `db_md`, `dbMd` and `dbmd.js`, so npm's
+too-similar rule has nothing to catch on. **And a red publish is not necessarily
+about their tag**: `release.yml` has no test step because `npm publish` runs
+`prepublishOnly`, which is the whole check suite, which contains the flaky
+watcher test. If the publish job fails on that, the tag is fine and re-running
+the job publishes. The workflow's own error text says to delete the tag and tag
+again, which is right for a version mismatch and wrong for this. `dbmd-056`.
+
+**Two agents were cancelled with finished or nearly finished work, and
+re-dispatching them is the owner's call.** `docs/records-that-describe-a-future-that-happened`
+is documentation, finished, 322 lines, and its uncommitted part is a 526-line
+patch in the session scratchpad under `cancelled-work/`.
+`tooling/what-a-merge-costs-and-what-nobody-breaks` is commit `2f69db1`, 1,158
+lines through `merge-pr.mjs` and the guard suite, never pushed and so never
+checked; the worst case if it is wrong is that nothing can merge.
 
 What is left is neither urgent nor blocking:
 
