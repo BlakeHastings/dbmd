@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { exampleModel } from '../../src/cli/example.js'
 import { readModel } from '../../src/model/read.js'
+import { validate } from '../../src/model/validate.js'
 import { writeModel } from '../../src/model/write.js'
 import { runCli, type Run } from './harness.js'
 
@@ -107,6 +108,11 @@ describe('dbmd init', () => {
 
     const { model, diagnostics } = await readModel(directory)
     expect(diagnostics).toEqual([])
+    // Both halves, because `dbmd check` is both halves. The reader's list alone
+    // leaves the scaffold free to grow a `primary-key-missing` or a `group-empty`
+    // and say so on every new user's first command, which is a validator
+    // warning, exits 0, and moves nothing this test used to look at.
+    expect(validate(model)).toEqual([])
     expect(model.name).toBe('example')
     expect(model.tables.map((table) => table.name)).toEqual(['accounts', 'api_keys'])
     expect(model.notes).toHaveLength(1)
