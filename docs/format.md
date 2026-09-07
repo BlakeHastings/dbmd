@@ -892,7 +892,7 @@ moves again.
 
 You are not obliged to produce any of this. Anything YAML accepts is read, and a
 file is rewritten only when something saves *that* file: `dbmd import` and a
-future `dbmd fmt` bring a whole directory into this shape, and the studio saves
+future `dbmd fmt` bring a whole directory into this shape, and the studio saves <!-- hypothetical: dbmd fmt -->
 the files you edited and leaves the rest alone. So a model where two tables are
 canonical and six are however you typed them is a normal model.
 
@@ -978,7 +978,7 @@ leaves the line off.
 | code | severity | what happened | what to do |
 | --- | --- | --- | --- |
 | `model-directory-unreadable` | error | The model directory is not there or not readable. | Check the path. |
-| `file-unreadable` | error | A file or a kind directory could not be read. | Check permissions. |
+| `file-unreadable` | error | A file or a kind directory could not be read. The message says why in words, with the errno beside them: `permission denied (EACCES)`, `no such file or directory (ENOENT)`. The errno is all dbmd prints of the system's error, because the rest of it is an absolute path and [ADR 0006](architecture/decisions/0006-one-cli-three-callers.md) rule 4 wants the same bytes on every machine. | Read the errno rather than assuming permissions. `ENOENT` on a file dbmd had just listed means it went away mid-read: a delete, or a branch changed under the command. |
 | `model-file-missing` | warning | No `_model.md`. | Add one, or accept a model with no name. |
 | `unknown-kind-directory` | warning | A directory that is not `tables`, `notes` or `groups`. | Move the files, or delete the directory. |
 | `frontmatter-absent` | error | The file does not start with a `---` line. | Add the frontmatter. Check for a blank first line. |
