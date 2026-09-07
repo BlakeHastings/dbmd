@@ -6,7 +6,7 @@
  * membership declared by the member). These types are that format after
  * parsing, and nothing more: they hold what the files say, not what the files
  * ought to say. Deciding whether a `ref` points at a table that exists is
- * dbmd-12's job, not this module's.
+ * `src/model/validate.ts`'s job, not this module's.
  */
 
 import type { Diagnostic } from '../diagnostics.js'
@@ -158,7 +158,7 @@ export interface Model {
    * Target table name to the edges pointing at it: the reverse of `ref`, which
    * ADR 0003 deliberately left uncomputed on disk. Keyed by the name written in
    * the `ref`, so an edge to a table that does not exist still appears here;
-   * saying so is dbmd-12's job.
+   * saying so is `src/model/validate.ts`'s job.
    */
   readonly referencesTo: ReadonlyMap<string, readonly RefEdge[]>
   /**

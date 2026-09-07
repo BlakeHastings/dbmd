@@ -323,6 +323,12 @@ nowhere to put the name. [ADR 0003's amendment][adr3] has the rest.
 
 `pk: true` on every column in the key. There is no separate `primaryKey:` list.
 
+A table that has columns and puts `pk: true` on none of them gets a
+`primary-key-missing` **warning**, because a table without a key is a real thing
+to have and usually a thing to fix later. A table with no columns at all is not
+warned about: it is a table nobody has filled in yet, and there is nothing there
+to key.
+
 > **The order of the key is the order the columns appear in the file.**
 > Reordering `columns:` for readability silently changes the primary key, and
 > nothing will tell you. Put the key columns first, in key order, and leave them
@@ -385,8 +391,10 @@ Name it what the database calls it. That name is the payoff for uniqueness
 living here rather than on the column, so an invented one throws the payoff
 away.
 
-`columns` is a list of column names as strings. dbmd does not check that they
-exist yet; that is the validator's job and the validator is not built.
+`columns` is a list of column names as strings, and they have to be columns of
+this table: a name that is not gets `index-column-unknown`. Two indexes of one
+table under one name get `duplicate-index`, which is worth catching here because
+the engine would refuse the second one and the model happily carries both.
 
 Omit `unique` on a plain index rather than writing `unique: false`. Both are
 read the same way and dbmd keeps a `false` you wrote, so nothing will tidy it
@@ -429,8 +437,67 @@ columns:
 `ref: customers.id`.
 ```
 
-Whether the target exists is not checked yet. A typo in a table name is
-currently a quiet dangling arrow rather than a diagnostic.
+The target has to exist, and it is checked in two halves because they are two
+different typos. A table half that names no file is `ref-table-unknown`; a
+column half that names no column of a table that does exist is
+`ref-column-unknown`. Both are errors, and both point at the file the `ref` is
+written in rather than at the target, because that is the file you edit.
+
+The target also has to identify one row, and when it does not you get a
+`ref-target-not-unique` **warning**:
+
+```yaml
+  - name: promo_code
+    type: text
+    ref: promotions.code    # warns unless `code` is a key or a unique index
+```
+
+A column identifies one row when it is the table's whole primary key, or when a
+`unique: true` index covers it and nothing else. One column of a composite key
+is not enough, and neither is one column of a two-column unique index: `unique`
+on `(room, starts_at)` says nothing at all about `room`. It is a warning rather
+than an error because pointing at a non-unique column is occasionally deliberate
+and much more often a typo.
+
+Which makes this the third file of the model this page has been building, and
+the one `invoice_lines` has been pointing at since the top of it:
+
+```markdown dbmd:tables/invoices.md
+---
+kind: table
+table: invoices
+columns:
+  - name: id
+    type: uuid
+    pk: true
+  - name: customer_id
+    type: uuid
+    nullable: false
+    ref: customers.id
+  - name: reference
+    type: text
+    nullable: false
+  - name: issued_on
+    type: date
+    nullable: false
+  - name: total_pence
+    type: integer
+    nullable: false
+indexes:
+  - name: invoices_reference_key
+    columns: [reference]
+    unique: true
+layout: { x: 480, y: 40 }
+---
+
+`id` is the surrogate key and `reference` is the one printed on the document, so
+both have to be unique and only one of them is the primary key. That is the
+whole reason `unique` is an index key rather than a column key: without
+`invoices_reference_key` there would be nowhere to say that `reference` is
+unique, and a `ref: invoices.reference` elsewhere would have to be warned about.
+
+Invoices are immutable once issued. A correction is a credit note.
+```
 
 ### Layout
 
@@ -540,7 +607,9 @@ Two things a group file deliberately cannot say:
   warning and is ignored. [ADR 0005][adr5] has both arguments.
 
 An empty group, one nothing declares itself a member of, is legal and is almost
-always a rename that went wrong.
+always a rename that went wrong, so it is a `group-empty` **warning** rather
+than an error. The warning is on the group file, because that is the file to
+delete if the group really has gone.
 
 ## Values, quoting and the YAML traps
 
@@ -736,13 +805,22 @@ in a file it does not own.
 ## Every diagnostic
 
 dbmd reports problems rather than throwing, and reports all of them in one pass.
-A diagnostic has a stable `code`, a `severity`, the file's path and usually a
+A diagnostic has a stable `code`, a `severity`, the file's path and sometimes a
 line.
 
 **`error` means something in the file did not make it into the model.** dbmd will
 refuse to save over a file that raised one, because writing the model back would
 delete the line it could not understand. **`warning` means it loaded and is
 probably still wrong.**
+
+The table has two halves and the line number is what tells them apart. The first
+half is about **one file**, raised while reading it, and usually carries the line
+the mistake is on. The second half is about the **whole model**, raised after
+every file is read, and carries a path and no line: a dangling `ref` is a
+disagreement between two files and there is no honest line to put on it. Guessing
+one by searching the file for the column name would find the fortieth `id` as
+readily as the right one, so dbmd names the column in the message instead and
+leaves the line off.
 
 | code | severity | what happened | what to do |
 | --- | --- | --- | --- |
@@ -767,8 +845,22 @@ probably still wrong.**
 | `ref-malformed` | error | A `ref:` that is not `table.column`. | Add the column. |
 | `group-unknown` | error | `group:` names a file that is not in `groups/`. | Create it, or fix the name. |
 
-`dbmd check`, which will print these from the command line, does not exist yet.
-Until it does, the honest advice is to keep this page open.
+And about the model, with a path and no line:
+
+| code | severity | what happened | what to do |
+| --- | --- | --- | --- |
+| `ref-table-unknown` | error | A `ref:` whose table half names no file in `tables/`. | Fix the spelling, or add the table. |
+| `ref-column-unknown` | error | A `ref:` whose table exists and whose column half is not one of its columns. | Check it against that table's `columns:`. |
+| `ref-target-not-unique` | warning | A `ref:` at a column that is neither a whole primary key nor covered by a single-column unique index. | Add the `unique: true` index the database already has, or fix the ref. |
+| `duplicate-table` | error | Two tables in one model under one name. A directory cannot do this; an import of two schemas can. | Rename one of them. |
+| `duplicate-column` | error | Two columns of one table under one name. | Delete one. Both are carried, so neither wins. |
+| `duplicate-index` | error | Two indexes of one table under one name. | Rename one. The database would refuse the second. |
+| `index-column-unknown` | error | An index names a column its own table does not have. | Usually the column was renamed and the index was not. |
+| `primary-key-missing` | warning | A table with columns and no `pk: true` on any of them. | Add `pk: true`, or accept a keyless table. |
+| `group-empty` | warning | A group file no table declares itself a member of. | Add `group:` to a table, or delete the group file. |
+
+`dbmd check`, which will print all of these from the command line, does not exist
+yet. Until it does, the honest advice is to keep this page open.
 
 ## What the format does not have
 
@@ -785,17 +877,20 @@ complete is worse than one that says where it ends.
   needed it yet.
 - **No nested groups, and no table in two groups.** `group:` takes one value.
 - **No `w`/`h` on a table**, and no coordinates on a group. Both are computed.
-- **No validation of what you wrote.** Types are not checked against an engine,
-  index columns are not checked against the table, and a `ref` to a table that
-  does not exist is currently silent. That is the validator's job and it is not
-  built.
+- **No checking of a type against an engine.** `citext` and `nvarchar(max)` and
+  `banana` are all carried through without a word. dbmd does not know what types
+  your engine has, and the day it thinks it does is the day it is wrong about
+  one. Structure is validated; vocabulary is not.
 
 ## Where the truth is
 
 If this page and the code disagree, the code is right and this page is a bug.
 
 - `src/model/read.ts` reads a directory into a model and produces every
-  diagnostic above.
+  diagnostic in the first table above.
+- `src/model/validate.ts` produces the second table: the questions that are
+  about the model rather than about one file. [ADR 0017][adr17] is why they are
+  two modules and one list of codes.
 - `src/model/write.ts` writes one back, and is where
   [the canonical form](#the-canonical-form) is decided.
 - `src/studio/safe-path.ts` is the stricter half of
@@ -808,4 +903,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 
 [adr3]: architecture/decisions/0003-markdown-on-disk-is-the-model.md
 [adr5]: architecture/decisions/0005-the-canvas-holds-more-than-tables.md
+[adr17]: architecture/decisions/0017-the-validator-is-a-second-opinion.md
 [prettier]: https://prettier.io

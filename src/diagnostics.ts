@@ -30,7 +30,13 @@
 export type Severity = 'error' | 'warning'
 
 /**
- * The closed set of things reading a model directory can complain about.
+ * The closed set of things reading or validating a model directory can complain
+ * about.
+ *
+ * Both halves are one union, and that is deliberate: nothing downstream needs
+ * to know whether `src/model/read.ts` or `src/model/validate.ts` raised a code.
+ * `CanvasObject.complete` already carries the only distinction that turned out
+ * to matter, which is whether a file lost something on the way in. ADR 0017.
  *
  * `docs/format.md` has a row for every member and `test/docs/format.test.ts`
  * reads this union out of this file to prove it, so adding a member here
@@ -85,6 +91,33 @@ export type ModelDiagnosticCode =
   | 'ref-malformed'
   /** A `group:` naming a group file that does not exist. */
   | 'group-unknown'
+  // Everything below is the validator's. A reader code is about one file and
+  // usually carries a line; a validator code is about the model, so it carries
+  // a path and no line, because the model it is given holds no offsets and
+  // searching the file for a column name is how you get a confidently wrong
+  // line. ADR 0017.
+  /** A `ref:` whose table half names no table in the model. */
+  | 'ref-table-unknown'
+  /** A `ref:` whose table exists and whose column half is not one of its columns. */
+  | 'ref-column-unknown'
+  /**
+   * A `ref:` at a column nothing in the model declares unique: not a whole
+   * primary key, and not covered by a single-column unique index. Usually a
+   * typo, occasionally deliberate, which is why it is a warning.
+   */
+  | 'ref-target-not-unique'
+  /** Two tables in one model under one name. Reachable by import, not by reading. */
+  | 'duplicate-table'
+  /** Two columns of one table under one name. */
+  | 'duplicate-column'
+  /** Two indexes of one table under one name. */
+  | 'duplicate-index'
+  /** An `indexes:` entry naming a column its own table does not have. */
+  | 'index-column-unknown'
+  /** A table that has columns and puts `pk: true` on none of them. */
+  | 'primary-key-missing'
+  /** A group file that no table declares itself a member of. */
+  | 'group-empty'
 
 /**
  * The closed set of things reading an introspection file can complain about.
