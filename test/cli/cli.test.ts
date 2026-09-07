@@ -1,46 +1,26 @@
 /**
  * The entry point and `dbmd init`.
  *
- * The two streams are stubbed at `src/cli/streams.ts` rather than at
- * `process.stdout`, so what these tests assert is which stream a line was
- * addressed to, which is the half of ADR 0006 rule 1 that a command can get
- * wrong. That the data stream really is file descriptor 1 is proven by running
- * the packed tarball, which is in the pull request rather than here: a test
- * that spawns a process can only test the source tree, and the source tree is
- * exactly what hides a broken `bin` mapping.
+ * The two streams are captured at the `Environment` the entry point is handed
+ * rather than at `process.stdout`, so what these tests assert is which stream a
+ * line was addressed to, which is the half of ADR 0006 rule 1 that a command
+ * can get wrong. That the data stream really is file descriptor 1 is proven by
+ * running the packed tarball, which is in the pull request rather than here: a
+ * test that spawns a process can only test the source tree, and the source tree
+ * is exactly what hides a broken `bin` mapping.
  */
 
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test } from 'vitest'
 import { exampleModel } from '../../src/cli/example.js'
-import { main } from '../../src/cli/main.js'
 import { readModel } from '../../src/model/read.js'
 import { writeModel } from '../../src/model/write.js'
-
-const captured = vi.hoisted(() => ({ out: '', err: '' }))
-
-vi.mock('../../src/cli/streams.js', () => ({
-  writeOut: (text: string) => {
-    captured.out += text
-  },
-  writeErr: (text: string) => {
-    captured.err += text
-  },
-}))
-
-interface Run {
-  readonly code: number
-  readonly out: string
-  readonly err: string
-}
+import { runCli, type Run } from './harness.js'
 
 async function run(...argv: string[]): Promise<Run> {
-  captured.out = ''
-  captured.err = ''
-  const code = await main(argv)
-  return { code, out: captured.out, err: captured.err }
+  return await runCli(argv)
 }
 
 const temporaries: string[] = []
@@ -106,6 +86,13 @@ describe('the entry point', () => {
     expect(out).toContain('Usage: dbmd init')
     expect(out).toContain('db-model')
     expect(err).toBe('')
+  })
+
+  test('the root help documents the global flags and says where the two streams go', async () => {
+    const { out } = await run('--help')
+    expect(out).toContain('--json')
+    expect(out).toContain('--no-color')
+    expect(out).toContain('2>/dev/null')
   })
 })
 
@@ -213,5 +200,80 @@ describe('dbmd init', () => {
     const { code, err } = await run('init', 'one', 'two')
     expect(code).toBe(2)
     expect(err).toContain('at most one directory')
+  })
+})
+
+describe('dbmd init --json', () => {
+  test('reports the directory and the files it wrote, sorted, and nothing on stderr', async () => {
+    const directory = await vacantPath()
+
+    const { code, out, err } = await run('init', '--json', directory)
+    expect(code).toBe(0)
+    expect(err).toBe('')
+    expect(JSON.parse(out)).toEqual({
+      schema: 1,
+      ok: true,
+      directory,
+      files: [
+        '_model.md',
+        'notes/there-are-no-passwords-here.md',
+        'tables/accounts.md',
+        'tables/api_keys.md',
+      ],
+      // Everything the prose points at, the JSON points at too. An agent should
+      // never have to read the text form to find out where the format is
+      // written down.
+      format: 'https://github.com/BlakeHastings/dbmd/blob/main/docs/format.md',
+    })
+  })
+
+  test('the refusal is JSON too, with the same exit code the prose has', async () => {
+    const directory = await vacantPath()
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'notes.txt'), 'mine\n', 'utf8')
+
+    const text = await run('init', directory)
+    const json = await run('init', '--json', directory)
+
+    expect(json.code).toBe(text.code)
+    expect(json.code).toBe(1)
+    expect(json.err).toBe('')
+    expect(JSON.parse(json.out)).toEqual({
+      schema: 1,
+      ok: false,
+      directory,
+      error: {
+        code: 'directory-not-empty',
+        message: `${directory} already exists and is not empty`,
+      },
+    })
+  })
+
+  test('a usage error is JSON too, so a caller never has to parse prose', async () => {
+    const { code, out, err } = await run('init', '--json', '--force')
+    expect(code).toBe(2)
+    expect(err).toBe('')
+    const parsed = JSON.parse(out) as { ok: boolean; error: { code: string; message: string } }
+    expect(parsed.ok).toBe(false)
+    expect(parsed.error.code).toBe('usage')
+    expect(parsed.error.message).toContain('unknown option "--force"')
+  })
+
+  test('--json anywhere in the arguments means the same thing', async () => {
+    const directory = await vacantPath()
+    const { out } = await run('--json', 'init', directory)
+    expect(JSON.parse(out)).toMatchObject({ ok: true, directory })
+  })
+
+  test('a token after -- is a positional, even one spelled like a global flag', async () => {
+    const { code, out, err } = await run('init', '--', '--json', 'two')
+
+    // Prose on stderr rather than JSON on stdout is the assertion: the `--json`
+    // after the `--` reached the command as a directory name, which is what a
+    // caller is asking for when they type it there.
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toContain('at most one directory')
+    expect(err).toContain('--json two')
   })
 })

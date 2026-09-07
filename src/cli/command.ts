@@ -7,6 +7,8 @@
  * entry point's job rather than each command's.
  */
 
+import type { Output } from './output.js'
+
 export interface Command {
   /** The word the user types. `dbmd init`. */
   readonly name: string
@@ -21,8 +23,15 @@ export interface Command {
    * printed it: ADR 0006's consequence about `--json` exiting 0 because
    * printing succeeded starts with the exit code being a value, not a side
    * effect somewhere else.
+   *
+   * `out` is the only way a command writes. It is passed in rather than
+   * imported so that `--json`, `--no-color` and the terminal detection are
+   * decided once, by the entry point, for every command including the ones that
+   * do not exist yet. `out.report` returns the code, so the usual last line of
+   * a command is `return out.report(...)` and the two output forms cannot end
+   * up disagreeing about whether the run failed.
    */
-  run(argv: readonly string[]): Promise<number>
+  run(argv: readonly string[], out: Output): Promise<number>
 }
 
 /**
