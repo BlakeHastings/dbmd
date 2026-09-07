@@ -53,6 +53,34 @@ db-model/
 - There is one level of directories. `tables/billing/orders.md` is not read,
   and nothing warns you about it.
 
+### Naming a file
+
+Because the name is the identity, it has to be a name a file can have: exactly
+one path segment, on anybody's machine.
+
+Keep to lowercase letters, digits, hyphens and underscores and nothing below
+will ever concern you. Two layers refuse the rest, and they refuse different
+amounts of it:
+
+- **dbmd will not write a file** whose object name is empty, is `.` or `..`, or
+  contains `/` or `\`.
+- **The studio refuses more**, because it takes names from a web page rather
+  than from a directory listing: also a name longer than 255 characters, one
+  containing `:` or a control character, one ending in a dot or a space, and a
+  Windows device name such as `con`, `nul`, `aux`, `prn`, `com1` or `lpt1`,
+  with or without an extension.
+
+The last two are the ones that bite on a machine that is not yours. Windows
+strips a trailing dot or space, so `orders .md` and `orders.md` are one file
+there and two here, and it resolves `nul.md` to the null device, so writing it
+reports success and reads back empty.
+
+**The first layer does not tell you off.** A name its writer will not write is
+skipped in silence, and that refusal has no diagnostic code today, so it is not
+something a future `dbmd check` could report to you either. The studio does say
+so, because a request has to be answered. This is the one thing on this page
+where the advice is "do not" rather than "you will be told".
+
 ## A file
 
 Every file is YAML frontmatter, then markdown:
@@ -81,9 +109,12 @@ Three rules about the shape, and all three bite:
    markdown. See [Prettier will edit your prose](#prettier-will-edit-your-prose).
 
 The frontmatter is ordinary YAML and you may write it any way YAML accepts:
-block or flow, quoted or not, in any key order. dbmd normalises it the first
-time it saves the file, and after that the file never moves again. What it
-normalises to is [the canonical form](#the-canonical-form).
+block or flow, quoted or not, in any key order. dbmd normalises a file the first
+time it saves *that* file, and after that the file never moves again. It never
+rewrites a file it was not asked to change, so the studio saving an edit to one
+table leaves the others exactly as you typed them, and a model can stay
+half-canonical for years without anything being wrong with it. What a saved file
+turns into is [the canonical form](#the-canonical-form).
 
 ## `_model.md`
 
@@ -180,6 +211,10 @@ opposite of what everybody assumes on first reading.
 | `indexes` | no | list | See [An index](#an-index). |
 | `group` | no | string | The group file's name, without `.md`. |
 | `layout` | no | `{ x, y }` | Where the box sits. See [Layout](#layout). |
+
+The keys are listed in the order dbmd writes them. You may write them in any
+order and it will be read; [the canonical form](#the-canonical-form) is what a
+saved file becomes, and matching it now means your file never changes at all.
 
 `table:` has to agree with the file name because the file name is what a `ref`
 resolves against, so a disagreement leaves the table reachable under one name
@@ -617,8 +652,11 @@ exactly as it arrived, carriage returns included. A CRLF file therefore
 normalises its frontmatter once, keeps its body verbatim forever, and never
 moves again.
 
-You are not obliged to produce any of this. Anything YAML accepts is read; the
-first save tidies it.
+You are not obliged to produce any of this. Anything YAML accepts is read, and a
+file is rewritten only when something saves *that* file: `dbmd import` and a
+future `dbmd fmt` bring a whole directory into this shape, and the studio saves
+the files you edited and leaves the rest alone. So a model where two tables are
+canonical and six are however you typed them is a normal model.
 
 ## Five things people get wrong
 
@@ -742,6 +780,8 @@ If this page and the code disagree, the code is right and this page is a bug.
   diagnostic above.
 - `src/model/write.ts` writes one back, and is where
   [the canonical form](#the-canonical-form) is decided.
+- `src/studio/safe-path.ts` is the stricter half of
+  [what a file may be called](#naming-a-file).
 - [`examples/shop`](../examples/shop) is a whole model in this format, eight
   tables of a coffee roastery, byte-canonical and read by the test suite on
   every run.
