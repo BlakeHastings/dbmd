@@ -296,8 +296,8 @@ stops at the appendix above would still think `on delete` is unsayable.
 where the line under it was found to be. The appendix deferred `on delete` on
 the grounds that this line "is the thing that would have to be revisited to
 accept it", and that turned out to be the wrong place to look. The line is not
-between structure and behaviour. It cannot be: `default: now()` is in this
-record's own example, and a default is an expression the engine executes.
+between structure and behaviour. It cannot be: `default: "'pending'"` is in
+this record's own example, and a default is an expression the engine executes.
 
 ADR 0046 puts it where the risk actually is. dbmd may record any fact a
 catalogue reports and a person can read, because carrying it is the whole of
@@ -306,9 +306,10 @@ will execute. So `on delete:` and `on update:` are keys, taking the five
 standard actions as a closed vocabulary, and nothing about writing them down
 emits a line of DDL.
 
-Two sentences in the appendix above are corrected there rather than here. It
-filed `on delete` beside `check` constraints, and they are different questions:
-a referential action is a closed vocabulary dbmd can read, and a check
-constraint is engine text it cannot. It also said `isUniqueConstraint` "is the
-same question as `on delete` and gets the same answer". The answers have now
-parted, and 0046 says why the two were never the same question.
+Two sentences above are corrected there rather than here, one in each of the
+two appendices. The dbmd-14 and dbmd-16 appendix filed `on delete` beside
+`check` constraints, and they are different questions: a referential action is a
+closed vocabulary dbmd can read, and a check constraint is engine text it
+cannot. The dbmd-19 section said `isUniqueConstraint` is "the same question as
+the `on delete` gap named above and it gets the same answer". The answers have
+now parted, and 0046 says why the two were never the same question.

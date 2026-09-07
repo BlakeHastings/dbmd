@@ -42,13 +42,16 @@ The tempting reading of "a model, not a migration" is that the file may describe
 *structure* and never *behaviour*. That reading does not survive contact with
 the format as it already is.
 
-`default: now()` is in every model in this repository, `examples/shop` included,
-and it is in ADR 0003's own worked example. A default is not a shape. It is an
-expression the engine *executes*, on an insert, when a column is not supplied.
-`nullable: false` is not a shape either: it is a rejection the engine performs
-at write time, on rows that do not exist yet. Both are behaviour by any test
-that makes `on delete cascade` behaviour, both have been in the format from the
-first day, and nobody has ever suggested they made dbmd a migration tool.
+A `default:` and a nullability key are both in ADR 0003's own worked example,
+spelled there `default: "'pending'"` and `null: false`. Five tables in
+`examples/shop` carry a `timestamptz` column that is `nullable: false` with
+`default: now()`. A default is not a shape. It is an expression the engine
+*executes*, on an insert, when a column is not supplied. `nullable: false` is
+not a shape either: it is a rejection the engine performs at write time, on rows
+that do not exist yet. Both are behaviour by any test that makes
+`on delete cascade` behaviour, both have been in the format from the first day
+(dbmd-16 renamed `null:` to `nullable:`, which changed the spelling and not the
+fact), and nobody has ever suggested they made dbmd a migration tool.
 
 A rule that admits those two and refuses this one is not a rule. It is a
 preference about which behaviour sounds frightening, and `cascade` sounds
@@ -127,13 +130,13 @@ recorded.
 
 That is the opposite of how a `type:` is treated, and the difference is the
 point rather than an inconsistency. `docs/format.md` says dbmd does not check a
-type against an engine, because the set of types belongs to the engine, is
-unbounded, and the day dbmd thinks it knows them is the day it is wrong about
-one. These five belong to the SQL standard, are the same five in both
-catalogues, and are exactly the five `ReferentialAction` in the introspection
-contract already carries. A sixth is therefore not a spelling dbmd has not heard
-of. It is a fact that nothing downstream could map, and carrying it would break
-the trip back through the contract that is the only reason the key exists.
+type against an engine, because the set of types belongs to the engine and the
+day dbmd thinks it knows it is the day it is wrong about one. These five belong
+to the SQL standard, are the same five in both catalogues, and are exactly the
+five `ReferentialAction` in the introspection contract already carries. A sixth
+is therefore not a spelling dbmd has not heard of. It is a fact that nothing
+downstream could map, and carrying it would break the trip back through the
+contract that is the only reason the key exists.
 
 It is an error and not a warning for `superseded-key`'s reason: the author meant
 something real, dbmd cannot hold it, and a warning would leave the object
@@ -152,12 +155,12 @@ built, as a reader warning, and it was deleted before it landed. Two reasons,
 and the second one is the record.
 
 The first is evidence. `test/import/fixtures/postgres-provider-raw.json`, a
-fixture in this repository shaped like real Postgres output, carries a composite
-foreign key with `ON DELETE SET NULL` over two `NOT NULL` columns, because
-Postgres accepts exactly that and only fails when a delete arrives. The check's
-first act was to call a realistic catalogue wrong, and to make the model an
-import writes stop reading back clean. ADR 0017's revisit list names this
-outcome: a rule that fires on a correct model is too eager.
+committed fixture that is this provider's own query printed by PostgreSQL 16.15,
+carries a composite foreign key with `ON DELETE SET NULL` over two `NOT NULL`
+columns, because Postgres accepts exactly that and only fails when a delete
+arrives. The check's first act was to call a realistic catalogue wrong, and to
+make the model an import writes stop reading back clean. ADR 0017's revisit list
+names this outcome: a rule that fires on a correct model is too eager.
 
 The second is that deciding whether a constraint would work is reasoning about
 what an engine would do, which is the half of a migration tool that is
@@ -221,13 +224,14 @@ does not compile.
   `on delete` was wrong to pair them. This record separates the two: a
   referential action is a closed vocabulary dbmd can read, and a check
   constraint is text it cannot.
-- **`isUniqueConstraint` is not reopened, and the appendix to ADR 0003 that
-  called it "the same question as `on delete`" is corrected by this.** It is not
-  the same question. A unique index and a unique constraint are the same fact
-  about the rows under two names, so nothing in the model or in a diff changes
-  when you learn which one it was; `cascade` and `restrict` are different things
-  happening to real rows. The first is a fact about how a schema was *written*,
-  and the second is a fact about what the schema *is*.
+- **`isUniqueConstraint` is not reopened, and the dbmd-19 section of ADR 0003,
+  which called it "the same question as the `on delete` gap named above", is
+  corrected by this.** It is not the same question. A unique index and a unique
+  constraint are the same fact about the rows under two names, so nothing in the
+  model or in a diff changes when you learn which one it was; `cascade` and
+  `restrict` are different things happening to real rows. The first is a fact
+  about how a schema was *written*, and the second is a fact about what the
+  schema *is*.
 
 ## Revisit when
 
