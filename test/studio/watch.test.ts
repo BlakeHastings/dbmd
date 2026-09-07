@@ -6,6 +6,7 @@ import { readModel } from '../../src/model/read.js'
 import { validate } from '../../src/model/validate.js'
 import type { Column } from '../../src/model/types.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
+import { ModelWatcher } from '../../src/studio/watch.js'
 import { REVISION_HEADER, type WireConflict } from '../../src/studio/wire.js'
 import { exampleShop, withCopy } from '../model/fixtures.js'
 
@@ -48,7 +49,7 @@ async function withStudio<T>(
       log: (message) => lines.push(message),
       // Short, so a test that waits for the watcher waits for tens of
       // milliseconds rather than for the default a person would want.
-      watchDebounceMs: 40,
+      watchDebounceMs: WATCH_DEBOUNCE_MS,
       ...options,
     })
     try {
@@ -179,6 +180,43 @@ async function until<T>(what: () => Promise<T | undefined>, why: string): Promis
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
 }
+
+/**
+ * The watch debounce every case in this file runs against, studio or watcher.
+ *
+ * Short, because a case that waits for the watcher should wait for tens of
+ * milliseconds. It is named because `pastTheDebounce` below is a multiple of it
+ * and the relationship between the two is the only thing that makes that wait
+ * defensible.
+ */
+const WATCH_DEBOUNCE_MS = 40
+
+/**
+ * Wait long enough that a wake-up which was going to arrive has arrived.
+ *
+ * **This is the one wait in this file that is not a fence, and it cannot be
+ * made into one.** Everything else here waits for an event: `flush` is answered
+ * after the write, `until` polls for a state the watcher will bring about. An
+ * absence has no such moment. "The watcher did not fire" is not a thing that
+ * happens, so there is nothing to await and nothing to poll for, and a poll that
+ * returned early would only be a shorter sleep wearing a better name.
+ *
+ * So the question is how long, and the only honest answer is a multiple of the
+ * two latencies involved: the debounce, which is ours and is
+ * `WATCH_DEBOUNCE_MS`, and `fs.watch` delivery, which is the operating system's
+ * and is not ours to bound. 7.5x the first is the margin for the second.
+ *
+ * A fake clock does not solve this. It would fake the debounce, which is the
+ * half already under control, and leave the delivery latency real: a fake timer
+ * fired before the operating system had delivered the second event of a burst
+ * would make the coalescing case below pass for exactly the wrong reason.
+ *
+ * A case that waits this way and then asserts nothing happened must also prove
+ * that the watcher was awake the whole time, or a watcher that never fires at
+ * all passes it. Every use below is paired with that control.
+ */
+const pastTheDebounce = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, WATCH_DEBOUNCE_MS * 7.5))
 
 const reloads = (running: Running): string[] =>
   running.lines.filter((l) => l.startsWith('reloaded'))
@@ -391,13 +429,17 @@ describe('a file changed on disk with nothing pending', () => {
     // The echo. Every write here is a `.<name>.<uuid>.tmp` renamed over its
     // target, so a naive watcher sees two events for one save and a reload that
     // rewrote the file would loop forever.
+    //
+    // The watcher does wake here, and this case does not mind: what stops the
+    // echo at this level is that a re-read of a directory the session already
+    // agrees with changes no fingerprint, so `reload` returns without moving
+    // the revision. That is the claim, and it is a live one; deleting the
+    // fingerprint guard in `edits.ts` turns this red.
     await withStudio(async (running) => {
       const before = await status(running.studio)
       await patch(running.studio, 'orders', { layout: { x: 333, y: 444 } })
       await flush(running.studio)
-      // Longer than the watch debounce, so an event that was going to arrive
-      // has arrived.
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      await pastTheDebounce()
       await get(running.studio, '/api/model')
 
       expect(writes(running)).toEqual(['wrote tables/orders.md'])
@@ -406,26 +448,17 @@ describe('a file changed on disk with nothing pending', () => {
     })
   })
 
-  it('ignores a temporary file beside the one it is watching', async () => {
-    await withStudio(async (running) => {
-      const before = await status(running.studio)
-      const temporary = join(running.dir, 'tables', `.orders.md.${randomUUID()}.tmp`)
-      await writeFile(temporary, 'not a model file', 'utf8')
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      await rm(temporary)
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      await get(running.studio, '/api/model')
-
-      expect(reloads(running)).toEqual([])
-      expect((await status(running.studio)).revision).toBe(before.revision)
-    })
-  })
-
-  it('treats an editor that saves by renaming as one change, not two', async () => {
+  it('reloads once for an editor that saves by renaming', async () => {
     // Many editors write a temporary file and rename it over the target, so the
-    // filesystem reports a delete and a create for one Ctrl-S. Both have to
-    // land in the same burst or the studio re-reads twice and, worse, sees the
-    // file briefly absent.
+    // filesystem reports the staging file and the target separately for one
+    // Ctrl-S. What this case can see is the end of that: the studio noticed,
+    // and what it is serving is what the editor saved.
+    //
+    // That the burst was *one* wake-up rather than two is not visible from
+    // here. `reload` is serialised and idempotent, so a second wake-up for the
+    // same content leaves no trace in `reloads` or in the revision. The
+    // watcher's own coalescing is asserted where it can fail, against the
+    // watcher, at the bottom of this file.
     await withStudio(async (running) => {
       const before = await status(running.studio)
       const target = join(running.dir, 'tables', 'orders.md')
@@ -437,16 +470,129 @@ describe('a file changed on disk with nothing pending', () => {
         async () => ((await status(running.studio)).revision > before.revision ? true : undefined),
         'the watcher to notice a save by rename',
       )
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      await get(running.studio, '/api/model')
 
-      expect(reloads(running)).toHaveLength(1)
       expect((await status(running.studio)).revision).toBe(before.revision + 1)
       const body = await get(running.studio, '/api/model')
       const orders = (
         body['model'] as { tables: { name: string; columns: { name: string }[] }[] }
       ).tables.find((table) => table.name === 'orders')
       expect(orders?.columns.map((column) => column.name)).toContain('hand_edited_note')
+    })
+  })
+})
+
+/**
+ * The watcher on its own, because through the studio it cannot fail.
+ *
+ * Everything above observes the watcher through `reloads` and the revision,
+ * which are `Edits` talking rather than the watcher. `Edits.reload` is
+ * serialised and idempotent: it re-reads the directory, compares a fingerprint,
+ * and returns silently when nothing moved. So *any* number of wake-ups the
+ * watcher should not have had collapses to nothing observable over HTTP.
+ *
+ * Which means two of the cases that used to live above could not fail. Deleting
+ * the whole filename filter from `watch.ts`, so the watcher wakes for every
+ * name in a kind directory, left all 788 tests in this repository green.
+ * Deleting the debounce, so every filesystem event became its own wake-up, did
+ * the same. Both behaviours were covered by a case whose name said so and whose
+ * assertions could not tell.
+ *
+ * The seam that can tell is the one `watch.ts` was built around: the watcher's
+ * only output is a call to `onChange`, so a test that holds the callback can
+ * count them. `ModelWatcher.open` is that constructor and it needs nothing new
+ * in `src/` to be usable here.
+ *
+ * Each case pairs its absence with a change the watcher must wake for, because
+ * a watcher that never fires passes every negative assertion in this block.
+ */
+describe('the watcher, counted at the callback', () => {
+  interface Watching {
+    readonly dir: string
+    /** How many times the watcher has said "look again". */
+    wakes: number
+  }
+
+  async function withWatcher<T>(use: (watching: Watching) => Promise<T>): Promise<T> {
+    return withCopy(exampleShop, async (dir) => {
+      const watching: Watching = { dir, wakes: 0 }
+      const watcher = ModelWatcher.open(dir, () => (watching.wakes += 1), {
+        debounceMs: WATCH_DEBOUNCE_MS,
+      })
+      try {
+        return await use(watching)
+      } finally {
+        watcher.close()
+      }
+    })
+  }
+
+  /** Wait for the wake-up a change is certainly going to cause. */
+  const woken = (watching: Watching, why: string): Promise<true> =>
+    until(async () => (watching.wakes > 0 ? true : undefined), why)
+
+  it('turns a burst of separate changes into one wake-up', async () => {
+    // Two files, so the debounce has something to coalesce on every platform
+    // rather than only on the ones that report a single save more than once.
+    // This is the case that fails when the debounce is deleted, wherever it
+    // runs: two saved files cannot be fewer than two filesystem events.
+    await withWatcher(async (watching) => {
+      await editByHand(watching.dir, 'tables/orders.md', addColumn)
+      await editByHand(watching.dir, 'tables/customers.md', addColumn)
+      await woken(watching, 'the watcher to wake for two files saved together')
+      await pastTheDebounce()
+
+      expect(watching.wakes).toBe(1)
+    })
+  })
+
+  it('wakes once for an editor that saves by renaming, not once per name', async () => {
+    // The shape the case above this block describes: a staging file written,
+    // then renamed over the target. How many events one Ctrl-S becomes is the
+    // platform's business: five on Windows, of which the two for the target
+    // survive the filter, and as few as one elsewhere. So on some platforms
+    // this is a coalescing proof and on others it is a smoke test that the save
+    // was seen at all; the case above is the one that holds the debounce to
+    // account everywhere.
+    await withWatcher(async (watching) => {
+      const target = join(watching.dir, 'tables', 'orders.md')
+      const staging = join(watching.dir, 'tables', '.orders.md.editor-swap')
+      await writeFile(staging, addColumn(await readFile(target, 'utf8')), 'utf8')
+      await rename(staging, target)
+
+      await woken(watching, 'the watcher to wake for a save by rename')
+      await pastTheDebounce()
+
+      expect(watching.wakes).toBe(1)
+    })
+  })
+
+  it('does not wake for the writer’s own temporary file', async () => {
+    // `write.ts` writes `.<name>.<uuid>.tmp` beside every target. Without the
+    // filter the studio would wake itself for a file that was never part of the
+    // model, twice per save.
+    //
+    // The claim is about that name, not about every name `readModel` skips.
+    // `isRootEntry` passes the *directory*, so the root watcher wakes for "a
+    // kind directory changed" and the filename filter never sees the file at
+    // all. On Windows that path fires for an ordinary `notes.txt` dropped into
+    // `tables/` and not for a `.tmp`, which is a difference in how NTFS reports
+    // a parent directory's own change and not something to hold a test to. So
+    // "no non-model name ever wakes it" is not true, and this case does not say
+    // it. It is harmless either way: a wake-up costs a directory read and the
+    // reload that follows finds nothing.
+    await withWatcher(async (watching) => {
+      const temporary = join(watching.dir, 'tables', `.orders.md.${randomUUID()}.tmp`)
+      await writeFile(temporary, 'not a model file', 'utf8')
+      await rm(temporary)
+      await pastTheDebounce()
+
+      expect(watching.wakes).toBe(0)
+
+      // The control. Without it a watcher that attached to nothing would pass
+      // the assertion above and every other absence in this block.
+      await editByHand(watching.dir, 'tables/orders.md', addColumn)
+      await woken(watching, 'the watcher that ignored a temporary file to wake for a real one')
+      expect(watching.wakes).toBe(1)
     })
   })
 })
