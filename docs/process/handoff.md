@@ -374,3 +374,15 @@ rather than by reading.
   `NO_COLOR`, or with `--no-color`. Colour is not dead code either: `output.ts`
   detects a TTY per stream and `test/cli/output.test.ts` exists to pin the three
   inputs to that one decision, which is the part a pty-less session cannot drive.
+
+- **The studio hides things with `[hidden]`, which any class rule beats, and
+  there is exactly one place that mattered.** The page defines no `[hidden]` rule
+  of its own and relies on the browser's, whose specificity is the lowest there
+  is, so a rule setting `display` on a class beats it and the element stays
+  visible. dbmd-45's agent hit that with `#inspector .flags` while driving its
+  own change. I then checked the whole stylesheet against every element the
+  client hides: **nine selectors set `display`, six things get hidden, and
+  `.flags` is the only overlap.** So it is one instance rather than a pattern,
+  and `check:scenes` cannot see this class of thing because the name is used by
+  one scene rather than two.
+
