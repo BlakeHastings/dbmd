@@ -17,6 +17,9 @@ import { writeErr } from './streams.js'
 /** Where a model lives when nobody says otherwise. The README says so too. */
 const DEFAULT_DIRECTORY = 'db-model'
 
+/** `docs/format.md`, which is the page a hand-author needs and cannot guess. */
+const FORMAT_REFERENCE = 'https://github.com/BlakeHastings/dbmd/blob/main/docs/format.md'
+
 export const initCommand: Command = {
   name: 'init',
   summary: 'create a model directory, with an example model in it',
@@ -50,6 +53,16 @@ async function runInit(argv: readonly string[]): Promise<number> {
   writeErr(`Created ${directory}, ${written.length} files:\n`)
   for (const path of written) writeErr(`  ${path}\n`)
   writeErr(`\nRead _model.md first. It says what the rest of them are for.\n`)
+  // The format reference rather than the README, because the next thing this
+  // user does is write a file by hand, and the Prettier line is here rather
+  // than in a file this command writes: a `.prettierignore` belongs at the root
+  // of their repository, which is outside the one directory init was given, and
+  // Prettier does not read a nested one.
+  writeErr(
+    `\nThe format is written down at ${FORMAT_REFERENCE}\n` +
+      `If this repository runs Prettier, add ${directory}/ to its .prettierignore.\n` +
+      `Prettier rewrites the prose in these files, and the prose is the point.\n`,
+  )
   return 0
 }
 
