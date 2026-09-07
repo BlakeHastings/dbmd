@@ -294,7 +294,7 @@ export function readEnvelope(raw: unknown): Result<Envelope> {
       diagnostics,
       'import/missing-field',
       '$.dbmdIntrospection',
-      `this file has no \`dbmdIntrospection\` version, so it is not an introspection file dbmd produced; run \`dbmd query\` and import the JSON it prints`,
+      `this file has no \`dbmdIntrospection\` version, so it is not an introspection file dbmd produced; run \`dbmd query --engine <id>\`, run the SQL it prints against your database, and import the JSON that returns`,
     )
   } else if (typeof version !== 'number' || !Number.isInteger(version)) {
     error(
@@ -309,8 +309,8 @@ export function readEnvelope(raw: unknown): Result<Envelope> {
       'import/unsupported-version',
       '$.dbmdIntrospection',
       version < INTROSPECTION_VERSION
-        ? `this file says \`dbmdIntrospection\` ${version} and this build of dbmd reads version ${INTROSPECTION_VERSION}; it was produced by an older dbmd, so re-run \`dbmd query\` with this one and import the file it prints`
-        : `this file says \`dbmdIntrospection\` ${version} and this build of dbmd reads version ${INTROSPECTION_VERSION}; it was produced by a newer dbmd, so upgrade dbmd or re-run \`dbmd query\` with this one`,
+        ? `this file says \`dbmdIntrospection\` ${version} and this build of dbmd reads version ${INTROSPECTION_VERSION}; it was produced by an older dbmd, so re-run the query \`dbmd query --engine <id>\` prints with this build and import the JSON that returns`
+        : `this file says \`dbmdIntrospection\` ${version} and this build of dbmd reads version ${INTROSPECTION_VERSION}; it was produced by a newer dbmd, so upgrade dbmd, or re-run the query \`dbmd query --engine <id>\` prints with this build`,
     )
   }
 
@@ -320,7 +320,7 @@ export function readEnvelope(raw: unknown): Result<Envelope> {
       diagnostics,
       'import/missing-field',
       '$.engine',
-      'this file does not say which engine produced it, so dbmd cannot choose a provider for it; `engine` is written by `dbmd query` and should not be removed',
+      'this file does not say which engine produced it, so dbmd cannot choose a provider for it; `engine` is written by the query `dbmd query --engine <id>` prints, and should not be removed',
     )
   } else if (typeof engine !== 'string') {
     error(

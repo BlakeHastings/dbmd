@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with one agent in flight and no pull request open.**
+**As of 2026-09-07, with four agents in flight and no pull request open.**
 
 ## Where the work is
 
-Fifty-three pull requests have merged, all through `merge-pr.mjs`, and the
+Fifty-five pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -51,6 +51,8 @@ in the model byte-identical to where it started:
 | Add column | one appended column, nameless, on the table's own file |
 | Remove column | the column gone from that file |
 | Delete this table | the file gone, behind a confirmation step |
+| Drag a note | that note’s own file, including its `w` and `h` |
+| Drag a group header | every member’s layout line, in one write, and nothing in the group file |
 
 **Edges leave and arrive at the rows of the two columns, and stay on those rows
 when a box moves.** That was the owner's first complaint and it is the half that
@@ -62,9 +64,12 @@ coordinate, and a small form then asks for a name. A single click on the button
 looks like nothing happening, and the only visible signal is the button's
 pressed state and a crosshair cursor.
 
-**Notes and groups still draw nothing**, which is dbmd-34 and is why `README.md`
-and the scaffolded `_model.md` currently promise something the canvas does not
-do.
+**Notes and groups draw**, as of dbmd-34 landing on 2026-09-07, so the three
+documents that promised them are true again.
+
+**A note can sit on top of a group’s header**, because notes render in front and
+groups behind. The next person to try dragging a group will find it does not
+move and will file a defect. It is the note. Move it and the drag works.
 
 ## What a successor would otherwise have to reconstruct
 
@@ -82,11 +87,15 @@ do.
 
 ## In flight
 
-- **dbmd-34**, notes and groups on the canvas. The owner asked for this by name
-  and it is the last thing on their list that has not landed. It holds
-  `src/studio/`, `test/studio/`, `README.md` and `examples/shop`, which is why
-  four ready items cannot be dispatched behind it: the README correction, the
-  studio label fixes, the file-name rule and the four remaining test sleeps.
+- **dbmd-7nb**, `dbmd query`. **P1, and the most important thing open.** `dbmd
+  import` closes this project's argument and its only documented input is a
+  command that does not exist, which the tool's own error messages tell people
+  to run.
+- **dbmd-17**, a group's computed box enclosing things that are not members.
+  Newly reachable, because groups only started drawing today.
+- **dbmd-0s1**, breaking each enforcement guard on purpose to prove it still
+  fails.
+- **dbmd-mua**, the README still calling the import path unfinished.
 
 ## What proved out, and is easy to lose
 
