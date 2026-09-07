@@ -31,7 +31,13 @@
 
 import { readFile, readdir } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { formatDiagnostics, inDocument, sortDiagnostics, type Diagnostic } from '../diagnostics.js'
+import {
+  errnoText,
+  formatDiagnostics,
+  inDocument,
+  sortDiagnostics,
+  type Diagnostic,
+} from '../diagnostics.js'
 import type { IntrospectionDocument } from '../import/contract.js'
 import { modelFromIntrospection } from '../import/model.js'
 import { readIntrospection } from '../import/read.js'
@@ -254,15 +260,22 @@ async function sourceText(
     try {
       text = await readFile(file, 'utf8')
     } catch (error) {
+      // `errnoText` rather than the `messageOf` every other catch in this file
+      // uses. That one is Node's message, which repeats the path the call was
+      // made with and is the right thing for a parse error; here it made the
+      // one sentence name the file twice and gave `--json` nothing at all,
+      // because the payload could not carry a message with a path in it. ADR
+      // 0006 rule 4. dbmd-f3p.
+      const reason = `${file} could not be read: ${errnoText(error)}`
       return {
         ok: false,
         report: {
           code: EXIT_FAILURE,
-          text: `${out.style.bad('dbmd:')} ${file} could not be read: ${messageOf(error)}\n`,
+          text: `${out.style.bad('dbmd:')} ${reason}\n`,
           json: {
             directory,
             source: where.source,
-            error: { code: 'file-unreadable', message: `${file} could not be read` },
+            error: { code: 'file-unreadable', message: reason },
           },
         },
       }
