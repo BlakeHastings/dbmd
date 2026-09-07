@@ -1,3 +1,5 @@
+export { mermaidDiagram, mermaidSection } from './export/mermaid.js'
+export type { MermaidSection } from './export/mermaid.js'
 export { readModel } from './model/read.js'
 export { validate } from './model/validate.js'
 export { serialiseModelFile, serialiseObject, writeModel } from './model/write.js'
