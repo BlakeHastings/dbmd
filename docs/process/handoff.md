@@ -268,6 +268,19 @@ rather than by reading.
   the data-loss path staying closed, since a whole-model write would have
   replaced the unparseable file with a model that does not contain it.
 
+- **The contributor path works as written**, tested the way the skill and the
+  query recipes were: `npm run studio -- --no-open --port 8080` builds, binds to
+  the port asked for, prints the URL, opens no browser, serves 200, and writes
+  nothing to the model it is serving. The npm 11 note is still accurate and still
+  relevant: npm here is 11.17.0 and `npm ci` does warn about esbuild's install
+  script, and the build works anyway.
+- **The gate costs about 41 seconds**, measured after a day of adding checks to
+  it: typecheck 3.7s, format 3.3s, the four static checks 0.6s each, tests 9.8s,
+  build 2.1s, `check:pack` 8.5s, `check:guards` 8.4s. **Two thirds of it is the
+  tests and the two that pack a tarball**, and the four static checks together
+  are under three seconds, so the cheap end has room and the expensive end does
+  not.
+
 
 ## What is waiting on the owner
 
