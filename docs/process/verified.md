@@ -370,6 +370,77 @@ move and will file a defect. It is the note. Move it and the drag works.
 All clean unless a line says otherwise. Each was checked by breaking something
 rather than by reading.
 
+- **The studio's HTTP surface, attacked on 2026-09-07 rather than read.** A
+  studio on a copy of `examples/shop`, and every case below was sent by hand.
+  **Nothing was found**, which is worth recording precisely because the next
+  person to wonder should not have to redo it.
+
+  **Malformed requests, six shapes, all refused with a code and a sentence:** a
+  table that does not exist (404 `unknown-table`), a mutation with no revision
+  header, a revision of `banana`, a body that is not JSON, a table name
+  containing a slash, and a name that walks up out of the model directory. None
+  leaked a path and none returned a 500.
+
+  **Hostile table names, ten of them.** The Windows device names `CON`, `PRN`,
+  `NUL`, `AUX` and `COM1` are all refused, and so is `orders:stream`, which is
+  the alternate-data-stream colon this project has been bitten by before.
+  `orders ` with a trailing space is refused, because Windows strips it; `
+  orders` with a leading one is a legal file name and correctly falls through to
+  `unknown-table` instead. `...` is refused.
+
+  **YAML injection through a write, three attempts, none successful.** A column
+  name containing a newline, a type containing `\n- injected`, and an empty name
+  were all accepted with 200 and all **quoted and escaped on disk**:
+  `type: "uuid\n- injected"` is what the file holds. The model still parses
+  afterwards, and `dbmd check` reports the semantic damage the writes did rather
+  than a parse error. A non-numeric and an infinite `layout.x` are both refused
+  at the door with `layout.x must be a finite number`.
+
+  **The two ways a column can have no name are both caught, and they say
+  different things.** `name: ""` gives "`name` is empty, so this column has no
+  name", and `name: "  "` gives "`name` is only whitespace, so this column has no
+  name". A column named two spaces is worse than one named nothing, because it
+  looks named, and the validator does not lump them together.
+
+  **What this says about the design.** The studio is an editor and `check` is the
+  gate, so a 200 on a hostile value is correct as long as the bytes on disk stay
+  parseable and the validator says what is wrong. That held in every case.
+
+
+- **The two flaky watcher cases, diagnosed by reproduction rather than by
+  reading, and neither fixed by waiting longer.** The burst case was the test's
+  own assumption: `ModelWatcher` promises one wake-up per burst, where a burst
+  is events no further apart than the window, so two changes further apart are
+  two bursts and are owed a wake-up each. `expected 2 to be 1` was the right
+  answer to a question the case did not mean to ask. The debounce is now a
+  `Burst` class a test drives directly, because a burst driven by `fs.watch` is
+  not a burst the test made, it is one the test hoped for.
+
+  The checkout case was waiting on the wrong event. `writeFile` truncates before
+  it writes, so a wake-up landing inside a `git checkout` reads an empty file;
+  the studio carries the last good version forward as `complete: false`, and
+  that still moves the revision, so a wait on `revision > written.revision` was
+  satisfied on the way to the checkout. The patch then hit an incomplete object,
+  was refused 409, and the flush wrote nothing.
+
+  **Verified independently**: the old wait put back into the new deterministic
+  case fails with `expected 409 to be 200`, and the file as delivered passes 38
+  of 38. #144.
+
+- **The timeouts under contention were never that race, and the measurement says
+  so.** Under five concurrent copies of the suite, `runs to the end when nothing
+  changes underneath it` failed 35 times in 48 while the burst case failed 0 in
+  48. The first contains no wait, no watcher poll and no sleep, so it cannot lose
+  a race. Opposite signatures, and one of them is a machine running out of
+  capacity.
+
+- **Both `until` helpers used a 5000ms deadline against vitest's 5000ms
+  default**, and vitest's clock starts first, so no wait in either studio test
+  file had ever been able to name what it was waiting for: the framework gave up
+  a moment before the helper would have said which wait it was. Every timeout in
+  the CI record for those files was less informative than it needed to be. Now
+  4000ms, documented as a diagnosis fix rather than a timing one.
+
 - **The publish path, driven as far as it can be driven without pushing a tag.**
   Pushing one is the step `release.yml`'s own header says no agent here may
   take, so everything below stops short of it deliberately.
@@ -519,9 +590,12 @@ rather than by reading.
   repository has three recorded cases of exactly that.
 - **Every relative markdown link in the repository resolves**, checked on
   2026-09-07: 122 tracked markdown files, 82 relative links, **zero broken**.
-  Checked because `scripts/check-commands.mjs` covers three kinds of reference,
-  `dbmd <command>`, `npm run <script>` and `node scripts/<file>`, and a link is a
-  fourth of the same shape: a claim that a thing exists. **No check was added and
+  Checked because `scripts/check-commands.mjs` covers several kinds of reference,
+  each a claim that a thing exists, and a link is one more of the same shape. The
+  count is left out on purpose: it was three when this was written and a bare
+  path into `scripts/` became a fourth later the same day, so a number here is a
+  number that goes stale in the file whose subject is things going stale. ADR
+  0036 carries the current list. **No check was added and
   that is deliberate.** A gate that has never caught anything is a maintenance
   cost pretending to be safety, and this one would not even have caught the thing
   that prompted the look: ADR 0028's stale reference was to a *section heading in

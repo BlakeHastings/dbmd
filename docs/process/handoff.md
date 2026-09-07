@@ -9,47 +9,45 @@ epic closed.**
 
 ## Where the work is
 
-One hundred and forty-three pull requests have merged, all through
+One hundred and fifty-one pull requests have merged, all through
 `merge-pr.mjs`, and the provenance audit is clean across every commit on `main`.
-**104 items closed, 10 open**. **All eight epics are closed**, the last two on
-2026-09-07: import, which closed when re-import landed, and publishing.
+**110 items closed, 5 open, and no P1s.** **All eight epics are closed**, the last
+two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-**One P1, and it is mine rather than the owner's.** `dbmd-rjd`: nothing looks at
-what a merge did to `main`, demonstrated by the merge of the pull request that
-filed it. The other P1, the flaky watcher, closed with #144.
+**Two of the five open are the owner's** and neither blocks anything: the visuals
+epic, which is taste, and the README screenshot, which needs a browser extension
+nothing in a session can connect. The other three are P3s, all dispatched.
 
-**The watcher flake is fixed and neither half was fixed by waiting longer.** The
-burst case was the test's own assumption: two changes further apart than the
-window are two bursts and are owed a wake-up each, so `expected 2 to be 1` was
-the right answer to a question the case did not mean to ask. The debounce is now
-a class a test drives directly rather than hoping the operating system delivers
-a burst. The checkout case was waiting on the wrong event, because `writeFile`
-truncates before it writes and the empty read moves the revision on the way to
-the checkout.
+**`main` now tells a pull request what its merge did to `main`.** ADR 0057 and
+`scripts/report-merge-aftermath.mjs`, triggered by
+[`aftermath.yml`](../../.github/workflows/aftermath.yml) on a `workflow_run` that
+did not finish green. It comments on the pull request the commit came from,
+because its author is already subscribed there, so nobody has to remember to
+look. Run it with no arguments at any time for the current state of `main` and
+the all-time count of red runs, which it labels a floor rather than a rate
+because a re-run updates a run in place.
 
-**The finding worth more than the fix**: both `until` helpers used a 5000ms
-deadline against vitest's 5000ms default, and vitest's clock starts first, so no
-wait in either studio test file has ever been able to name what it was waiting
-for. Every timeout in the CI record for those files has been less informative
-than it needed to be.
+**`merge-pr.mjs` now names the branches a merge is about to make stale**, before
+merging, and the four refusals it has always had are ordinary tests for the first
+time. Recovered from a branch that had never been pushed. Its first real merge
+named its own pull request as the branch it was making stale, which is the
+change demonstrating itself.
 
-**`npm run check` passes on `main` as of 2026-09-07**, run whole and locally:
-typecheck, format, the four content checks, 1,021 tests, the build, the pack
-smoke and the pack guard. That is the command `release.yml` runs through
-`prepublishOnly`, so it is the closest thing there is to a rehearsal of the
-publish.
+**`npm run check` passes on `main`**, and CI has been green on every post-merge
+run since. It is typecheck, format, the four content checks, the tests, the
+build, the pack smoke and the pack guard, and it is the command `release.yml`
+runs through `prepublishOnly`, so it is the closest thing there is to a
+rehearsal of the publish. **Do not quote a test count here.** It moved four times
+on 2026-09-07 alone and a number in this file is a number nobody updates; run the
+command, or read what `report-merge-aftermath.mjs` says about `main` right now.
 
-**Seven of the 140 check runs on `main` went red and nobody noticed**, including
-me. Four were a race the flush repair had already fixed by the time I read them.
-Three are live and all three are in `test/studio/watch.test.ts`. `dbmd-056`
-carries the census and `dbmd-rjd` carries the general problem, which is that
-`merge-pr.mjs` prevents a red merge and nothing detects a red result.
-
-**The seventh was the post-merge run of the pull request that reported four**,
-and I did not notice for about an hour. That pull request also said four because
-I read `gh run list --limit 100` against a branch with 140 runs. Both halves of
-that are in `orchestrating.md` under the listing-is-a-window heading; the short
-version is that a truncated listing looks exactly like a complete one.
+**Eight runs on `main` have finished red across all time and nobody noticed any
+of them**, including me. Seven on `check` and one on `provenance`, and that last
+is the repository's own first push, which needs no investigation. Of the seven,
+four were a race the flush repair had already fixed by the time I read them and
+three were the watcher flake, fixed in #144. **That count is a floor**, because a
+re-run updates a run in place and every failure later re-run green has stopped
+being counted anywhere. `report-merge-aftermath.mjs` prints it and says so.
 
 **Nothing is blocked.** That has been true since the owner answered the two
 questions that were, at about 13:20.
@@ -103,53 +101,37 @@ loaded. `orchestrating.md` carries the general form.
 
 ## In flight, and what is actually left
 
-**Two agents are running**, dispatched from `df806f2` after reading the machine:
-11.4 GB free of 31.9, 64% used, 58 GB of disk, and the largest consumer six
-`claude` sessions at 2.8 GB rather than anything of this project's. Two rather
-than the usual three for that reason.
+**Three agents are running**, dispatched from `d872331` after reading the
+machine: 11.5 GB free of 31.9, 64% used, and the largest consumer six `claude`
+sessions rather than anything of this project's.
 
-- **`dbmd-056`**, the P1, in `src/studio/` and `test/studio/`. Two flaky watcher
-  tests, and the brief refuses a fix that waits longer or retries. ADR 0057 is
-  theirs if the fix changes behaviour.
-- **`dbmd-58d`**, in `scripts/smoke-pack.mjs`. Drive `query` and `refs` against
-  the installed binary, and say in the docstring why `import` stays out. ADR 0059
-  is theirs, and 0058 is deliberately skipped because an unmerged branch has it.
+- **`dbmd-dil`**, in `src/studio/`. Nothing wakes the studio when a file stops
+  being unreadable, because a lock being released is not a filesystem event. ADR
+  0061 is theirs.
+- **`dbmd-4mi`**, in `tsconfig.build.json` and ADR 0024. Every JavaScript file in
+  the tarball points at a source map the tarball deliberately excludes. ADR 0062
+  is theirs.
+- **`dbmd-9lm`**, in `scripts/check-commands.mjs`. Its brief says it may not be
+  worth building and that closing it with the reasoning written down is a
+  complete outcome. ADR 0063 is theirs.
 
-The split is by collision surface and it also avoids the two cancelled branches:
-neither agent touches `merge-pr.mjs`, `check-main-provenance.mjs` or
-`test/guards/broken-on-purpose.test.ts`, which is what `2f69db1` changed.
+**Both branches that were cancelled on 2026-09-07 have landed.** The
+documentation one had no commits at all: its work survived only as a patch, it
+applied to current `main` cleanly, and it is #142. The tooling one rebased from
+sixteen commits behind with **zero conflicts**, which is #150. I had recorded
+that it conflicted in three files, and that was wrong: I read a `git merge-tree`
+listing as conflict output when it was not, and that false reading was my only
+reason for calling the work undispatchable.
 
-**The owner's instruction was to keep the machine in mind when initiating
-batches, not to stop initiating them.** Reading it as a ban made the tool they
-asked for pointless, and that reading cost most of an afternoon of queue.
+**One thing from that stop was genuinely lost**: an agent's only file was
+untracked, so `git diff HEAD` produced an empty patch and the worktree removal
+took the original. b-fac #182.
 
-**The three earlier stopped agents are still cancelled rather than paused.** The
-harness refuses to resume an agent the owner stopped, and says to treat its work
-as cancelled and to launch a fresh one only if the owner asks. So
-**re-dispatching those is the owner's call, not mine.**
-
-What survives, and where:
-
-- **`tooling/what-a-merge-costs-and-what-nobody-breaks`** still has commit
-  `2f69db1` on it: `merge-pr.mjs` printing which branches a merge is about to
-  make stale, `check-main-provenance.mjs`, the guard suite and a decision record.
-  Never pushed, so no CI and no review. **Unverified.**
-- **`docs/records-that-describe-a-future-that-happened`** kept its branch, and
-  its uncommitted work is a 526-line patch in the session scratchpad under
-  `cancelled-work/`.
-- The flaky-watcher agent's only file was untracked and **was lost**, because
-  `git diff HEAD` does not capture untracked files and its patch came out empty.
-  Small in itself: that agent had barely started and the item carries the full
-  recipe. Recorded as b-fac #182, because the mistake is not small.
-
-**The worktrees are cleared: 3.0 GB down to 172 KB**, which was a real share of
-the disk pressure that caused the stop. Branch refs and the patches survive.
-
-**Read the machine before dispatching anything.** The factory gained
-`assets/machine-load.mjs` today and shipped it as 0.51.0. On this machine the
-largest consumer is six `claude` sessions at 2.7 GB, and a sibling project's
-session runs sixteen processes beside this one. Counting your own agents
-undercounts.
+**Read the machine before dispatching anything**, with `assets/machine-load.mjs`
+from the factory. A sibling project's session runs sixteen processes beside this
+one, so counting your own agents undercounts. And **do not run a test suite while
+a wave is out**: doing that produced 27 failing tests that were nothing but
+contention, and a false verdict on somebody else's change. b-fac #186.
 
 ## What is waiting on the owner
 
@@ -167,23 +149,30 @@ and neither should be re-asked:
 repository secret `NPM_TOKEN`, then `git tag v0.1.0` and push it. Until they do,
 `npx dbmd` resolves nothing, and no page in the repository claims otherwise.
 
-Two things about that step were checked on 2026-09-07 so the owner does not
-discover them at the tag. **The name is free**: `dbmd` returns 404 from the
-registry, and so do `db-md`, `db_md`, `dbMd` and `dbmd.js`, so npm's
-too-similar rule has nothing to catch on. **And a red publish is not necessarily
-about their tag**: `release.yml` has no test step because `npm publish` runs
-`prepublishOnly`, which is the whole check suite, which contains the flaky
-watcher test. If the publish job fails on that, the tag is fine and re-running
-the job publishes. The workflow's own error text says to delete the tag and tag
-again, which is right for a version mismatch and wrong for this. `dbmd-056`.
+That step is now driven as far as it can be without pushing a tag, and
+[`verified.md`](verified.md) carries the detail. The short version: **the name is
+free**, the tarball holds what it should, the version comparison was run against
+five tag shapes, and the ancestry check was run against three repository states.
+**What cannot be observed from here** is whether the checkout populates
+`origin/main` on a tag push. It is the only thing in CI that reads a
+remote-tracking ref and no tag has ever been pushed. The failure is safe either
+way, and since #147 the message says whether the tag or the checkout is the
+problem rather than blaming the tag for both.
 
-**Two agents were cancelled with finished or nearly finished work, and
-re-dispatching them is the owner's call.** `docs/records-that-describe-a-future-that-happened`
-is documentation, finished, 322 lines, and its uncommitted part is a 526-line
-patch in the session scratchpad under `cancelled-work/`.
-`tooling/what-a-merge-costs-and-what-nobody-breaks` is commit `2f69db1`, 1,158
-lines through `merge-pr.mjs` and the guard suite, never pushed and so never
-checked; the worst case if it is wrong is that nothing can merge.
+**Two things are genuinely theirs and neither blocks anything:**
+
+- **The visuals epic, `dbmd-fnl`.** Taste, and taste about a picture is not
+  derivable from a repository. It carries a measurement, options and a
+  recommendation each, so the conversation is five minutes rather than a blank
+  page. Two of its bullets were measured against the owner's uncommitted layout
+  edits and are corrected in place, in the description rather than in a note
+  below it, because a correction read second is a correction that failed.
+- **`dbmd-joa` needs a browser extension connected, and that is one click.** The
+  README's one picture is stale in three ways, all three re-verified against the
+  committed tree. Nothing in a session can take a screenshot: a studio starts and
+  serves, and the browser tool answers "No connection to browser extension".
+  **Do not dispatch an agent at this**; it cannot succeed and the wall is
+  invisible from a brief.
 
 What is left is neither urgent nor blocking:
 
@@ -207,6 +196,12 @@ What is left is neither urgent nor blocking:
   in `orchestrating.md` with what each one cost. The second was found today and
   put a reverted commit onto `main`.
 - **Close items when their branch lands**, in the same motion as the merge.
+- **Never put a pipe between a command and a `&&`.** A pipeline's exit code is
+  the last command's, so `cmd | tail -1 && next` runs `next` even when `cmd`
+  failed. That one habit caused three different failures on 2026-09-07: a cut
+  identifier, a failing check reported as passing, and a `git reset --hard` that
+  ran after the checkout before it had refused. `orchestrating.md` has the whole
+  of it.
 - **Do not summarise the backlog from memory. Print it.** I claimed twice on
   2026-09-07 that nothing was left but the owner's decisions, and both times it
   was false, for two different reasons. The first time **dbmd-45** was a P2 under
