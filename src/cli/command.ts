@@ -50,3 +50,24 @@ export class UsageError extends Error {
 export const EXIT_USAGE = 2
 /** The command ran and could not do what was asked. */
 export const EXIT_FAILURE = 1
+
+/**
+ * The flag `parseArgs` objected to, phrased for the person who typed it.
+ *
+ * `parseArgs` says "To specify a positional argument starting with a '-', place
+ * it at the end of the command after '--'", which is true, is about a thing
+ * nobody here is doing, and reads as a suggestion to try it. The token is the
+ * useful half of what it knows, and it is recoverable from the same arguments.
+ *
+ * It lives here rather than beside one command because every command parses its
+ * own flags and each one would otherwise write this paragraph again.
+ */
+export function offendingOption(argv: readonly string[]): string | undefined {
+  const flag = argv.find((token) => token.startsWith('-') && token !== '-' && token !== '--')
+  return flag === undefined ? undefined : `unknown option "${flag}"`
+}
+
+/** What was thrown, as prose, for the case where it was not an `Error`. */
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

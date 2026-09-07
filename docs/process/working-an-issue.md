@@ -47,15 +47,26 @@ Where the change touches the studio, bring it up and drive it:
 npm run studio -- --port 0
 ```
 
+That script builds first and then opens the repository's own
+[`examples/shop`](../../examples/shop), so there is nothing to set up. An edit
+you make in the page is written back to those files and shows in `git status`:
+`git checkout examples/shop` puts it back.
+
 `--port 0` lets the OS pick a free port and the command prints the URL it bound
-to. Use it rather than a fixed port: several worktrees run at once and a fixed
-port makes them collide, silently, with whichever started first.
+to, **on stderr**, which with the default port is the only way to learn which
+port you got. Use it rather than a fixed port: several worktrees run at once and
+a fixed port makes them collide, silently, with whichever started first. It is
+already the default, and typing it is a reminder rather than a requirement.
+
+`--no-open` binds and prints the URL without opening a browser, which is what
+you want when you are driving the page with something other than your eyes.
 
 Then exercise the change the way the real user would, not the way a test does.
 
 Stop the server you started, by its own process, before your worktree is
-removed. Do not kill node globally: other agents are working in other worktrees
-on this machine.
+removed. Ctrl-C is what it is waiting for: it flushes an edit still inside the
+debounce and then stops listening. Do not kill node globally: other agents are
+working in other worktrees on this machine.
 
 ## The pull request
 

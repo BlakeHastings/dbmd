@@ -10,7 +10,7 @@
 import { readdir } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { writeModel } from '../model/write.js'
-import { EXIT_FAILURE, UsageError, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
 import { exampleModel } from './example.js'
 import { sortedBy, type Output } from './output.js'
 
@@ -111,19 +111,6 @@ function parseInitArgs(argv: readonly string[]): string {
 }
 
 /**
- * The flag `parseArgs` objected to, phrased for the person who typed it.
- *
- * `parseArgs` says "To specify a positional argument starting with a '-', place
- * it at the end of the command after '--'", which is true, is about a thing
- * nobody here is doing, and reads as a suggestion to try it. The token is the
- * useful half of what it knows, and it is recoverable from the same arguments.
- */
-function offendingOption(argv: readonly string[]): string | undefined {
-  const flag = argv.find((token) => token.startsWith('-') && token !== '-' && token !== '--')
-  return flag === undefined ? undefined : `unknown option "${flag}"`
-}
-
-/**
  * Whether init may write here: nothing there at all, or an empty directory.
  *
  * `ENOTDIR` counts as occupied. `dbmd init README.md` has to refuse rather than
@@ -148,8 +135,4 @@ function errorCode(error: unknown): string | undefined {
   return error instanceof Error && 'code' in error && typeof error.code === 'string'
     ? error.code
     : undefined
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -30,9 +30,9 @@ Four pieces. `src/model/` turns a `db-model/` directory into a typed
 model plus a list of diagnostics, says where that model disagrees with itself,
 writes one back canonically, and `src/index.ts` exports all three. `src/import/` holds the introspection contract and the provider
 seam, with no engine behind it yet. `src/cli.ts` and `src/cli/` are the entry
-point, and it has one command: `dbmd init`. `src/studio/` is the studio server
-and the page it serves, started by importing `startStudio`: no subcommand
-reaches it yet, and dbmd-35 is that join. There is no `check` and no `export`.
+point, and it has two commands: `dbmd init` and `dbmd studio`. `src/studio/` is
+the studio server and the page it serves, reachable either by importing
+`startStudio` or through that subcommand. There is no `check` and no `export`.
 Everything else in this file is either about the repository or about a decision
 already recorded.
 
