@@ -190,3 +190,70 @@ directory**, because CI will never notice and your local run will.
 
 **Remove an agent's worktree when its branch has landed.** `git worktree remove
 --force <path>` then `git worktree prune`.
+
+## Hold every merge while anything is rebasing
+
+Seen three times in one session, which is past the threshold, and the third time
+was after writing the rule down and agreeing with it.
+
+The mechanism is simple and the mistake is not carelessness. A branch comes back
+rebased and green. Merging it is the obviously correct thing to do with it. But
+if another branch is mid-rebase at that moment, the merge makes that one stale
+again, and its agent reports a rebase that was already obsolete before it
+finished. Each occurrence costs a full round trip: a message, a rebase, a
+re-verification, and a report.
+
+It happened to dbmd-25 and dbmd-44 within minutes of each other, and then to
+dbmd-48 an hour later, after the rule was already understood.
+
+**The rule that actually works is a state rather than a judgement.** While any
+branch is rebasing, no branch merges. Not "unless it looks safe", not "unless
+they touch different files", because the merge wrapper judges the green against
+what would land rather than against the branch point, so file overlap is
+irrelevant. It is a queue with one lane.
+
+The cost of holding is a few minutes of nothing merging. The cost of not holding
+is one round trip per agent in flight, and the round trips are not free: a rebase
+puts a tree you already reviewed back into motion, so the review has to be redone
+against what actually landed.
+
+**Tell the agent when it happens anyway.** If a merge does land under somebody
+mid-rebase, say so immediately rather than letting them finish, report, and be
+sent back. That turns two round trips into one and is the difference between an
+orchestrator who noticed and one who did not.
+
+## Green checks are not a report, and merging on them cost a pull request
+
+The same family as the rule above, found the same day, and worth its own section
+because the mechanism is different and the previous rule does not catch it.
+
+An agent was demonstrating that a new merge gate could actually go red. It pushed
+a deliberate break, watched the gate fail, and reverted. I read `gh pr checks`,
+saw the whole matrix green, verified the diff against the commit I had reviewed
+earlier, and merged.
+
+**The branch was green at two different commits about a minute apart, and I
+merged the wrong one.** The revert had not landed yet. Nothing was red, nothing
+was stale, and the merge wrapper had no way to object: everything it checks was
+true. What distinguished the two commits was the commit message.
+
+So `main` gained a temporary Node 20 leg with a comment above it saying it was
+temporary and would be reverted in the next commit, which is precisely the
+version the item existed to remove. It took another pull request to undo, and the
+decision record on `main` briefly asserted a conclusion the evidence had since
+replaced.
+
+**Merge on the agent's report, not on a checks listing.** The report is the only
+signal that says the branch is finished, and it is the one the loop is built
+around: an agent pushes, opens the pull request, reports, and stops. A checks
+listing says the current head passes. Those are different claims and only one of
+them is about whether the work is done.
+
+The tell was available and I did not read it. The listing was green while the
+agent had not reported, and *that combination* is the state to distrust: an agent
+still working is an agent whose next push is still coming.
+
+**Say whose mistake it was, in the message that sends the fix back.** The agent
+in this case reported the merge as its own race lost by a minute. It was not. An
+orchestrator who lets that stand teaches the next agent to push more defensively,
+which is a real cost paid to protect a mistake that was not theirs.
