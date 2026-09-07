@@ -39,7 +39,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { basename, join } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { startStudio, type Studio } from '../../src/studio/index.js'
-import { REVISION_HEADER, type WireConflict, type WireStatus } from '../../src/studio/wire.js'
+import {
+  REVISION_HEADER,
+  type WireConflict,
+  type WireModelResponse,
+  type WireStatus,
+} from '../../src/studio/wire.js'
+import { saidAbout } from '../../src/studio/unreadable.js'
 import { exampleShop, withCopy } from '../model/fixtures.js'
 
 /**
@@ -56,6 +62,16 @@ const fail = vi.hoisted(() => ({
   // that will not unlink is not missing from the read, so nothing before the
   // delete has a chance to see it and the throw lands on the 500.
   rm: undefined as undefined | ((path: string) => unknown),
+  /**
+   * Every path the three intercepted calls were given, in order.
+   *
+   * For dbmd-dil, which turns on a read that is *not* made: the recheck on
+   * `GET /api/model` has to cost nothing while the model is readable, and the
+   * only honest way to say "nothing" is to count the calls. Recorded here
+   * rather than by borrowing a `fail` hook so that counting and failing stay
+   * separate things.
+   */
+  seen: [] as string[],
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -64,6 +80,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const intercept =
     (hook: () => undefined | ((path: string) => unknown), real: Call): Call =>
     async (path, ...rest) => {
+      if (typeof path === 'string') fail.seen.push(path)
       const thrown = typeof path === 'string' ? hook()?.(path) : undefined
       if (thrown !== undefined) throw thrown
       return real(path, ...rest)
@@ -81,6 +98,7 @@ afterEach(() => {
   fail.readFile = undefined
   fail.readdir = undefined
   fail.rm = undefined
+  fail.seen.length = 0
 })
 
 /**
@@ -142,6 +160,19 @@ async function withStudio(use: (running: Running) => Promise<void>): Promise<voi
 
 async function status(studio: Studio): Promise<WireStatus> {
   return (await (await fetch(new URL('/api/model', studio.url))).json()) as WireStatus
+}
+
+/** The same request, kept whole, because dbmd-dil is about the diagnostics on it. */
+async function page(studio: Studio): Promise<WireModelResponse> {
+  return (await (await fetch(new URL('/api/model', studio.url))).json()) as WireModelResponse
+}
+
+/**
+ * How many times the reader listed `tables/`, which is exactly once per
+ * `readModel`, so it is how many times the model directory was read.
+ */
+function listings(): number {
+  return fail.seen.filter((path) => basename(path) === 'tables').length
 }
 
 async function edit(
@@ -580,6 +611,128 @@ describe('a file somebody really did edit still says so', () => {
 
       expect(conflict.reason).toBe('changed')
       expect(conflict.message).toContain('changed on disk after the studio read it')
+    })
+  })
+})
+
+/**
+ * The moment after all of the above: whatever had the file lets go of it.
+ *
+ * **A lock being released is not a filesystem event**, so `fs.watch` has
+ * nothing to deliver and the watcher never fires. The session went on holding
+ * the file as unreadable until something else under the model directory moved,
+ * which left a diagnostics panel showing an error that was no longer true, for
+ * as long as nobody touched anything. dbmd-dil, and ADR 0061 for why the read
+ * that closes it hangs off `GET /api/model` rather than off a timer of its own.
+ *
+ * The watcher is off in this file, and here that is the point rather than a way
+ * of dodging one: the recovery owes nothing to an event, because there is no
+ * event for it to owe anything to.
+ */
+describe('a file that stops being unreadable, with nothing else under the model directory moving', () => {
+  const LOCKED = 'C:\\Users\\somebody\\models\\shop\\tables\\orders.md'
+
+  it('is readable again to the next page that asks, and nothing else had to happen', async () => {
+    await withStudio(async ({ studio }) => {
+      fail.readFile = only('orders.md', errno('EBUSY', LOCKED))
+      await flush(studio)
+      const locked = await page(studio)
+      expect(saidAbout(locked.diagnostics, ORDERS)).toContain('the file is in use (EBUSY)')
+
+      // The whole of the gesture. No edit, no write, no touch of any other
+      // file, and no wait: the lock clears, and the page asks the question it
+      // was going to ask anyway.
+      fail.readFile = undefined
+
+      const cleared = await page(studio)
+      expect(saidAbout(cleared.diagnostics, ORDERS)).toBeUndefined()
+      // And the revision moved with it, so a page holding the box it drew from
+      // memory is told to redraw rather than left believing its own copy.
+      expect(cleared.revision).toBeGreaterThan(locked.revision)
+    })
+  })
+
+  it('lets the table be edited again, without the edit being the thing that unstuck it', async () => {
+    // The advice the refusal gives is "try it again once the file can be read",
+    // and it worked because the retry was itself the re-read. What this asserts
+    // is that it no longer has to be: by the time somebody gets there, the page
+    // has already caught up on its own.
+    await withStudio(async ({ studio, dir }) => {
+      fail.readFile = only('orders.md', errno('EBUSY', LOCKED))
+      await flush(studio)
+      expect((await edit(studio, 'orders', MOVED)).status).toBe(409)
+
+      fail.readFile = undefined
+      await page(studio)
+
+      expect(await patch(studio, 'orders', MOVED)).toBe(200)
+      const settled = await flush(studio)
+      expect(settled.conflicts).toEqual([])
+      expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toContain('x: 700')
+    })
+  })
+
+  it('says the same thing when it was the directory that would not list', async () => {
+    await withStudio(async ({ studio }) => {
+      fail.readdir = only('tables', errno('EACCES', '/model/tables'))
+      await flush(studio)
+      expect(saidAbout((await page(studio)).diagnostics, ORDERS)).toContain(
+        'cannot list the directory',
+      )
+
+      fail.readdir = undefined
+      expect(saidAbout((await page(studio)).diagnostics, ORDERS)).toBeUndefined()
+    })
+  })
+
+  it('reads the directory once per request while something is unreadable, and not twice', async () => {
+    // Bounded, which is the half of this that is not free. It is the item's
+    // "do not poll unconditionally" seen from the other side: the beat belongs
+    // to the page, the studio adds no timer of its own, and one request is one
+    // read.
+    await withStudio(async ({ studio }) => {
+      fail.readFile = only('orders.md', errno('EBUSY', LOCKED))
+      await flush(studio)
+
+      fail.seen.length = 0
+      await page(studio)
+      expect(listings()).toBe(1)
+      await page(studio)
+      expect(listings()).toBe(2)
+    })
+  })
+
+  it('reads nothing at all while every file is readable', async () => {
+    // The other half, and the one that decides whether this is affordable. A
+    // studio nobody has locked anything on is the ordinary case, and it has to
+    // cost what it cost before: a `GET` answered out of memory.
+    await withStudio(async ({ studio }) => {
+      await flush(studio)
+
+      fail.seen.length = 0
+      await page(studio)
+      await page(studio)
+      await page(studio)
+
+      expect(listings()).toBe(0)
+    })
+  })
+
+  it('stops reading again the moment the file comes back', async () => {
+    // The gate closes itself. Nothing has to notice that the lock cleared and
+    // switch the recheck off, because the recheck asks the diagnostics of the
+    // read the session is serving, and the read that cleared it replaced them.
+    await withStudio(async ({ studio }) => {
+      fail.readFile = only('orders.md', errno('EBUSY', LOCKED))
+      await flush(studio)
+      fail.readFile = undefined
+
+      await page(studio)
+      fail.seen.length = 0
+      await page(studio)
+      await page(studio)
+
+      expect(listings()).toBe(0)
     })
   })
 })
