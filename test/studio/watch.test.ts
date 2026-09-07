@@ -118,21 +118,50 @@ async function remove(
   return { status: response.status, body: (await response.json()) as Record<string, unknown> }
 }
 
+/**
+ * Land what is pending, and be answered after it has landed.
+ *
+ * Every case below that edits ends here. It used to be a `settle` that slept
+ * 500ms and then issued a `GET`, and the `GET` was called a fence. It is not
+ * one: `GET /api/model` renders the status as it stands at the moment it is
+ * handled, so a request that arrives while a flush is in flight is answered
+ * from the middle of it. And a flush is not cheap. It reads the whole directory
+ * to check the baselines, renames a file over each one it writes, and reads the
+ * directory again to adopt what the writer normalised. The sleep left about a
+ * hundred milliseconds for all of that, which is a margin and not a guarantee,
+ * and dbmd-52 is the runs on a loaded machine where it was not enough. It failed
+ * in both directions, which is why it read as two different bugs: a conflict a
+ * case was waiting for had not been recorded yet, or one a case expected to be
+ * cleared had not been written over yet.
+ *
+ * `POST /api/flush` is the route the page itself uses for this exact question
+ * (ADR 0025) and it answers after the write rather than during it, so this waits
+ * for the event instead of for a length of time. Same reason `until` exists.
+ */
 async function flush(studio: Studio): Promise<Status> {
   const response = await fetch(new URL('/api/flush', studio.url), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
   })
+  expect(response.status).toBe(200)
   return (await response.json()) as Status
 }
 
-/** The debounce is real time, so a test that edits has to let it elapse. */
-async function settle(studio: Studio): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 500))
-  // A request is answered after the flush, so this is a fence rather than
-  // another sleep.
-  await get(studio, '/api/model')
-}
+/**
+ * A write debounce no case here will reach, so the only thing that writes is an
+ * explicit `flush`.
+ *
+ * The cases that need a hand edit to land *while the studio's own write is still
+ * pending* were arranging that with a 400ms debounce and doing the edit quickly,
+ * which is a second clock racing the first: a timer that fired early wrote the
+ * file, and the conflict the case exists for never happened. With the flush
+ * doing the writing on demand there is no reason to leave that window open at
+ * all, so it is made unreachable rather than merely wide. The `POST /api/flush`
+ * cases at the bottom of this file were already written this way; this is that
+ * idiom given a name. `server.test.ts` keeps one case on a real debounce, which
+ * is where ADR 0004's own promise is still asserted.
+ */
+const ONLY_ON_DEMAND = 60_000
 
 /**
  * Wait for a condition the watcher will bring about.
@@ -190,7 +219,7 @@ describe('a file changed on disk while an edit is pending', () => {
         expect((dragged.body as unknown as Status).pendingWrite).toBe(true)
 
         await editByHand(running.dir, 'tables/orders.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
 
         expect(await columnNames(running.dir, 'orders')).toContain('hand_edited_note')
         expect(writes(running)).toEqual([])
@@ -198,9 +227,10 @@ describe('a file changed on disk while an edit is pending', () => {
           'refused to write tables/orders.md: it changed on disk since the studio read it',
         ])
       },
-      // Long enough that the hand edit lands inside the debounce rather than
-      // after it, which is the case the item calls the sharp one.
-      { debounceMs: 400 },
+      // So the hand edit lands inside the debounce rather than after it, which
+      // is the case the item calls the sharp one, and so it does so every time
+      // rather than nearly every time.
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 
@@ -209,7 +239,7 @@ describe('a file changed on disk while an edit is pending', () => {
       async (running) => {
         await patch(running.studio, 'orders', { layout: { x: 700, y: 400 } })
         await editByHand(running.dir, 'tables/orders.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
 
         const after = await status(running.studio)
         expect(after.conflicts.map((conflict) => conflict.path)).toEqual(['tables/orders.md'])
@@ -219,7 +249,7 @@ describe('a file changed on disk while an edit is pending', () => {
         // one would be telling the developer their disk is broken.
         expect(after.writeError).toBeNull()
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 
@@ -228,7 +258,7 @@ describe('a file changed on disk while an edit is pending', () => {
       async (running) => {
         await patch(running.studio, 'orders', { layout: { x: 700, y: 400 } })
         await editByHand(running.dir, 'tables/orders.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
 
         const body = await get(running.studio, '/api/model')
         const orders = (
@@ -239,7 +269,7 @@ describe('a file changed on disk while an edit is pending', () => {
         // disk matching its baseline again and write it after all.
         expect(orders?.layout?.x).not.toBe(700)
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 
@@ -251,13 +281,13 @@ describe('a file changed on disk while an edit is pending', () => {
       async (running) => {
         await patch(running.studio, 'orders', { layout: { x: 700, y: 400 } })
         await editByHand(running.dir, 'tables/orders.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
 
         expect(reloads(running)).toEqual([])
         expect(refusals(running)).toHaveLength(1)
         expect(await columnNames(running.dir, 'orders')).toContain('hand_edited_note')
       },
-      { debounceMs: 400, watch: false },
+      { debounceMs: ONLY_ON_DEMAND, watch: false },
     )
   })
 
@@ -266,13 +296,13 @@ describe('a file changed on disk while an edit is pending', () => {
       async (running) => {
         await patch(running.studio, 'orders', { layout: { x: 700, y: 400 } })
         await editByHand(running.dir, 'tables/orders.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
         expect((await status(running.studio)).conflicts).toHaveLength(1)
 
         // The second drag is made against the reloaded model, so it carries the
         // hand edit with it rather than over it.
         await patch(running.studio, 'orders', { layout: { x: 700, y: 400 } })
-        await settle(running.studio)
+        await flush(running.studio)
 
         expect((await status(running.studio)).conflicts).toEqual([])
         expect(await columnNames(running.dir, 'orders')).toContain('hand_edited_note')
@@ -282,7 +312,7 @@ describe('a file changed on disk while an edit is pending', () => {
           y: 400,
         })
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 
@@ -294,7 +324,7 @@ describe('a file changed on disk while an edit is pending', () => {
       async (running) => {
         await patch(running.studio, 'orders', { layout: { x: 700, y: 400 } })
         await editByHand(running.dir, 'tables/customers.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
 
         expect(refusals(running)).toEqual([])
         expect(writes(running)).toEqual(['wrote tables/orders.md'])
@@ -305,7 +335,7 @@ describe('a file changed on disk while an edit is pending', () => {
           y: 400,
         })
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 })
@@ -337,7 +367,7 @@ describe('a file changed on disk with nothing pending', () => {
   it('reloads a file the studio itself wrote earlier in the session', async () => {
     await withStudio(async (running) => {
       await patch(running.studio, 'orders', { layout: { x: 111, y: 222 } })
-      await settle(running.studio)
+      await flush(running.studio)
       expect(writes(running)).toEqual(['wrote tables/orders.md'])
       const written = await status(running.studio)
 
@@ -364,7 +394,7 @@ describe('a file changed on disk with nothing pending', () => {
     await withStudio(async (running) => {
       const before = await status(running.studio)
       await patch(running.studio, 'orders', { layout: { x: 333, y: 444 } })
-      await settle(running.studio)
+      await flush(running.studio)
       // Longer than the watch debounce, so an event that was going to arrive
       // has arrived.
       await new Promise((resolve) => setTimeout(resolve, 300))
@@ -464,7 +494,7 @@ describe('a file that stops parsing while the studio is running', () => {
       const response = await patch(running.studio, 'orders', { layout: { x: 900, y: 900 } })
       expect(response.status).toBe(409)
       expect(response.body['code']).toBe('incomplete')
-      await settle(running.studio)
+      await flush(running.studio)
       expect(await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')).toBe(broken)
     })
   })
@@ -490,7 +520,7 @@ describe('a file that stops parsing while the studio is running', () => {
       // for.
       const response = await patch(running.studio, 'orders', { layout: { x: 12, y: 34 } })
       expect(response.status).toBe(200)
-      await settle(running.studio)
+      await flush(running.studio)
       const read = await readModel(running.dir)
       expect(read.diagnostics).toEqual([])
       expect(read.model.tables.find((t) => t.name === 'orders')?.layout).toEqual({ x: 12, y: 34 })
@@ -508,7 +538,7 @@ describe('a file that stops parsing while the studio is running', () => {
       // Not recreated by the next flush either: the writer never deletes, and
       // carrying a table forward past its own file would be this file inventing
       // one.
-      await settle(running.studio)
+      await flush(running.studio)
       const read = await readModel(running.dir)
       expect(read.model.tables.some((t) => t.name === 'shipments')).toBe(false)
     })
@@ -548,7 +578,7 @@ describe('the inspector writes several different files at once', () => {
       for (const name of four) {
         expect((await patch(running.studio, name, { layout: { x: 11, y: 22 } })).status).toBe(200)
       }
-      await settle(running.studio)
+      await flush(running.studio)
 
       expect((await status(running.studio)).conflicts).toEqual([])
       expect(writes(running)).toEqual([
@@ -569,7 +599,7 @@ describe('the inspector writes several different files at once', () => {
       async (running) => {
         for (const name of four) await patch(running.studio, name, { layout: { x: 33, y: 44 } })
         await editByHand(running.dir, 'tables/products.md', addColumn)
-        await settle(running.studio)
+        await flush(running.studio)
 
         const after = await status(running.studio)
         expect(after.conflicts.map((conflict) => conflict.path)).toEqual(['tables/products.md'])
@@ -587,7 +617,7 @@ describe('the inspector writes several different files at once', () => {
         }
         expect(await columnNames(running.dir, 'products')).toContain('hand_edited_note')
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 })
@@ -600,7 +630,7 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
     await withStudio(async (running) => {
       const committed = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
       await patch(running.studio, 'orders', { layout: { x: 999, y: 999 } })
-      await settle(running.studio)
+      await flush(running.studio)
       const written = await status(running.studio)
 
       // What `git checkout -- db-model` does to the filesystem: the committed
@@ -612,7 +642,7 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
       )
 
       await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
-      await settle(running.studio)
+      await flush(running.studio)
       const after = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
       expect(after).not.toContain('999')
       const read = await readModel(running.dir)
@@ -628,11 +658,11 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
       async (running) => {
         const committed = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
         await patch(running.studio, 'orders', { layout: { x: 999, y: 999 } })
-        await settle(running.studio)
+        await flush(running.studio)
 
         await writeFile(join(running.dir, 'tables', 'orders.md'), committed, 'utf8')
         await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
-        await settle(running.studio)
+        await flush(running.studio)
 
         expect((await status(running.studio)).conflicts.map((conflict) => conflict.path)).toEqual([
           'tables/orders.md',
@@ -659,7 +689,7 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
       await patch(running.studio, 'customers', {
         columns: [...columns, { name: 'scratch', type: 'text' }],
       })
-      await settle(running.studio)
+      await flush(running.studio)
       expect(await columnNames(running.dir, 'customers')).toContain('scratch')
       await writeFile(join(running.dir, 'tables', 'customers.md'), committed, 'utf8')
       await until(
@@ -675,7 +705,7 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
         drawn.revision,
       )
       expect(response.status).toBe(409)
-      await settle(running.studio)
+      await flush(running.studio)
       expect(await readFile(join(running.dir, 'tables', 'customers.md'), 'utf8')).toBe(committed)
     })
   })
@@ -716,7 +746,7 @@ describe('an edit made against a model the studio has moved on from', () => {
       )
       expect(response.status).toBe(409)
       expect(response.body['code']).toBe('stale')
-      await settle(running.studio)
+      await flush(running.studio)
 
       const after = await columnNames(running.dir, 'customers')
       expect(after).toContain('hand_edited_note')
@@ -810,7 +840,7 @@ describe('an edit made against a model the studio has moved on from', () => {
           )
         ).status,
       ).toBe(200)
-      await settle(running.studio)
+      await flush(running.studio)
 
       const after = await status(running.studio)
       expect(after.revision).toBe(drawn.revision)
@@ -836,7 +866,7 @@ describe('an edit made against a model the studio has moved on from', () => {
           ).status,
         ).toBe(200)
       }
-      await settle(running.studio)
+      await flush(running.studio)
       expect(await columnNames(running.dir, 'orders')).toContain('gift')
       expect((await status(running.studio)).conflicts).toEqual([])
     })
@@ -862,7 +892,7 @@ describe('an edit made against a model the studio has moved on from', () => {
       expect((await patch(running.studio, 'customers', { layout: { x: 5, y: 6 } })).status).toBe(
         200,
       )
-      await settle(running.studio)
+      await flush(running.studio)
       const read = await readModel(running.dir)
       expect(read.model.tables.find((t) => t.name === 'customers')?.layout).toEqual({ x: 5, y: 6 })
       expect(await columnNames(running.dir, 'customers')).toContain('hand_edited_note')
@@ -975,7 +1005,7 @@ describe('a rename while one of the files it must edit changes on disk', () => {
         ])
         expect(validate(read.model)).toEqual([])
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 
@@ -995,7 +1025,7 @@ describe('a rename while one of the files it must edit changes on disk', () => {
         expect(read.model.tables.map((table) => table.name)).not.toContain('customers')
         expect(validate(read.model)).toEqual([])
       },
-      { debounceMs: 400 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 })
@@ -1016,7 +1046,7 @@ describe('POST /api/flush', () => {
         expect(flushed.pendingWrite).toBe(false)
         expect(flushed.lastWrite?.paths).toEqual(['tables/orders.md'])
       },
-      { debounceMs: 5_000 },
+      { debounceMs: ONLY_ON_DEMAND },
     )
   })
 
@@ -1028,7 +1058,7 @@ describe('POST /api/flush', () => {
         const flushed = await flush(running.studio)
         expect(flushed.conflicts.map((conflict) => conflict.path)).toEqual(['tables/orders.md'])
       },
-      { debounceMs: 5_000, watch: false },
+      { debounceMs: ONLY_ON_DEMAND, watch: false },
     )
   })
 

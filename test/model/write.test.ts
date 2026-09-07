@@ -16,7 +16,7 @@ import { readModel } from '../../src/model/read.js'
 import { scalar, serialiseModelFile, serialiseObject, writeModel } from '../../src/model/write.js'
 import type { Group, Model, Note, Table } from '../../src/model/types.js'
 import { fixtureModel } from './helpers.js'
-import { canonicalModel, exampleShop, hiddenEntries, snapshot, withCopy } from './fixtures.js'
+import { canonicalModel, hiddenEntries, snapshot, untidyModel, withCopy } from './fixtures.js'
 
 /**
  * `rename` is the one call whose failure the writer has to survive, and no real
@@ -280,10 +280,22 @@ describe('only what changed is written', () => {
   })
 
   test('`only` leaves a neighbour that is not canonical exactly as it was', async () => {
-    // The example model is hand-written, so a whole-model write over it also
-    // canonicalises files nobody edited. A caller saving one edit says which
-    // files it edited and gets a one-file diff instead of a four-file one.
-    await withCopy(exampleShop, async (dir) => {
+    // A model directory written by hand is rarely canonical (ADR 0010), so a
+    // whole-model write over one canonicalises files nobody edited. A caller
+    // saving one edit says which files it edited and gets a one-file diff
+    // instead of a five-file one.
+    //
+    // The fixture is `untidy` and not the example, and that is the whole of
+    // this test. It ran against `examples/shop` until dbmd-47, and dbmd-14 made
+    // `examples/shop` byte-canonical months later, in a change with nothing to
+    // do with the writer: every neighbour then rendered to what it already said
+    // and was skipped whether or not `only` was passed, so the case could no
+    // longer tell the two apart and passed with `only` ignored entirely. **A
+    // test whose fixture is already canonical cannot distinguish "wrote a
+    // little" from "wrote everything."** `untidy` is the fixture that can, and
+    // `round-trip.test.ts` pins that it still rewrites all five of its files on
+    // the first save, so this one cannot go quiet the same way twice.
+    await withCopy(untidyModel, async (dir) => {
       const before = await snapshot(dir)
       const { model: read } = await readModel(dir)
       const moved = withTable(read, 'orders', (orders) => ({
