@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest'
 import { compareDiagnostics, locationText } from '../../src/diagnostics.js'
 import { readModel } from '../../src/model/read.js'
 import type { Diagnostic, ReadResult } from '../../src/model/types.js'
+import { validate } from '../../src/model/validate.js'
 import { fixtureModel, withModel } from './helpers.js'
 
 /**
@@ -410,10 +411,13 @@ describe('an object file reached through a link', () => {
     expect(diagnostics[0]?.message).toContain('ENOENT')
   })
 
-  test("a directory whose name is not `.md` is still nobody's business", async () => {
+  test("an empty directory whose name is not `.md` is still nobody's business", async () => {
     // The smaller silence, left alone on purpose. `archive` claims to be no
     // object, so neither a real one nor a junctioned one is worth a sentence,
-    // exactly as a junctioned `sketches/` at the model root is not.
+    // exactly as a junctioned `sketches/` at the model root is not. What ADR
+    // 0054 later added is that a `.md` file *under* one of these is a claim, so
+    // both directories here are empty and that is now load-bearing rather than
+    // incidental: `object-in-subdirectory` below is the other half of this.
     const { model, diagnostics } = await withTables(async ({ tables, elsewhere }) => {
       await writeFile(join(tables, 'orders.md'), TABLE_FILE)
       await symlink(elsewhere, join(tables, 'archive'), 'junction')
@@ -435,6 +439,137 @@ describe('an object file reached through a link', () => {
 
     expect(diagnostics).toEqual([])
     expect(model.tables.map((table) => table.name)).toEqual(['orders'])
+  })
+})
+
+/**
+ * dbmd-z7v. `examples/shop` with its two notes moved into `notes/archive/`
+ * printed `8 tables, 0 notes, 1 group, no problems.` and exited 0: two
+ * paragraphs of hand-written prose on disk, absent from the model, and the only
+ * signal was a count nobody checks against a memory of what the model held.
+ *
+ * ADR 0054 is the argument. The claim belongs to the `.md` name rather than to
+ * the directory, which is what decides both halves of this: a directory with
+ * markdown under it is an error, and one without is silent.
+ */
+describe('an object file one folder too deep', () => {
+  test('prose in a subdirectory of notes is an error, not a count nobody reads', async () => {
+    const { model, diagnostics } = await withModel({
+      'notes/archive/why-invoices-are-never-deleted.md': '---\nkind: note\n---\nProse.\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'notes/archive error object-in-subdirectory: `archive/` is a directory inside `notes/`, and dbmd reads only the files directly in `notes/`, so `notes/archive/why-invoices-are-never-deleted.md` is not a note; move the markdown up into `notes/`',
+    ])
+    expect(model.notes).toEqual([])
+  })
+
+  test('the cause is said beside the consequence, not instead of it', async () => {
+    // The tables case, which was never silent: a `ref` at the table that is
+    // gone already said there is no `tables/orders.md`, which is true and names
+    // the consequence. Both facts are true and both are reported, because the
+    // one that says a file was skipped is the one nothing else can say.
+    //
+    // The validator is run here rather than the reader alone, because the two
+    // halves of the sentence come from the two halves of `dbmd check`.
+    const { model, diagnostics } = await withModel({
+      'tables/billing/orders.md': '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+      'tables/shipments.md':
+        '---\nkind: table\ntable: shipments\ncolumns:\n  - name: id\n    type: bigint\n    pk: true\n  - name: order_id\n    type: bigint\n    ref: orders.id\n---\n',
+    })
+
+    expect([...diagnostics, ...validate(model)].map((d) => d.code)).toEqual([
+      'object-in-subdirectory',
+      'ref-table-unknown',
+    ])
+  })
+
+  test('a group in a subdirectory is named, and so is the table that joined it', async () => {
+    const { diagnostics } = await withModel({
+      'groups/old/warehouse.md': '---\nkind: group\ngroup: warehouse\n---\n',
+      'tables/stock_movements.md':
+        '---\nkind: table\ntable: stock_movements\ngroup: warehouse\ncolumns: []\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'groups/old error object-in-subdirectory: `old/` is a directory inside `groups/`, and dbmd reads only the files directly in `groups/`, so `groups/old/warehouse.md` is not a group; move the markdown up into `groups/`',
+      'tables/stock_movements.md:4 error group-unknown: `group: warehouse` names no file at groups/warehouse.md',
+    ])
+  })
+
+  test('one error per directory, however deep the markdown is and however much of it there is', async () => {
+    // The decision the message shape rests on. A misplaced `node_modules` holds
+    // thousands of `.md` files and one of them is enough to make the point, so
+    // the diagnostic names the directory and cites the first claim as evidence.
+    // First is by name at each level, files before subdirectories, so the
+    // sentence is the same on every platform and in every run.
+    const { diagnostics } = await withModel({
+      'tables/vendor/zzz/README.md': '# zzz\n',
+      'tables/vendor/aaa/README.md': '# aaa\n',
+      'tables/vendor/2024/q1/orders.md': '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/vendor error object-in-subdirectory: `vendor/` is a directory inside `tables/`, and dbmd reads only the files directly in `tables/`, so `tables/vendor/2024/q1/orders.md` is not a table; move the markdown up into `tables/`',
+    ])
+  })
+
+  test('a directory with no markdown under it says nothing, and neither does a plain file', async () => {
+    // What keeps the error affordable. Nobody keeping screenshots or a
+    // `schema.sql` beside their tables loses anything, so nothing is lost and
+    // nothing is said, which is `unknown-kind-directory`'s reason for being a
+    // warning applied where nothing at all is warranted.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+      'tables/screenshots/erd.png': 'not really a png\n',
+      'tables/schema.sql': 'select 1;\n',
+      'tables/README': 'The billing model.\n',
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables.map((table) => table.name)).toEqual(['orders'])
+  })
+
+  test('a dot-directory is skipped, markdown and all, which is the way to keep an archive', async () => {
+    // The same rule a dot-file has had here since the beginning, and the reason
+    // the error needs no flag: a directory dbmd should keep out of is spelled
+    // with a leading dot, and a `.git` somebody has put in `tables/` costs
+    // nothing.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+      'tables/.git/refs/heads/README.md': '# not a model\n',
+      'notes/.archive/old.md': '---\nkind: note\n---\nRetired prose.\n',
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.notes).toEqual([])
+  })
+
+  test('a model with no notes directory at all stays silent', async () => {
+    // Absent is not the same as wrong, which ADR 0038 already settled one level
+    // up. An imported model has no `notes/` and no `groups/`, and a rule that
+    // complained about a directory that is not there would fire on every one.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.notes).toEqual([])
+  })
+
+  test('a subdirectory reached through a link is followed', async () => {
+    // A junction is the privilege-free link on Windows, and the case ADR 0038
+    // was written about: the entry answers `isDirectory()` false, so a reader
+    // that trusted the `Dirent` would be silent here. What is under test is
+    // that following it costs one `stat` and finds the claim on the other side.
+    const { diagnostics } = await withTables(async ({ tables, elsewhere }) => {
+      await writeFile(join(elsewhere, 'orders.md'), TABLE_FILE)
+      await symlink(elsewhere, join(tables, 'archive'), 'junction')
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/archive error object-in-subdirectory: `archive/` is a directory inside `tables/`, and dbmd reads only the files directly in `tables/`, so `tables/archive/orders.md` is not a table; move the markdown up into `tables/`',
+    ])
   })
 })
 

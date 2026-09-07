@@ -74,6 +74,18 @@ export type ModelDiagnosticCode =
    * and then followed, successfully, to a directory.
    */
   | 'object-not-a-file'
+  /**
+   * A directory inside `tables/`, `notes/` or `groups/` with markdown under it,
+   * so files that claim to be objects are on disk and not in the model. ADR
+   * 0054.
+   *
+   * The claim is the `.md` name's and not the directory's, which is what makes
+   * this different from `unknown-kind-directory` one level up and why an empty
+   * `tables/drafts/` raises nothing. An error rather than a warning for
+   * `object-not-a-file`'s reason: the objects are missing from every export and
+   * every diagram, and a warning would leave CI green on a model that is short.
+   */
+  | 'object-in-subdirectory'
   /** The file does not begin with a `---` line. */
   | 'frontmatter-absent'
   /** `---` on the first line and no closing `---` anywhere after it. */

@@ -50,15 +50,19 @@ db-model/
   `groups/billing.md` is the group `billing`, and that is what `group: billing`
   resolves against. Renaming a file renames the object.
 - Only `*.md` files are read, and files whose name starts with `.` are skipped.
-- There is one level of directories. `tables/billing/orders.md` is not read,
-  and nothing warns you about it, because `billing` claims to be nothing.
+- **There is one level of directories, and markdown in a second one is an
+  error.** `tables/billing/orders.md` is not read, and it is an
+  `object-in-subdirectory` error saying so, because `orders.md` in a kind
+  directory is a claim to be a table wherever it sits. `tables/billing/` on its
+  own claims nothing, so a subdirectory holding no markdown at all — an empty
+  `tables/drafts/`, a `tables/screenshots/` of images — is silent, and so is one
+  whose name starts with `.`, which is how you keep an archive beside a model
+  without dbmd having an opinion about it.
 - **A kind directory may be a symlink**, and dbmd follows it. What it may not be
   is a plain file, which is a `kind-not-a-directory` error.
 - **An object file may be a symlink too**, and dbmd follows that as well. What
   it may not be is a directory: a `tables/orders.md` that is one, or that is a
-  link resolving to one, is an `object-not-a-file` error. A name ending in `.md`
-  in a kind directory is a claim to be an object, and that is the difference
-  between it and `tables/billing/`.
+  link resolving to one, is an `object-not-a-file` error.
 
 A model with no `tables/` at all is a legal, empty model, and dbmd says nothing
 about it. A `tables` that is a **file** is a different thing and gets the error,
@@ -73,6 +77,26 @@ kind directories turns into this on somebody else's machine:
 
 Every table is still on disk and none of them load. Without the error, the
 report is `0 tables, no problems`.
+
+A subdirectory is the same silence one level down, and the worst of it is notes,
+because nothing in a model points at a note. Move `notes/` into `notes/archive/`
+and the prose is on disk, absent from every export and every diagram, and the
+only signal is a count. So a file like this one, sitting one folder too deep,
+says so:
+
+```markdown dbmd-error:notes/archive/why-invoices-are-never-deleted.md:object-in-subdirectory
+---
+kind: note
+---
+
+Invoices are kept forever because the tax authority may ask for one seven
+years later.
+```
+
+The error names the directory rather than each file under it, and cites the
+first file it finds as evidence, because a `node_modules` somebody has put in
+`tables/` would otherwise be a page of them. Move the markdown up a level, or
+rename the directory to start with a `.` if it is meant to stay out.
 
 ### Naming a file
 
@@ -1114,6 +1138,7 @@ leaves the line off.
 | `unknown-kind-directory` | warning | A directory that is not `tables`, `notes` or `groups`. | Move the files, or delete the directory. |
 | `kind-not-a-directory` | error | `tables`, `notes` or `groups` is there and is a plain file, so nothing of that kind was read. A symlinked kind directory is fine and is followed; this is about a file. | Look at what is in the file. A path in it means a symlink that was checked out as text, and the fix is a checkout that can make symlinks. Otherwise rename the file out of the way. |
 | `object-not-a-file` | error | A `*.md` name inside `tables/`, `notes/` or `groups/` is a directory rather than a file, so the object it names was not read. A symlinked object file is fine and is followed; this is about one that resolves to a directory, or that is one. | Point the link at the file rather than at the directory holding it. A directory that is not meant to be an object belongs under a name that does not end in `.md`. |
+| `object-in-subdirectory` | error | A directory inside `tables/`, `notes/` or `groups/` with markdown under it. dbmd reads one level of directories, so those files are on disk and not in the model. One error per directory, naming the first file found as evidence. | Move the markdown up into the kind directory. A directory that is meant to stay out of the model belongs under a name starting with `.`, or outside the model root. |
 | `frontmatter-absent` | error | The file does not start with a `---` line. | Add the frontmatter. Check for a blank first line. |
 | `frontmatter-unterminated` | error | An opening `---` with no closing one. | Add the closing `---`. |
 | `frontmatter-empty` | error | Two delimiters with nothing between them. | Say what the file is. |
