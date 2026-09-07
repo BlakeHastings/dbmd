@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, test } from 'vitest'
-import { type Input, runImport } from '../../src/cli/import.js'
+import { type Input, processStdin, runImport } from '../../src/cli/import.js'
 import { createOutput } from '../../src/cli/output.js'
 import { captureEnvironment, runCli, type Run } from './harness.js'
 
@@ -173,6 +173,29 @@ describe('nothing prompts, and nothing is written over', () => {
     await expect(
       runWithStdin(['--dir', join(await workspace(), 'db-model')], TERMINAL),
     ).rejects.toThrow(/standard input is a terminal/)
+  })
+
+  test('the real standard input answers with what the process says, not with a guess', () => {
+    // Every other case here hands `runImport` an `Input`, which is what makes
+    // "a person is typing at this" reachable from a suite at all, and is also
+    // the one thing a seam cannot prove: that the seam is attached to the
+    // process. `processStdin` is that attachment, and the case above refuses on
+    // whatever it answers, so an answer that is wrong here is a command that
+    // hangs with every test in this file still green. dbmd-i2u.
+    const original = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+    try {
+      Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+      expect(processStdin().isTty).toBe(true)
+      // A pipe leaves `isTTY` undefined rather than false, so this is an
+      // assertion about the coercion and not a second way of asking the same
+      // question: `!== false` would call a pipe a terminal and refuse the run
+      // that the documented default exists for.
+      Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true })
+      expect(processStdin().isTty).toBe(false)
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(process.stdin, 'isTTY')
+      else Object.defineProperty(process.stdin, 'isTTY', original)
+    }
   })
 
   test('a directory that is not empty is a delta, and nothing is written without --confirm', async () => {

@@ -330,13 +330,22 @@ function* javascriptUnder(dir) {
  * arguments only somebody who knows the command can supply, and which is the
  * half that proves more than "the module loaded".
  *
- * `import` is the seventh, and it is left out on purpose rather than by
- * oversight. It reads the JSON an introspection query returns, and only a live
+ * `import` is the seventh, and what it is given is a refusal rather than a
+ * model. It reads the JSON an introspection query returns, and only a live
  * database produces that: `query` prints the SQL rather than running it, so
  * the two do not chain here without an engine to run one against. A checked-in
  * fixture would prove the parser parses, which the suite already proves against
- * `src/`, and would say nothing about the tarball. So `import` is covered here
- * by its `--help` and by nothing else.
+ * `src/`, and would say nothing about the tarball. dbmd-58d recorded that, and
+ * for a long time `import` was covered here by its `--help` and by nothing else.
+ *
+ * What that left uncovered is not the parser. With no `--file` this command
+ * reads standard input, so it is the only one in the tarball that can sit there
+ * forever instead of answering, and every test that drives that decision in
+ * `test/cli/import.test.ts` replaces the seam that makes it: `processStdin` is
+ * the one part of the path no test in this repository touches. An empty
+ * standard input needs no database, so it is driven here, and a build of this
+ * command that waits fails on `COMMAND_TIMEOUT_MS` rather than passing quietly.
+ * dbmd-i2u.
  *
  * Every one of them is asserted on what it said and not only on what it
  * returned. An exit code is a coarse instrument here: `dbmd check` exits 0 for
@@ -458,6 +467,22 @@ async function checkTheCommands(install, version) {
         `${firstLine(sql.stderr)}`,
     )
   }
+  // `import` with the pipe closed and nothing in it. The exit code is asserted
+  // beside the sentence for the reason every other case here is: 1 is also what
+  // an unreadable model and an unwritable directory exit with, so the code alone
+  // cannot tell "standard input was empty" from "something else refused". The
+  // empty stdout is the third of the three, because this refusal is narration
+  // and a caller piping the run into something else gets nothing but its own
+  // silence.
+  const nothing = await dbmd(install, ['import'], '')
+  const said = nothing.stderr.includes('nothing in standard input')
+  if (nothing.code !== 1 || nothing.stdout !== '' || !said) {
+    failures.push(
+      `dbmd import with nothing on standard input exited ${nothing.code}, put ` +
+        `${nothing.stdout.length} bytes on stdout and did not say standard input was empty: ` +
+        `${firstLine(nothing.stderr)}`,
+    )
+  }
   return [
     ...ran,
     'init',
@@ -466,6 +491,7 @@ async function checkTheCommands(install, version) {
     'export --stdout',
     'refs accounts',
     'query --engine postgres',
+    'import with nothing on standard input',
   ]
 }
 
@@ -624,12 +650,22 @@ async function get(url) {
  * Not `node <entry>`: the link is the thing `npx dbmd` runs, and on POSIX
  * running it is what proves the shebang and the executable bit are both there.
  */
-function dbmd(install, args) {
+function dbmd(install, args, stdin) {
   const shim = join(install, 'node_modules', '.bin', WINDOWS ? 'dbmd.cmd' : 'dbmd')
-  return run(shim, args, { cwd: install, timeout: COMMAND_TIMEOUT_MS, shell: WINDOWS })
+  return run(shim, args, { cwd: install, timeout: COMMAND_TIMEOUT_MS, shell: WINDOWS, stdin })
 }
 
-function run(command, args, { cwd, timeout, shell }) {
+/**
+ * `stdin` is the text to put on the child's standard input, and leaving it out
+ * is not the same as passing the empty string. Node's default is a pipe, and a
+ * pipe nobody closes never ends, so a command that reads standard input and is
+ * given no `stdin` here waits until the timeout. Every caller but one wants
+ * that left alone, because none of them reads it and closing it would be
+ * describing something no user does. `dbmd import` is the one that reads it,
+ * and what it is handed is a pipe that ends immediately with nothing in it,
+ * which is `dbmd import < /dev/null` and is a thing a user does.
+ */
+function run(command, args, { cwd, timeout, shell, stdin }) {
   return new Promise((resolve, reject) => {
     // `shell` on Windows only, where npm and the bin shim are both `.cmd` files
     // that Node refuses to spawn directly. The whole line is built here and
@@ -643,6 +679,14 @@ function run(command, args, { cwd, timeout, shell }) {
           windowsHide: true,
         })
       : spawn(command, args, { cwd, timeout, windowsHide: true })
+    if (stdin !== undefined) {
+      // A child that has already gone away turns the write into an EPIPE on a
+      // stream nobody is listening to, which takes the whole script down and
+      // says nothing about the tarball. The exit code and the two captured
+      // streams are the report either way.
+      child.stdin.on('error', () => {})
+      child.stdin.end(stdin)
+    }
     let stdout = ''
     let stderr = ''
     child.stdout.setEncoding('utf8')

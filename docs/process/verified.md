@@ -365,6 +365,44 @@ documents that promised them are true again.
 groups behind. The next person to try dragging a group will find it does not
 move and will file a defect. It is the note. Move it and the drag works.
 
+### What `dbmd import` does with nothing to read, driven on 2026-09-07
+
+dbmd-i2u reported that `dbmd import` with no arguments prints nothing and never
+returns. Driven three ways against `dist/cli.js` built from the branch, because
+the three are different file descriptors and only one of them was ever measured.
+
+| standard input | exit | what it said |
+| --- | --- | --- |
+| `< /dev/null` | 1 | `there was nothing in standard input`, and the recipe to run |
+| a terminal | 2 | `standard input is a terminal, so there is nothing there to read` |
+| a pipe nobody writes to | none | nothing, killed after eight seconds |
+
+**The terminal case has been answered since 05:08 that day**, by dbmd-f3p, and
+the report predates or misses it. The terminal was reached by defining
+`process.stdin.isTTY` on the real process and calling `main`, because no test
+runner and no agent harness has a terminal to lend.
+
+**The third row is the one a probe measures**, and it is not a defect. A process
+spawned with Node's default `stdio` holds file descriptor 0 open and writes
+nothing to it, which is the same value as a pipe about to be written to slowly.
+ADR 0063 is why it stays, and `dbmd import --help` now says so where the caller
+who did it is looking.
+
+**Nothing outside a fake seam demonstrated any of this until now.** Every test
+of the refusal replaced `processStdin`, and the tarball smoke drove
+`import --help` and nothing else, which is exactly how a fixed behaviour gets
+re-reported as live. The smoke now drives `dbmd import` with the pipe closed.
+
+**One measurement to save the next person the same hour.** The third row is not
+the same on every path into the binary. `node dist/cli.js import` with Node's
+default `stdio` waits, and so does the same line through `cmd /c`. The npm
+`.bin\dbmd.cmd` shim on Windows does **not**: an unwritten pipe reads there as
+end of input, and the command answers immediately with the first row's sentence.
+Closing the pipe is what makes the smoke's case mean the same thing everywhere:
+left open, it would pass on Windows for a reason that has nothing to do with the
+command. That was found by leaving it open on purpose and watching the case pass
+when it should not have.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
