@@ -130,7 +130,7 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
     return out.report({
       code: EXIT_FAILURE,
       text:
-        `${out.style.bad('dbmd:')} ${out.style.strong(path)} has ${error.found} and not ` +
+        `${out.style.bad('dbmd:')} ${out.style.strong(slashed(path))} has ${error.found} and not ` +
         `${error.missing}, so export cannot tell which part of it is generated.\n` +
         `Add the missing marker, or delete the one that is there.\n`,
       json: {
