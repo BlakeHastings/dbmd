@@ -8,9 +8,12 @@
 # because `dbmd` is not published to npm and nothing has decided that it will
 # be. ADR 0028 is the argument for that and for the other decisions below.
 #
-# This is not the merge gate. `check.yml` is, it runs `npm run check`, and it is
-# the only required status check. Red here means the model or the recipe is
-# broken, not the build.
+# This is not the merge gate. `check.yml` is, it runs `npm run check`, and the
+# job named `check` in it is the only required status check. Red here means the
+# model or the recipe is broken, not the build.
+#
+# One version rather than the matrix `check.yml` runs, because this file is the
+# published recipe and the recipe is a single job on a single version. ADR 0032.
 name: model
 
 on:
@@ -26,7 +29,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
@@ -72,7 +75,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build

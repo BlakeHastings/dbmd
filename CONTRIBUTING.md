@@ -34,10 +34,12 @@ time is a feature.
 
 ## From a clone to a picture
 
-You need [Node](https://nodejs.org) 20 or later, npm, and git. Nothing else: no
-database, no Docker, no global installs. CI builds and tests on Node 20 on Linux
-for every pull request, and this is developed on Node 24 on Windows, so both
-ends of that range are exercised rather than promised.
+You need [Node](https://nodejs.org) 22 or later, npm, and git. Nothing else: no
+database, no Docker, no global installs. CI builds and tests on Node 22 **and**
+Node 24 on Linux for every pull request, so both ends of the supported range are
+exercised rather than promised, and this is developed on Node 24 on Windows.
+[ADR 0032](docs/architecture/decisions/0032-what-ci-builds-on-and-what-the-package-promises.md)
+is why 22 is the floor and why the matrix has two entries rather than one.
 
 ```bash
 git clone https://github.com/BlakeHastings/dbmd.git
@@ -92,6 +94,10 @@ Typecheck, format check, decision-record numbering, the reviewable-diff check,
 tests, a build, and a smoke test over the packed tarball, in that order. It is
 the only mechanical gate, and it is exactly what CI runs, so green here and
 green there mean the same thing. There is no second list of things to remember.
+
+CI runs it twice, on Node 22 and on Node 24, and your local run covers whichever
+of those you are on. So a failure that only one leg of that matrix shows is a
+real failure and not a flake, and the run page names the version.
 
 The last one packs the package, installs it into a temporary directory outside
 this repository and runs the installed `dbmd`. It takes about six seconds and it

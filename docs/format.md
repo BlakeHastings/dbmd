@@ -924,7 +924,9 @@ in a file it does not own.
 
 dbmd reports problems rather than throwing, and reports all of them in one pass.
 A diagnostic has a stable `code`, a `severity`, the file's path and sometimes a
-line.
+line. There is one exception to "all of them", and it is
+[`frontmatter-invalid`](#one-parse-error-per-file), because YAML that will not
+parse produces a complaint about every line after the one that broke.
 
 **`error` means something in the file did not make it into the model.** dbmd will
 refuse to save over a file that raised one, because writing the model back would
@@ -949,7 +951,7 @@ leaves the line off.
 | `frontmatter-absent` | error | The file does not start with a `---` line. | Add the frontmatter. Check for a blank first line. |
 | `frontmatter-unterminated` | error | An opening `---` with no closing one. | Add the closing `---`. |
 | `frontmatter-empty` | error | Two delimiters with nothing between them. | Say what the file is. |
-| `frontmatter-invalid` | error | YAML would not parse it. | The message is YAML's. Usually indentation or a stray `:`. |
+| `frontmatter-invalid` | error | YAML would not parse it. At most one per file: [see below](#one-parse-error-per-file). | The message is YAML's, and the line is where the parse first went wrong. Usually a tab, indentation, or a stray `:`. |
 | `frontmatter-not-a-map` | error | The frontmatter parsed to a list or a scalar. | It has to be `key: value` lines. |
 | `duplicate-key` | error | The same key twice in one mapping. | Delete one. The first is used. |
 | `kind-missing` | error | No `kind:` key. | Add `kind: table`, `note`, `group` or `model`. |
@@ -983,6 +985,48 @@ are in, and `dbmd check --json` prints them as the objects this page's `code` an
 `severity` columns describe. Its exit code is the short version: 0 when nothing
 worse than a warning turned up, 1 when an error did, and 1 for a warning too
 under `--strict`. [ADR 0020][adr20] is why the boundary is there.
+
+### One parse error per file
+
+`frontmatter-invalid` is the one code that is capped, and it is capped because a
+syntax error is contagious in a way no other mistake is. An unterminated `[`
+swallows the rest of the document; one tab where two spaces belong derails the
+parser. Either way YAML then has something true and *different* to say about
+nearly every remaining line. One tab in a four-column table produced fifteen.
+
+So dbmd reports the complaint at the first place the parse went wrong, says how
+many it did not report, and stops:
+
+```
+tables/orders.md
+  6  error  Tabs are not allowed as indentation (and 14 more parse errors, not reported: they follow from this one) (frontmatter-invalid)
+```
+
+**First means first in the file, not first out of the parser**, and the
+difference matters more than it sounds. Fix the line dbmd names and the other
+fourteen go with it, because they were describing the wreckage rather than the
+mistake. If a second one is left, it is a second mistake and the next run says
+so. [ADR 0031][adr31] has the argument and the two cases that shaped it.
+
+Nothing else is capped. Every other code is one fact per mistake, and a file
+that parses reports all of its problems in one run:
+
+```markdown dbmd-error:tables/orders.md:frontmatter-invalid
+---
+kind: table
+table: orders
+columns: [
+  - name: id
+    type: uuid
+  - name: placed_at
+    type: timestamptz
+---
+
+The `[` on the `columns:` line is never closed, so YAML reads everything after
+it as one unfinished flow sequence. Before the cap this two-column file was
+eight diagnostics; it is now one, on line 5, and it says
+`Block collections are not allowed within flow collections`.
+```
 
 ## What the format does not have
 
@@ -1062,4 +1106,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr26]: architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md
 [adr27]: architecture/decisions/0027-an-empty-name-is-a-warning-because-an-error-means-loss.md
 [adr29]: architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md
+[adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
 [prettier]: https://prettier.io

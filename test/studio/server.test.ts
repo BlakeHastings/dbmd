@@ -5,15 +5,19 @@ import { join } from 'node:path'
 import { readModel } from '../../src/model/read.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
 import { REVISION_HEADER } from '../../src/studio/wire.js'
-import { exampleShop, snapshot, withCopy } from '../model/fixtures.js'
+import { exampleShop, snapshot, untidyModel, withCopy } from '../model/fixtures.js'
 
 /**
  * The server, driven the way the client will drive it.
  *
- * Nothing here writes or asserts on frontmatter text. The fixture is the example
- * model and everything read back goes through `readModel`, because the format is
- * still moving and a test holding a literal `null: false` would be asserting on
- * a decision that belongs to the writer.
+ * Nothing here writes or asserts on frontmatter text. Everything read back goes
+ * through `readModel`, because the format is still moving and a test holding a
+ * literal `null: false` would be asserting on a decision that belongs to the
+ * writer.
+ *
+ * The fixture is the example model, except where a case says otherwise. The one
+ * that does is about which files were left alone, and `examples/shop` cannot
+ * answer that any more; `test/model/fixtures.ts` says why.
  */
 
 interface Running {
@@ -25,9 +29,20 @@ interface Running {
 
 async function withStudio<T>(
   use: (running: Running) => Promise<T>,
-  options: { readonly debounceMs?: number; readonly clientDir?: string } = {},
+  options: {
+    readonly debounceMs?: number
+    readonly clientDir?: string
+    /**
+     * Which model to open. The example unless a case says otherwise, because it
+     * is the model a reader of this repository already knows; `untidyModel` is
+     * for the cases whose subject is what the studio does *not* rewrite, and
+     * the reason is on that case.
+     */
+    readonly fixture?: string
+  } = {},
 ): Promise<T> {
-  return withCopy(exampleShop, async (dir) => {
+  const { fixture = exampleShop, ...studioOptions } = options
+  return withCopy(fixture, async (dir) => {
     const lines: string[] = []
     const studio = await startStudio({
       dir,
@@ -36,7 +51,7 @@ async function withStudio<T>(
       // a suite nobody runs twice.
       open: false,
       log: (message) => lines.push(message),
-      ...options,
+      ...studioOptions,
     })
     try {
       return await use({ studio, dir, lines })
@@ -72,12 +87,38 @@ function json(body: unknown): RequestInit {
   return { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
 }
 
-/** The debounce is real time, so a test that edits has to let it elapse. */
-async function settle(running: Running): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 400))
-  // The write may have started just as the timer fired; a request is answered
-  // after it, so this is a fence rather than another sleep.
-  await call(running.studio, '/api/model')
+/**
+ * Land what is pending, and be answered after it has landed.
+ *
+ * This was a 400ms sleep and a `GET` that was called a fence and is not one:
+ * `GET /api/model` renders the status at the moment it is handled, so a request
+ * that arrives while a flush is in flight is answered from the middle of it.
+ * `POST /api/flush` answers after the write (ADR 0025), which is the whole
+ * reason the page has it. dbmd-52, and the same repair as `watch.test.ts`.
+ */
+async function flush(running: Running): Promise<void> {
+  const response = await fetch(new URL('/api/flush', running.studio.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(response.status).toBe(200)
+  await response.json()
+}
+
+/**
+ * Wait for something to become true, rather than for a length of time.
+ *
+ * The one thing left in this file that has to wait on a clock the test does not
+ * hold is the debounce firing by itself, and polling for it is bounded by what
+ * happened rather than by a guess about how slow the machine is.
+ */
+async function until(what: () => Promise<boolean>, why: string): Promise<void> {
+  const deadline = Date.now() + 5_000
+  for (;;) {
+    if (await what()) return
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${why}`)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
 }
 
 const writes = (running: Running): string[] => running.lines.filter((l) => l.startsWith('wrote '))
@@ -162,7 +203,7 @@ describe('PATCH /api/table/:name', () => {
       expect(patched.status).toBe(200)
       expect(patched.body['pendingWrite']).toBe(true)
 
-      await settle({ studio, dir, lines })
+      await flush({ studio, dir, lines })
 
       const after = await snapshot(dir)
       const changed = [...after].filter(([path, text]) => before.get(path) !== text)
@@ -173,6 +214,61 @@ describe('PATCH /api/table/:name', () => {
       const table = reread.model.tables.find((entry) => entry.name === 'orders')
       expect(table?.columns.find((column) => column.name === 'status')?.type).toBe('citext')
     })
+  })
+
+  it('leaves the files it did not edit alone, even when they are not canonical', async () => {
+    // The case above is the same claim against `examples/shop`, and it stopped
+    // being able to make it. `examples/shop` became byte-canonical when dbmd-14
+    // landed, so writing one file and writing the whole model leave exactly the
+    // same bytes on disk: the other seven render to what they already say and
+    // the writer skips them either way. The assertion is still worth having,
+    // because it catches a patch that edits a second object, but it has not
+    // been able to tell "wrote one file" from "wrote all of them" for months,
+    // and the studio could stop passing `only` with nothing going red. dbmd-47.
+    //
+    // `untidy` is where the two differ. Every file in it parses and not one of
+    // them is canonical, so a whole-model write rewrites all five, which is
+    // exactly the defect ADR 0013 records: one drag put three files nobody had
+    // touched into the developer's `git status`.
+    await withStudio(
+      async (running) => {
+        const before = await snapshot(running.dir)
+        const { body } = await call(running.studio, '/api/model')
+        const orders = (
+          body['model'] as { tables: { name: string; columns: unknown[] }[] }
+        ).tables.find((table) => table.name === 'orders')
+        const columns = (orders?.columns as { name: string; type: string }[]).map((column) =>
+          column.name === 'status' ? { ...column, type: 'citext' } : column,
+        )
+
+        const patched = await call(running.studio, '/api/table/orders', {
+          method: 'PATCH',
+          ...json({ columns }),
+        })
+        expect(patched.status).toBe(200)
+        await flush(running)
+
+        const after = await snapshot(running.dir)
+        const changed = [...after].filter(([path, text]) => before.get(path) !== text)
+        expect(changed.map(([path]) => path)).toEqual(['tables/orders.md'])
+        // Named one by one as well as counted, because the count above is the
+        // assertion that went quiet and this is what it was for: these four are
+        // the files a whole-model write would have reformatted.
+        for (const untouched of [
+          '_model.md',
+          'groups/billing.md',
+          'notes/floating.md',
+          'tables/customers.md',
+        ]) {
+          expect(after.get(untouched)).toBe(before.get(untouched))
+        }
+
+        const reread = await readModel(running.dir)
+        const table = reread.model.tables.find((entry) => entry.name === 'orders')
+        expect(table?.columns.find((column) => column.name === 'status')?.type).toBe('citext')
+      },
+      { fixture: untidyModel },
+    )
   })
 
   it('carries a unique index through a patch that replaces the index list', async () => {
@@ -189,7 +285,7 @@ describe('PATCH /api/table/:name', () => {
       ]
 
       await call(running.studio, '/api/table/products', { method: 'PATCH', ...json({ indexes }) })
-      await settle(running)
+      await flush(running)
 
       const reread = await readModel(running.dir)
       expect(reread.diagnostics).toEqual([])
@@ -218,7 +314,7 @@ describe('PATCH /api/table/:name', () => {
         ...json({ indexes }),
       })
       expect(status).toBe(200)
-      await settle(running)
+      await flush(running)
 
       const reread = await readModel(running.dir)
       expect(reread.diagnostics).toEqual([])
@@ -241,11 +337,39 @@ describe('PATCH /api/table/:name', () => {
         method: 'PATCH',
         ...json({ layout: orders?.layout }),
       })
-      await settle(running)
+      await flush(running)
       expect(writes(running)).toEqual([])
       const { body: after } = await call(running.studio, '/api/model')
       expect(after['lastWrite']).toBeNull()
     })
+  })
+
+  it('writes when the debounce elapses, with nobody asking it to', async () => {
+    // Everything else in this file lands its write with `POST /api/flush`, so
+    // this is the one case that asserts ADR 0004's actual promise: the edit is
+    // written a few hundred milliseconds after it stops arriving, on the
+    // server's own timer, with no second request. It waits for the write rather
+    // than for a duration, so a slow machine makes it slower and never wrong.
+    await withStudio(
+      async (running) => {
+        const patched = await call(running.studio, '/api/table/orders', {
+          method: 'PATCH',
+          ...json({ layout: { x: 61, y: 62 } }),
+        })
+        expect(patched.status).toBe(200)
+        expect(patched.body['pendingWrite']).toBe(true)
+
+        await until(async () => writes(running).length > 0, 'the debounce to fire on its own')
+        expect(writes(running)).toEqual(['wrote tables/orders.md'])
+
+        const reread = await readModel(running.dir)
+        expect(reread.model.tables.find((table) => table.name === 'orders')?.layout).toEqual({
+          x: 61,
+          y: 62,
+        })
+      },
+      { debounceMs: 40 },
+    )
   })
 
   it('coalesces a drag into one write rather than sixty', async () => {

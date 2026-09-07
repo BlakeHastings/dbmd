@@ -169,3 +169,17 @@ the CLI, that is where the printing happens".
 - **The number of rules outgrows one file.** Nine fit comfortably. Thirty would
   want a rule-per-function registry, and that is a pattern worth a record of its
   own rather than something that happens gradually.
+
+## Refined by 0031
+
+The cap above was built in dbmd-24, in the place this record put it and for the
+reason this record gives. One clause needed answering that this record did not
+notice it had left open: "reporting the first `frontmatter-invalid` per file"
+does not say which one that is, and neither of the two orders lying around is
+it. `doc.errors` is the parser's emission order, which puts the complaint naming
+an unterminated `[` last; `compareDiagnostics` sorts equal lines by message text,
+which puts `Tabs are not allowed as indentation` third, behind two complaints
+about what the tab did downstream. Taking either reports a confidently wrong
+explanation of the file, which is worse than the forty true ones the cap exists
+to remove. It is the earliest one **in the file**. ADR 0031 has the evidence and
+the suppression count the message now carries; everything above stands.
