@@ -566,20 +566,29 @@ describe('the watcher, counted at the callback', () => {
     })
   })
 
-  it('does not wake for the writer’s own temporary file', async () => {
+  it('keeps the writer’s own temporary file out of the kind directory’s filter', async () => {
     // `write.ts` writes `.<name>.<uuid>.tmp` beside every target. Without the
-    // filter the studio would wake itself for a file that was never part of the
-    // model, twice per save.
+    // filter the `tables/` watcher would fire for a file that was never part of
+    // the model, twice per save. Deleting the filter turns the zero below into
+    // a one, which is what this case is for.
     //
-    // The claim is about that name, not about every name `readModel` skips.
-    // `isRootEntry` passes the *directory*, so the root watcher wakes for "a
-    // kind directory changed" and the filename filter never sees the file at
-    // all. On Windows that path fires for an ordinary `notes.txt` dropped into
-    // `tables/` and not for a `.tmp`, which is a difference in how NTFS reports
-    // a parent directory's own change and not something to hold a test to. So
-    // "no non-model name ever wakes it" is not true, and this case does not say
-    // it. It is harmless either way: a wake-up costs a directory read and the
-    // reload that follows finds nothing.
+    // **Read the name literally. This is not "no non-model file ever wakes it",
+    // and the zero below is not evidence for that.** `isRootEntry` passes the
+    // *directory*, so the root watcher wakes for "something under `tables`
+    // changed" with no filename for `isModelFileName` to reject. dbmd-c8p
+    // measured that path on Windows 11 / NTFS / Node 24: this exact write and
+    // delete woke the watcher eleven times in twelve against a directory the
+    // watcher had been living in, and zero times in twelve against a freshly
+    // copied one. `withCopy` hands this case a fresh one every time, so the
+    // zero is that fixture's doing rather than the filter's. The same
+    // measurement made the root filter unfalsifiable from here: replacing
+    // `isRootEntry` with `() => true` leaves this case green.
+    //
+    // It is harmless in both directions, which is why the leak is a comment on
+    // `isRootEntry` and not a change. The temporary file shares a debounce with
+    // the rename over the target, and that target is a wake-up the watcher owes
+    // anyway; anything else costs one directory read that `Edits.reload` ends
+    // by comparing a fingerprint and finding nothing.
     await withWatcher(async (watching) => {
       const temporary = join(watching.dir, 'tables', `.orders.md.${randomUUID()}.tmp`)
       await writeFile(temporary, 'not a model file', 'utf8')

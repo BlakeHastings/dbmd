@@ -31,11 +31,13 @@
  * burst has to become one wake-up or the studio re-reads the directory four
  * times for one Ctrl-S.
  *
- * **It ignores the writer's own temporary files.** `write.ts` writes
- * `.<name>.<uuid>.tmp` beside the target and renames it over. Those names start
- * with a dot and do not end in `.md`, which is the rule `readModel` already
- * skips them by, and applying the same rule here is what keeps a save from
- * waking the studio up for a file that was never part of the model.
+ * **It ignores the writer's own temporary files, at the kind directory.**
+ * `write.ts` writes `.<name>.<uuid>.tmp` beside the target and renames it over.
+ * Those names start with a dot and do not end in `.md`, which is the rule
+ * `readModel` already skips them by, and applying the same rule here is what
+ * keeps that file out of the kind directory's watcher. It is not a promise that
+ * no such name ever reaches `onChange`, and `isRootEntry` below is where that
+ * distinction is measured and why it does not matter.
  */
 
 import { watch, type FSWatcher } from 'node:fs'
@@ -167,7 +169,45 @@ export class ModelWatcher {
   }
 }
 
-/** At the model root: the model file itself, or a directory that holds objects. */
+/**
+ * At the model root: the model file itself, or a directory that holds objects.
+ *
+ * **This is a hole in the filename filter, and it is meant to stay open.** The
+ * name it lets through is a *directory*, so on a platform that reports a change
+ * inside `tables/` as a change to `tables` itself, every file put into that
+ * directory reaches `onChange` with no filename of its own, and
+ * `isModelFileName` never sees it. Widening the root watcher is not the fix:
+ * it exists to notice a kind directory appearing or disappearing, which is a
+ * real event and the only thing that brings a `notes/` created mid-session
+ * under a watcher of its own.
+ *
+ * Measured on Windows 11, NTFS, Node 24 (dbmd-c8p), with a raw `fs.watch` on
+ * the root beside this one:
+ *
+ * - Writing `.orders.md.<uuid>.tmp` into `tables/` and deleting it, which is
+ *   exactly what every save does, delivers `change` / `tables` to the root
+ *   watcher and wakes the studio. Eleven times in twelve, the miss being the
+ *   first such file written into a directory the watcher had only just
+ *   attached to.
+ * - Against a *freshly copied* directory the same operation woke it zero times
+ *   in twelve. Same name, same syscalls, opposite answer, so **the filename is
+ *   not what decides this** and no rule about names can close the hole. It is
+ *   NTFS reporting a parent directory's own metadata, and holding a test to it
+ *   would be holding a test to the operating system.
+ * - Linux was not measured. `inotify` on a directory does not report its
+ *   children's contents at all, so the leak is expected to be absent there and
+ *   a green run on CI proves nothing either way.
+ *
+ * **It costs nothing today, for two reasons that are worth keeping separate.**
+ * In the writer's own path the temporary file and the rename over the target
+ * land inside the same debounce, and the target is a real change the watcher
+ * owes a wake-up to regardless, so the leak adds no wake-up at all. For a
+ * genuinely uninteresting file, `notes.txt` dropped into `tables/`, it costs one
+ * directory read: `Edits.reload` re-reads, compares a fingerprint and returns
+ * silently when nothing moved. That second half is the load-bearing one. If that
+ * comparison ever stops being how the echo is answered (ADR 0019), this stops
+ * being harmless, and this comment is the first place to look.
+ */
 function isRootEntry(filename: string): boolean {
   return filename === MODEL_FILE || KIND_DIRECTORIES.has(filename)
 }
