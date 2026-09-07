@@ -1315,6 +1315,17 @@ export class Inspector {
         "Membership is declared by the member, so it is changed on a table's panel and written in that table's file. This file never lists them (ADR 0005).",
       ),
     )
+    if (members.length > 0) {
+      // A rule rather than a count. A count read off the canvas would be true
+      // when the panel was drawn and false as soon as somebody dragged a table,
+      // and this panel is not redrawn by a drag: the live answer is on the
+      // label bar, which is redrawn every frame (ADR 0035).
+      memberSection.append(
+        note(
+          'The box on the canvas is the bounding box of those members plus padding, so it can reach over a table or a note that never joined. Anything it reaches over is cut out of the box and counted on its label bar. Nothing is moved and no rectangle is stored here.',
+        ),
+      )
+    }
     parts.push(memberSection)
 
     parts.push(

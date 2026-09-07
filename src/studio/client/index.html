@@ -430,22 +430,46 @@
         outline: 2px solid var(--accent);
         outline-offset: -2px;
       }
+      /* The count of things the box reaches over that never joined it (ADR
+         0035). Hidden whenever there are none, which is most boxes most of the
+         time, so a tidy arrangement's label bar looks exactly as it did. */
+      .group-covers {
+        margin-left: 8px;
+        padding-left: 8px;
+        border-left: 1px solid color-mix(in srgb, var(--tint-ink) 35%, transparent);
+        font-weight: 400;
+        font-variant: small-caps;
+        letter-spacing: 0.02em;
+        opacity: 0.85;
+      }
       .group-area {
         position: absolute;
         inset: 26px 0 0 0;
-        border: 1px solid var(--tint-line);
-        border-radius: 0 6px 6px 6px;
-        background: color-mix(in srgb, var(--tint-fill) 45%, transparent);
       }
-      .group.selected .group-area {
-        border-color: var(--accent);
+      /* The box is one path with `fill-rule: evenodd` rather than a bordered
+         div, so that a non-member's clearing is genuinely absent from the fill.
+         A patch of page-colour painted on top would look the same here and
+         wrong the moment two group boxes overlap, where it would rub out the
+         other group's wash as well as this one's. */
+      .group-shape {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+      }
+      .group-shape path {
+        fill: color-mix(in srgb, var(--tint-fill) 45%, transparent);
+        stroke: var(--tint-line);
+        stroke-width: 1;
+      }
+      .group.selected .group-shape path {
+        stroke: var(--accent);
       }
       /* An empty group has no members to bound, so it is drawn as a dashed
          placeholder rather than as nothing: a group whose last member left has
          not been deleted, and a blank space would say it had. */
-      .group.empty .group-area {
-        border-style: dashed;
-        background: none;
+      .group.empty .group-shape path {
+        fill: none;
+        stroke-dasharray: 6 4;
       }
       .group-empty {
         margin: 10px;
