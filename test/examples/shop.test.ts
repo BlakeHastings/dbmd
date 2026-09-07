@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { locationText } from '../../src/diagnostics.js'
 import { readModel } from '../../src/model/read.js'
+import { validate } from '../../src/model/validate.js'
 import type { Diagnostic, ReadResult } from '../../src/model/types.js'
 
 /**
@@ -42,23 +43,15 @@ describe('examples/shop is a model dbmd reads without complaint', () => {
     expect(lines(diagnostics)).toEqual([])
   })
 
-  test('every ref points at a column that exists', async () => {
+  test('and the validator has nothing to say about it either', async () => {
     const { model } = await shop
-    const columnsByTable = new Map(
-      model.tables.map((table) => [table.name, new Set(table.columns.map((c) => c.name))]),
-    )
 
-    // The reader deliberately does not check this: a dangling `ref` is the
-    // validator's question, and the validator does not exist yet. Until it
-    // does, the example is the one model that has to be internally consistent,
-    // so the check lives here rather than nowhere.
-    const dangling = [...model.referencesTo].flatMap(([target, edges]) =>
-      edges
-        .filter((edge) => !(columnsByTable.get(target)?.has(edge.to.column) ?? false))
-        .map((edge) => `${edge.from.table}.${edge.from.column} -> ${target}.${edge.to.column}`),
-    )
-
-    expect(dangling).toEqual([])
+    // Every ref resolves, every index names columns that exist, every table has
+    // a key, every group has members. This test used to be four hand-rolled
+    // walks over the model with a comment apologising that the validator did
+    // not exist. dbmd-12 built it, so the example is now checked by the thing a
+    // user will run rather than by a copy of it that could drift.
+    expect(lines(validate(model))).toEqual([])
   })
 
   test('it stays small enough to read in one screenshot', async () => {
@@ -107,33 +100,6 @@ describe('examples/shop shows off the parts of the format that are easy to miss'
     // And the prose no longer apologises for the gap.
     const bodies = [...model.tables, ...model.notes, ...model.groups].map((o) => o.body).join('\n')
     expect(bodies).not.toContain('the format cannot')
-  })
-
-  test('every ref points at a column the model declares unique or primary', async () => {
-    const { model } = await shop
-    const targets = new Map(
-      model.tables.map((table) => [
-        table.name,
-        new Set([
-          ...table.columns.filter((column) => column.pk === true).map((column) => column.name),
-          ...table.indexes
-            .filter((index) => index.unique === true && index.columns.length === 1)
-            .map((index) => index.columns[0] as string),
-        ]),
-      ]),
-    )
-
-    // dbmd-12 will make this a warning in the validator: a ref whose target is
-    // neither unique nor a primary key is usually a typo. That rule was
-    // unwritable while nothing could declare a target unique, so it is asserted
-    // here against the one model that has to be right.
-    const loose = [...model.referencesTo].flatMap(([target, edges]) =>
-      edges
-        .filter((edge) => !(targets.get(target)?.has(edge.to.column) ?? false))
-        .map((edge) => `${edge.from.table}.${edge.from.column} -> ${target}.${edge.to.column}`),
-    )
-
-    expect(loose).toEqual([])
   })
 
   test('group membership is declared by the members and computed on the way in', async () => {

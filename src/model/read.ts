@@ -658,7 +658,7 @@ function readRef(ctx: Ctx, field: Field): Ref | undefined {
   const raw = stringOf(ctx, 'ref', field)
   if (raw === undefined) return undefined
   // The last dot separates the column, so a future `schema.table.column` needs
-  // no change here. Whether the target exists is dbmd-12's question.
+  // no change here. Whether the target exists is `validate`'s question.
   const dot = raw.lastIndexOf('.')
   if (dot <= 0 || dot === raw.length - 1) {
     report(

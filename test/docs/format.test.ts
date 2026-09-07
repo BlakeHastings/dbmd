@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { locationText } from '../../src/diagnostics.js'
 import type { ModelDiagnosticCode } from '../../src/diagnostics.js'
+import { validate } from '../../src/model/validate.js'
 import { withModel } from '../model/helpers.js'
 
 const formatPage = fileURLToPath(new URL('../../docs/format.md', import.meta.url))
@@ -90,11 +91,18 @@ describe('the examples in docs/format.md are a model dbmd reads', () => {
     const files = Object.fromEntries(good.map((block) => [block.path, block.text]))
     expect(Object.keys(files).length).toBe(good.length)
 
-    const { diagnostics } = await withModel(files)
+    const { model, diagnostics } = await withModel(files)
 
     expect(
       diagnostics.map((d) => `${locationText(d.at)} ${d.code}`),
     ).toEqual([])
+
+    // The validator too, since dbmd-12. The page teaches refs, unique indexes
+    // and groups, which is exactly the material the validator has opinions
+    // about, and an example that taught a dangling ref would be worse than no
+    // example. This is what forces the page to show the tables it refers to
+    // rather than only the ones it is explaining.
+    expect(validate(model).map((d) => `${locationText(d.at)} ${d.code}`)).toEqual([])
   })
 
   test('and the model they describe is the one the page says it is', async () => {
@@ -113,7 +121,7 @@ describe('the examples in docs/format.md are a model dbmd reads', () => {
     const unique = model.tables.flatMap((table) =>
       table.indexes.filter((index) => index.unique === true).map((index) => index.name),
     )
-    expect(unique).toEqual(['customers_email_key'])
+    expect(unique).toEqual(['customers_email_key', 'invoices_reference_key'])
 
     expect([...model.groupMembers].map(([group, members]) => `${group}: ${members.join(', ')}`))
       .toEqual(['billing: customers, invoice_lines'])
