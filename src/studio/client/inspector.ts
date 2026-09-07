@@ -33,6 +33,14 @@
  *    rename moves every `ref:` pointing at it, in other people's files, and a
  *    removal or a rename of a referenced column leaves those refs dangling.
  *    Both are named in the panel, with the columns, before anything is written.
+ *
+ * 5. **The panel also shows a table that does not exist yet.** Creating one
+ *    needs a `layout`, which is the one thing about it the server cannot invent
+ *    (ADR 0021), so the developer points at a spot on the canvas and the name is
+ *    typed here. A second thing for this panel to show rather than a second
+ *    panel, because the confirmation, the notes and the fields are already here.
+ *    Deleting one lives here too, at the bottom, and is the only thing in this
+ *    studio that destroys a file.
  */
 
 import type { Column, Index, Ref, Table } from '../../model/types.js'
@@ -45,7 +53,9 @@ import {
   toModelBody,
   type LineEnding,
 } from './fields.js'
+import type { Point } from './geometry.js'
 import { referrersTo, referrerText } from './model.js'
+import { clashFor, NEW_TABLE_SHAPE, suggestTableName } from './tables.js'
 
 export interface InspectorHandlers {
   /** The page's copy of the model. Read on demand so there is one copy, not two. */
@@ -54,6 +64,10 @@ export interface InspectorHandlers {
   readonly onPatch: (name: string, patch: TablePatch, next: Table) => void
   /** A rename, already confirmed by the developer. It touches several files. */
   readonly onRename: (from: string, to: string) => void
+  /** A new table, named and placed. It writes one file and edits no other. */
+  readonly onCreate: (name: string, at: Point) => void
+  /** A delete, already confirmed. The only thing here that destroys a file. */
+  readonly onDelete: (name: string) => void
 }
 
 /**
@@ -84,8 +98,35 @@ interface IndexRow {
   readonly notes: HTMLParagraphElement
 }
 
+/**
+ * A table that has been placed and not yet named, which is the whole of the
+ * unsaved state this studio has.
+ *
+ * ADR 0004 says there is no document and no Save button, and this does not
+ * introduce one: a file that does not exist has nothing to write through to, and
+ * the moment it does exist every edit to it is immediate again. `at` is what
+ * makes it worth holding at all, because it is where the developer pointed and
+ * nothing else on the page remembers that.
+ */
+interface Placement {
+  readonly at: Point
+  /** What is in the name field, kept so a refusal can be shown without losing it. */
+  name: string
+  /**
+   * The server's own words for a create it would not do, and the name it
+   * refused.
+   *
+   * The name is stored with the message because a refusal is about a name rather
+   * than about the form: `nul` is not a file name and `invoices` is, and leaving
+   * the first sentence up while the second is being typed is the panel accusing
+   * a name nobody has tried yet.
+   */
+  refusal: { readonly name: string; readonly message: string } | null
+}
+
 export class Inspector {
   private name: string | null = null
+  private placement: Placement | null = null
   private rows: ColumnRow[] = []
   private indexRows: IndexRow[] = []
   private columnList = document.createElement('ol')
@@ -102,6 +143,7 @@ export class Inspector {
 
   /** Draw the panel for one table, or close it. Rebuilds every field. */
   show(name: string | null): void {
+    this.placement = null
     this.name = name
     const table = name === null ? undefined : this.tableOf(name)
     if (table === undefined) {
@@ -112,6 +154,31 @@ export class Inspector {
     }
     this.host.hidden = false
     this.host.replaceChildren(...this.build(table))
+  }
+
+  /** Draw the form for a table that does not exist yet, at the point pointed at. */
+  place(at: Point): void {
+    this.name = null
+    this.placement = {
+      at,
+      name: suggestTableName(this.handlers.model().tables.map((table) => table.name)),
+      refusal: null,
+    }
+    this.drawPlacement(true)
+  }
+
+  /**
+   * The server would not create it. Keep the form, and say why in its words.
+   *
+   * `safe-path.ts` refuses a name a file cannot have, and it refuses it in a
+   * sentence written for a person. Repeating that rule here would be a second
+   * copy to keep in step; showing the sentence is the whole of what this page
+   * needs to do about it (ADR 0021).
+   */
+  placementRefused(name: string, message: string): void {
+    if (this.placement === null) return
+    this.placement.refusal = { name, message }
+    this.drawPlacement(false)
   }
 
   // ------------------------------------------------------------------------
@@ -127,10 +194,14 @@ export class Inspector {
           'bad',
         ),
       )
+      // Deleting it is still offered, and is the only thing this panel can
+      // usefully do with a file it could not read: every other section edits
+      // something the server has refused to write back.
+      parts.push(this.deleteSection(table))
       return parts
     }
     parts.push(this.nameSection(table), this.columnsSection(table), this.indexesSection(table))
-    parts.push(this.bodySection(table))
+    parts.push(this.bodySection(table), this.deleteSection(table))
     return parts
   }
 
@@ -138,6 +209,142 @@ export class Inspector {
     const header = el('header')
     header.append(el('h2', 'title', table.name), el('code', 'path', table.path))
     return header
+  }
+
+  // ------------------------------------------------------------------------
+  // A table that does not exist yet.
+  // ------------------------------------------------------------------------
+
+  private drawPlacement(focus: boolean): void {
+    const placement = this.placement
+    if (placement === null) return
+    this.host.hidden = false
+    this.host.replaceChildren(...this.buildPlacement(placement, focus))
+  }
+
+  /**
+   * The form, and everything it is about to do, said before it does it.
+   *
+   * The two sentences that matter are the file it will write and the fact that
+   * it will write nothing else, which is the property a create has and a rename
+   * does not. The third is the case clash, which is the one thing about a name
+   * the server cannot decide for anybody else's checkout (`tables.ts`).
+   */
+  private buildPlacement(placement: Placement, focus: boolean): HTMLElement[] {
+    const header = el('header')
+    const path = el('code', 'path')
+    header.append(el('h2', 'title', 'New table'), path)
+
+    const section = sectionOf('Name')
+    const field = el('div', 'field')
+    const input = el('input')
+    input.type = 'text'
+    input.value = placement.name
+    input.spellcheck = false
+    input.autocomplete = 'off'
+    input.setAttribute('aria-label', 'New table name')
+    input.dataset['field'] = 'new-table-name'
+
+    const create = el('button', 'primary', 'Create')
+    create.type = 'button'
+    create.dataset['action'] = 'create-table'
+    const cancel = el('button', '', 'Cancel')
+    cancel.type = 'button'
+    cancel.dataset['action'] = 'cancel-table'
+    field.append(input, create, cancel)
+
+    const writes = note('')
+    const said = el('p', 'notes')
+    said.dataset['field'] = 'new-table-notes'
+    const confirmHost = el('div', 'confirm-host')
+
+    const taken = (): string[] => this.handlers.model().tables.map((table) => table.name)
+
+    /**
+     * Everything the form says about the name as it stands, without rebuilding
+     * the field: the panel is not redrawn on a keystroke (rule 2 above), and
+     * that rule does not stop over the form for a table that has no file yet.
+     */
+    const restate = (): void => {
+      const name = input.value.trim()
+      placement.name = name
+      path.textContent = name === '' ? 'tables/….md' : `tables/${name}.md`
+      writes.textContent =
+        name === ''
+          ? `Writes one file, at ${placement.at.x}, ${placement.at.y} on the canvas, and edits no other.`
+          : `Writes tables/${name}.md, with layout: { x: ${placement.at.x}, y: ${placement.at.y} } and ${NEW_TABLE_SHAPE}. No other file in the model changes.`
+      confirmHost.replaceChildren()
+
+      const lines: string[] = []
+      // Only while the field still holds the name that was refused. Otherwise
+      // the panel is complaining about a name the developer has moved on from.
+      if (placement.refusal?.name === name) lines.push(placement.refusal.message)
+      if (name === '') {
+        lines.push('A table needs a name: the file name is the identity.')
+      } else {
+        const clash = clashFor(name, taken())
+        if (clash?.kind === 'same') lines.push(`there is already a table called \`${name}\``)
+        if (clash?.kind === 'case') {
+          lines.push(
+            `\`${clash.held}\` differs from this only in case, which is two tables on Linux and one file on Windows and macOS`,
+          )
+        }
+      }
+      said.textContent = lines.join('. ')
+      said.hidden = lines.length === 0
+    }
+
+    const write = (): void => {
+      confirmHost.replaceChildren()
+      placement.refusal = null
+      this.handlers.onCreate(placement.name, placement.at)
+    }
+
+    const askToCreate = (): void => {
+      restate()
+      const name = placement.name
+      if (name === '') return
+      const clash = clashFor(name, taken())
+      if (clash?.kind === 'same') return
+      if (clash?.kind === 'case') {
+        this.confirm(
+          confirmHost,
+          [
+            `Create \`${name}\` beside \`${clash.held}\`?`,
+            'Linux keeps two files and this model has two tables. Windows and macOS keep one, under whichever name got there first, holding whatever was written last, so the model a colleague checks out is missing one of them.',
+            'Lowercase letters, digits, hyphens and underscores are the habit that never runs into this. `docs/format.md` has the measurement.',
+          ],
+          'Create anyway',
+          write,
+        )
+        return
+      }
+      write()
+    }
+
+    input.addEventListener('input', restate)
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') askToCreate()
+      if (event.key === 'Escape') this.show(null)
+    })
+    create.addEventListener('click', askToCreate)
+    cancel.addEventListener('click', () => this.show(null))
+
+    section.append(
+      field,
+      writes,
+      note(
+        'It goes where you pointed. A position nobody chose is computed and never written (ADR 0015), so pointing is the only way a new table gets a `layout` at all.',
+      ),
+      said,
+      confirmHost,
+    )
+    restate()
+    if (focus) {
+      input.focus()
+      input.select()
+    }
+    return [header, section]
   }
 
   // ------------------------------------------------------------------------
@@ -570,6 +777,52 @@ export class Inspector {
 
   private bodyText(): string {
     return toModelBody(this.body.value, this.eol)
+  }
+
+  // ------------------------------------------------------------------------
+
+  /**
+   * The one destructive thing in this studio, and what it costs said first.
+   *
+   * Every other edit here writes a file that can be read back; this one removes
+   * it. Three things are worth saying before it happens and are all said in the
+   * confirmation: which file goes, which refs in other people's files are left
+   * pointing at nothing and what dbmd will call them, and that the undo the
+   * status line offers is `git checkout`, which can only bring back a file that
+   * was committed. A table created and deleted in the same session leaves
+   * nothing behind for git to restore, and saying so afterwards is too late.
+   */
+  private deleteSection(table: Table): HTMLElement {
+    const section = sectionOf('Delete')
+    const button = el('button', 'danger', 'Delete this table')
+    button.type = 'button'
+    button.dataset['action'] = 'delete-table'
+    const confirmHost = el('div', 'confirm-host')
+
+    button.addEventListener('click', () => {
+      // A self-reference goes with the file, so it is not left dangling and
+      // counting it would overstate what this costs by one.
+      const orphans = referrersTo(this.handlers.model(), table.name).filter(
+        (referrer) => referrer.table !== table.name,
+      )
+      const files = [...new Set(orphans.map((referrer) => referrer.table))]
+      this.confirm(
+        confirmHost,
+        [
+          `Delete \`${table.name}\`?`,
+          `This deletes ${table.path} and edits no other file.`,
+          orphans.length === 0
+            ? 'Nothing else in the model refs this table, so nothing is left pointing at it.'
+            : `${orphans.length} ref${orphans.length === 1 ? '' : 's'} in ${files.length} other file${files.length === 1 ? '' : 's'} will be left pointing at nothing: ${referrerText(orphans)}. Those files are not edited. dbmd will report each one as \`ref-table-unknown\` until you fix it.`,
+          'Undo is `git checkout`, and only for a file that was committed. This one is gone from the disk either way.',
+        ],
+        'Delete',
+        () => this.handlers.onDelete(table.name),
+      )
+    })
+
+    section.append(button, confirmHost)
+    return section
   }
 
   // ------------------------------------------------------------------------
