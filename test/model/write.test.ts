@@ -16,7 +16,7 @@ import { readModel } from '../../src/model/read.js'
 import { scalar, serialiseModelFile, serialiseObject, writeModel } from '../../src/model/write.js'
 import type { Group, Model, Note, Table } from '../../src/model/types.js'
 import { fixtureModel } from './helpers.js'
-import { canonicalModel, exampleShop, snapshot, withCopy } from './fixtures.js'
+import { canonicalModel, exampleShop, hiddenEntries, snapshot, withCopy } from './fixtures.js'
 
 /**
  * `rename` is the one call whose failure the writer has to survive, and no real
@@ -483,6 +483,10 @@ describe('the write is atomic', () => {
 
       await expect(writeModel(dir, changed)).rejects.toThrow('the disk filled up')
       expect(await snapshot(dir)).toEqual(before)
+      // The rubbish this is about is a `.<name>.<uuid>.tmp`, and `snapshot`
+      // skips dotfiles the way the reader does, so "and no rubbish behind" has
+      // to be asked for by name or it is not being asked at all.
+      expect(await hiddenEntries(dir)).toEqual([])
     })
   })
 
