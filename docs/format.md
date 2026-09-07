@@ -537,12 +537,20 @@ created_at)" }` needs the quotes because of the comma and the apostrophes.
 [Values, quoting and the YAML traps](#values-quoting-and-the-yaml-traps) is the
 same rule and there is no second one for SQL.
 
-One caveat, and it is temporary: **the studio shows an expression key but will
-not let you edit it.** Its keys field is one comma-separated line and an
-expression is a mapping, so the field goes read-only on that index and says why.
-Everything else about the table stays editable, including that index's name and
-its `unique` box, and the expression is carried through untouched. Change the
-expression itself in your text editor until this line goes away.
+Do not quote the mapping itself. `columns: ["{ expression: lower(email) }"]` is
+a column whose name is those characters, which is legal and is not what you
+meant, and `index-column-unknown` says so and tells you to take the quotes off.
+It does not offer to wrap it a second time: a doubly nested mapping is not a
+spelling of anything, and the reader refuses one.
+
+**The studio shows an expression key and will not let you edit it, and that is
+the decision rather than a gap.** Its keys field is one comma-separated line and
+an expression is a mapping, so the field goes read-only on that index and says
+why. Everything else about the table stays editable, including that index's name
+and its `unique` box, and the expression is carried through untouched. Change
+the expression itself in your text editor. Typing the mapping spelling into an
+editable keys row writes a column called that, so the row says so as you type;
+[ADR 0047][adr47] is why the field is not taught to write one instead.
 
 A `check` constraint is the same question and is not built yet; see
 [What the format does not have](#what-the-format-does-not-have).
@@ -1135,7 +1143,7 @@ And about the model, with a path and no line:
 | `duplicate-table` | error | Two tables in one model under one name. A directory cannot do this; an import of two schemas can. | Rename one of them. |
 | `duplicate-column` | error | Two columns of one table under one name. | Delete one. Both are carried, so neither wins. |
 | `duplicate-index` | error | Two indexes of one table under one name. | Rename one. The database would refuse the second. |
-| `index-column-unknown` | error | An index names a column its own table does not have. Never fires on an expression key. | Usually the column was renamed and the index was not. If you meant an expression, write `{ expression: ... }`. |
+| `index-column-unknown` | error | An index names a column its own table does not have. Never fires on an expression key. | Usually the column was renamed and the index was not. If you meant an expression, write `{ expression: ... }`. If the name already is that, quoted, the message says to remove the quotes rather than wrapping it again. |
 | `primary-key-missing` | warning | A table with columns and no `pk: true` on any of them. | Add `pk: true`, or accept a keyless table. |
 | `group-empty` | warning | A group file no table declares itself a member of. | Add `group:` to a table, or delete the group file. |
 
@@ -1274,4 +1282,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
 [adr33]: architecture/decisions/0033-a-composite-foreign-key-is-judged-as-a-set.md
 [adr46]: architecture/decisions/0046-a-key-may-say-what-the-engine-does.md
+[adr47]: architecture/decisions/0047-the-studio-carries-an-expression-index-and-does-not-learn-to-write-one.md
 [prettier]: https://prettier.io

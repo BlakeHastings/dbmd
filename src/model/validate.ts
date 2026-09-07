@@ -131,6 +131,12 @@ function duplicateIndexes(table: Table, out: Diagnostic[]): void {
  * The message names the other spelling. Somebody who meant an expression and
  * wrote it as a bare string lands exactly here, and this diagnostic is the only
  * place they will be told which of the two they wrote.
+ *
+ * Unless the name they wrote is already that spelling, in which case wrapping it
+ * again is advice for a case this message was not written for, and following it
+ * produces a doubly nested mapping the reader refuses. That is the loop ADR 0047
+ * named and dbmd-2z4 closed: the ordinary advice is untouched, and the one name
+ * it was wrong about now gets the sentence that is true of it.
  */
 function indexColumns(table: Table, out: Diagnostic[]): void {
   if (!table.complete) return
@@ -143,10 +149,59 @@ function indexColumns(table: Table, out: Diagnostic[]): void {
         'index-column-unknown',
         'error',
         table.path,
-        `the index \`${index.name}\` names the column \`${key}\`, which \`${table.name}\` does not have; if it is an expression rather than a column, write it as \`{ expression: ${key} }\``,
+        `the index \`${index.name}\` names the column \`${key}\`, which \`${table.name}\` does not have; ${adviceFor(key)}`,
       )
     }
   }
+}
+
+/**
+ * What to say after the name: wrap it, or unquote it.
+ *
+ * The first is the ordinary case and the good one. Somebody typed
+ * `lower(email)`, which is a legal column name and is why a bare string cannot
+ * mean an expression (ADR 0022), and this is where they are told the spelling
+ * that does.
+ *
+ * The second is for the name that is already that spelling. It says what the
+ * name looks like and changes nothing, which is the line ADR 0026 draws and ADR
+ * 0047 redraws one level up: a column genuinely called `{ expression: x }` is
+ * legal, reachable, and quoted in the file exactly like this one, so nothing
+ * here decides which of the two was meant. It says which one is written, and how
+ * to write the other.
+ *
+ * "Quoted" is a fact rather than a guess. A YAML scalar beginning with `{` opens
+ * a flow mapping, so a key that reached the model as a string beginning with
+ * those characters was quoted in the file, and taking the quotes off is the
+ * whole edit.
+ */
+function adviceFor(key: string): string {
+  return quotedExpressionMapping(key)
+    ? 'that is how the file spells an expression key, but quoted, which makes it a column name; remove the quotes to index the expression'
+    : `if it is an expression rather than a column, write it as \`{ expression: ${key} }\``
+}
+
+/**
+ * Whether one index key is the format's own spelling of an expression, quoted
+ * into a name.
+ *
+ * Anchored, and narrow on purpose: the mapping spelling and nothing else.
+ * `lower(email)` is not this, because `lower(email)` is a legal column name and
+ * the wrapping advice is the right thing to say about one.
+ *
+ * `looksLikeExpressionKey` in `src/studio/client/fields.ts` recognises the same
+ * characters and is deliberately **not** shared with this, because the two are
+ * functions of different things. That one reads a whole comma-separated keys
+ * field, unanchored, because `parseIndexColumns` splits on commas and
+ * `{ expression: date_trunc('day', created_at) }` reaches it as two keys and is
+ * recognisable as neither. This one reads one key the reader has already parsed
+ * out of YAML, so it can ask the stricter question, and the stricter question is
+ * what earns the word "quoted" above. Same shape and the same braced
+ * `expression:`; a shared helper would have to be the looser one, and the looser
+ * one cannot say what this message says.
+ */
+function quotedExpressionMapping(key: string): boolean {
+  return /^\{\s*expression\s*:/.test(key)
 }
 
 /**
