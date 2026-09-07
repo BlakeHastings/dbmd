@@ -290,14 +290,15 @@ key on the index entry, never a second meaning for `unique`.
 ## The "model, not a migration" line, read again by 0046
 
 Appended because that line is the one this record is cited for, and a reader who
-stops at the appendix above would still think `on delete` is unsayable.
+stops at the appendices above would still think `on delete` is unsayable.
 
 **"This is a model, not a migration" stands, word for word.** What moved is
-where the line under it was found to be. The appendix deferred `on delete` on
-the grounds that this line "is the thing that would have to be revisited to
-accept it", and that turned out to be the wrong place to look. The line is not
-between structure and behaviour. It cannot be: `default: "'pending'"` is in
-this record's own example, and a default is an expression the engine executes.
+where the line under it was found to be. The dbmd-14 and dbmd-16 appendix
+deferred `on delete` on the grounds that this line "is the thing that would have
+to be revisited to accept it", and that turned out to be the wrong place to
+look. The line is not between structure and behaviour. It cannot be:
+`default: "'pending'"` is in this record's own example, and a default is an
+expression the engine executes.
 
 ADR 0046 puts it where the risk actually is. dbmd may record any fact a
 catalogue reports and a person can read, because carrying it is the whole of
