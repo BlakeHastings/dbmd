@@ -106,6 +106,11 @@ function columnLines(column: Column): string[] {
   if (column.default !== undefined) lines.push(`    default: ${scalar(column.default)}`)
   if (column.ref !== undefined) {
     lines.push(`    ref: ${scalar(`${column.ref.table}.${column.ref.column}`)}`)
+    // Under the `ref:` they are about, and never without one: the reader
+    // refuses an action on a column that has no reference, so a model holding
+    // one could not be read back. ADR 0046.
+    if (column.ref.onDelete !== undefined) lines.push(`    on delete: ${column.ref.onDelete}`)
+    if (column.ref.onUpdate !== undefined) lines.push(`    on update: ${column.ref.onUpdate}`)
   }
   return lines
 }

@@ -26,10 +26,54 @@ export interface Layout {
   readonly h?: number
 }
 
-/** A foreign key target, written on the referring column as `table.column`. */
+/**
+ * What the engine does to the child row when the row it points at goes.
+ *
+ * The five the SQL standard defines and the five both engines report, spelled
+ * as SQL spells them, because that is what a person writes in a file. The
+ * introspection contract spells the same five `noAction`, `restrict`, `cascade`,
+ * `setNull` and `setDefault`, and `src/import/model.ts` is the one place the two
+ * spellings meet: the same asymmetry ADR 0022 made deliberate for an index key,
+ * where a wire format is written by a provider and a file is written by a
+ * person. ADR 0046.
+ *
+ * This is the format's first closed vocabulary, and it is closed because the set
+ * is: a column type is whatever an engine has and dbmd deliberately does not
+ * know (`docs/format.md`), while a referential action is these five words in the
+ * standard and in both catalogues. A sixth would be a fact nothing downstream
+ * could map, so the reader refuses it rather than carrying it.
+ */
+export type ReferentialAction = 'no action' | 'restrict' | 'cascade' | 'set null' | 'set default'
+
+/** In the order the standard lists them, which is the order `docs/format.md` does. */
+export const REFERENTIAL_ACTIONS: readonly ReferentialAction[] = [
+  'no action',
+  'restrict',
+  'cascade',
+  'set null',
+  'set default',
+]
+
+/**
+ * A foreign key target, written on the referring column as `table.column`, and
+ * what the engine does to this row when that one is deleted or its key changes.
+ *
+ * The actions are here rather than on `Column` because they are facts about the
+ * reference: an action with no reference is about nothing, and the reader says
+ * so rather than carrying one. They are written as sibling keys of `ref:` all
+ * the same, because `ref:` is a one-line scalar and turning it into a mapping to
+ * hold them would rewrite every file that has one. ADR 0046.
+ *
+ * Absent is not `no action`. Absent means the file did not say; `no action`
+ * means somebody did, and a catalogue reports both.
+ */
 export interface Ref {
   readonly table: string
   readonly column: string
+  /** `on delete: cascade`. */
+  readonly onDelete?: ReferentialAction
+  /** `on update: cascade`. */
+  readonly onUpdate?: ReferentialAction
 }
 
 export interface Column {

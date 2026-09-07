@@ -20,9 +20,18 @@ compute from `placed_at` alone.
 
 **Money and stock are append-only.** Rows in `orders`, `order_items`,
 `shipments` and `stock_movements` are inserted and then, apart from a small
-number of status columns, left alone. There is no database constraint enforcing
+number of status columns, left alone. Almost no database constraint enforces
 that. It is a review rule, which means the only thing standing between us and a
 quarter that will not reconcile is somebody reading a pull request.
+
+The half of it the database does enforce is on the `ref:`s. Every one of them
+says `on delete: restrict`, except `order_items.order_id`, so a delete that got
+past the application is refused by Postgres at the first row that something
+points at, rather than travelling quietly through four tables. That is a
+description of the schema and not an instruction to build one: dbmd wrote none
+of these constraints and cannot, and what the lines are for is that somebody
+reading this model can tell `restrict` from `cascade` without opening a
+database.
 
 What is deliberately not here:
 

@@ -438,6 +438,53 @@ describe('PATCH /api/table/:name', () => {
     })
   })
 
+  it('carries a referential action through a column patch and onto the disk', async () => {
+    await withStudio(async (running) => {
+      const columns = [
+        { name: 'id', type: 'uuid', pk: true },
+        {
+          name: 'order_id',
+          type: 'uuid',
+          nullable: false,
+          ref: { table: 'orders', column: 'id', onDelete: 'cascade', onUpdate: 'no action' },
+        },
+      ]
+      const { status } = await call(running.studio, '/api/table/shipments', {
+        method: 'PATCH',
+        ...json({ columns }),
+      })
+      expect(status).toBe(200)
+      await flush(running)
+
+      const reread = await readModel(running.dir)
+      expect(reread.diagnostics).toEqual([])
+      expect(
+        reread.model.tables.find((table) => table.name === 'shipments')?.columns[1]?.ref,
+      ).toEqual({ table: 'orders', column: 'id', onDelete: 'cascade', onUpdate: 'no action' })
+    })
+  })
+
+  it('refuses an action outside the five rather than writing a file it cannot read back', async () => {
+    // The contract's own spelling is the likely mistake, and it is still not one
+    // of the five words a file holds. ADR 0046.
+    await withStudio(async ({ studio }) => {
+      const response = await call(studio, '/api/table/shipments', {
+        method: 'PATCH',
+        ...json({
+          columns: [
+            {
+              name: 'order_id',
+              type: 'uuid',
+              ref: { table: 'orders', column: 'id', onDelete: 'setNull' },
+            },
+          ],
+        }),
+      })
+      expect(response.status).toBe(400)
+      expect(response.body['error']).toContain('columns[0].ref.onDelete')
+    })
+  })
+
   it('refuses a key it does not understand rather than dropping it', async () => {
     await withStudio(async ({ studio }) => {
       const response = await call(studio, '/api/table/orders', {

@@ -32,8 +32,10 @@ import type {
   Model,
   Note,
   RefEdge,
+  ReferentialAction,
   Table,
 } from '../model/types.js'
+import { REFERENTIAL_ACTIONS } from '../model/types.js'
 
 // --------------------------------------------------------------------------
 // Outward.
@@ -475,7 +477,19 @@ function parseColumn(input: unknown, where: string): Parsed<Column> {
     if (isPatchError(table)) return table
     const target = asString(ref.value['column'], `${where}.ref.column`)
     if (isPatchError(target)) return target
-    column.ref = { table: table.value, column: target.value }
+    const parsed: {
+      table: string
+      column: string
+      onDelete?: ReferentialAction
+      onUpdate?: ReferentialAction
+    } = { table: table.value, column: target.value }
+    for (const key of ['onDelete', 'onUpdate'] as const) {
+      if (ref.value[key] === undefined) continue
+      const action = asAction(ref.value[key], `${where}.ref.${key}`)
+      if (isPatchError(action)) return action
+      parsed[key] = action.value
+    }
+    column.ref = parsed
   }
 
   return { value: column }
@@ -579,6 +593,21 @@ function asMap(input: unknown, where: string): Parsed<Record<string, unknown>> {
 function asString(input: unknown, where: string): Parsed<string> {
   if (typeof input !== 'string') return bad(`${where} must be a string`)
   return { value: input }
+}
+
+/**
+ * One of the five referential actions, spelled as the file spells them.
+ *
+ * Refused rather than dropped, for this module's own reason: an edit that is
+ * quietly accepted with less than the caller meant looks like a slow disk from
+ * the client. ADR 0046.
+ */
+function asAction(input: unknown, where: string): Parsed<ReferentialAction> {
+  const known = REFERENTIAL_ACTIONS.find((action) => action === input)
+  if (known === undefined) {
+    return bad(`${where} must be one of ${REFERENTIAL_ACTIONS.map((a) => `\`${a}\``).join(', ')}`)
+  }
+  return { value: known }
 }
 
 function asBoolean(input: unknown, where: string): Parsed<boolean> {

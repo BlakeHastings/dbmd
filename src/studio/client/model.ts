@@ -261,7 +261,11 @@ export function withRefsRetargeted(
   return columns.map((column) =>
     column.ref === undefined || column.ref.table !== from
       ? column
-      : { ...column, ref: { table: to, column: column.ref.column } },
+      : // Spread rather than rebuilt from the two halves, so that `on delete`
+        // and anything else the ref grows survives a rename it has nothing to
+        // do with. Rebuilding it is how the fact would be deleted by an edit
+        // nobody made.
+        { ...column, ref: { ...column.ref, table: to } },
   )
 }
 

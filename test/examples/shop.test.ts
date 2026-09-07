@@ -102,6 +102,41 @@ describe('examples/shop shows off the parts of the format that are easy to miss'
     expect(bodies).not.toContain('the format cannot')
   })
 
+  test('every ref says what happens when its target row goes', async () => {
+    const { model } = await shop
+    const actions = model.tables.flatMap((table) =>
+      table.columns
+        .filter((column) => column.ref !== undefined)
+        .map((column) => `${table.name}.${column.name} ${column.ref?.onDelete ?? 'unsaid'}`),
+    )
+
+    // Every one of them, because a model where some refs say and some do not
+    // reads as an oversight rather than as a decision. The one `cascade` is the
+    // line that cannot outlive its order, and the prose beside it says so.
+    expect(actions).toEqual([
+      'addresses.customer_id restrict',
+      'addresses.superseded_by restrict',
+      'order_items.order_id cascade',
+      'order_items.product_id restrict',
+      'orders.customer_id restrict',
+      'orders.shipping_address_id restrict',
+      'orders.subscription_id restrict',
+      'shipments.order_id restrict',
+      'stock_movements.product_id restrict',
+      'stock_movements.shipment_id restrict',
+      'subscriptions.customer_id restrict',
+    ])
+
+    // And no `on update` anywhere, which is a decision rather than a gap: every
+    // key here is a surrogate that is never updated, so the clause would be a
+    // fact about this model that is not true of it. ADR 0046.
+    expect(
+      model.tables.flatMap((table) =>
+        table.columns.filter((column) => column.ref?.onUpdate !== undefined),
+      ),
+    ).toEqual([])
+  })
+
   test('group membership is declared by the members and computed on the way in', async () => {
     const { model } = await shop
 

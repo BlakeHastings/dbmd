@@ -9,6 +9,7 @@ columns:
     type: uuid
     nullable: false
     ref: orders.id
+    on delete: restrict
   - name: carrier
     type: text
     nullable: false

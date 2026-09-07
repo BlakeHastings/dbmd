@@ -9,6 +9,7 @@ columns:
     type: uuid
     nullable: false
     ref: customers.id
+    on delete: restrict
   - name: recipient
     type: text
     nullable: false
@@ -32,6 +33,7 @@ columns:
     type: uuid
     nullable: true
     ref: addresses.id
+    on delete: restrict
   - name: created_at
     type: timestamptz
     nullable: false
