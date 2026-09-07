@@ -36,7 +36,10 @@ jobs:
       # answer: 0, or 1 for an error, or 1 for any diagnostic at all under
       # --strict. ADR 0020.
       - name: dbmd check
-        run: node dist/cli.js check examples/shop
+        run: |
+          cp -r examples/shop "$RUNNER_TEMP/shop"
+          sed -i 's/ref: products\.id/ref: widgets.id/' "$RUNNER_TEMP/shop/tables/order_items.md"
+          node dist/cli.js check "$RUNNER_TEMP/shop"
 
       # Not part of the recipe. This is this repository's own proof that the
       # line above is a gate rather than an ornament: a check nobody has watched
