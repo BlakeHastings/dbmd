@@ -117,10 +117,10 @@ every import dropping half of what it was already holding, and would invite this
 same question a third time. Two keys, one vocabulary, one code path.
 
 `examples/shop` has no `on update` anywhere, and that is the honest outcome
-rather than an omission: its keys are surrogate `uuid`s and a `bigint`, none of
-which is ever updated, so writing the clause would be putting a fact in an
-example that is not true of it. The key is exercised by `docs/format.md`, by the
-tests, and by a real import, which is what it is for.
+rather than an omission: none of its keys is ever updated, so writing the clause
+would be putting a fact in an example that is not true of it. The key is
+exercised by `docs/format.md`, by the tests, and by a real import, which is what
+it is for.
 
 ### The vocabulary is closed, and it is the format's first
 
