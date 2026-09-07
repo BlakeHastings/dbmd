@@ -110,11 +110,21 @@ export async function readModel(dir: string): Promise<ReadResult> {
       complete = read.complete
     }
   } else {
+    // The clause after the semicolon is the fix, because every other refusal in
+    // this tool names one and this is the message a first-run reader is most
+    // likely to meet. It says what to write rather than which command to run,
+    // and that is deliberate: `dbmd init` refuses a directory that is not empty,
+    // so by the time somebody has a `tables/` and no `_model.md` (which is
+    // exactly what the studio leaves behind, since it can create tables, notes
+    // and groups and cannot create this file) the command that would have
+    // helped no longer will. Writing the file works in both cases. ADR 0068.
     push(diagnostics, {
       code: 'model-file-missing',
       severity: 'warning',
       at: inFile(MODEL_FILE),
-      message: `no ${MODEL_FILE}, so the model has no name and no engine`,
+      message:
+        `no ${MODEL_FILE}, so the model has no name and no engine; ` +
+        `add one with \`kind: model\`, a \`name:\` and an \`engine:\``,
     })
   }
 
