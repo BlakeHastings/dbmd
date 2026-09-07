@@ -244,7 +244,11 @@ gives the model no name and no engine. What is not allowed is frontmatter that
 forgets to say what it is.
 
 If there is no `_model.md`, you get a `model-file-missing` **warning** and
-everything else still works.
+everything else still works. The warning names the fix, and the fix is to write
+the file rather than to run a command. `dbmd init` scaffolds a whole example
+model and refuses a directory that already has anything in it, so a model that
+has grown a `tables/` without ever having a `_model.md` is past the point where
+init would help. The three keys at the top of this section are the whole of it.
 
 ## `tables/<name>.md`
 
@@ -1137,7 +1141,7 @@ leaves the line off.
 | --- | --- | --- | --- |
 | `model-directory-unreadable` | error | The model directory is not there or not readable. | Check the path. |
 | `file-unreadable` | error | A file or a kind directory could not be read. The message says why in words, with the errno beside them: `permission denied (EACCES)`, `no such file or directory (ENOENT)`. The errno is all dbmd prints of the system's error, because the rest of it is an absolute path and [ADR 0006](architecture/decisions/0006-one-cli-three-callers.md) rule 4 wants the same bytes on every machine. | Read the errno rather than assuming permissions. `ENOENT` on a file dbmd had just listed means it went away mid-read: a delete, or a branch changed under the command. |
-| `model-file-missing` | warning | No `_model.md`. | Add one, or accept a model with no name. |
+| `model-file-missing` | warning | No `_model.md`. The message names the fix, because this is the one a first run meets and the studio cannot write the file itself. | Write `_model.md` with `kind: model`, a `name:` and an `engine:`, or accept a model with no name. Not `dbmd init`, which refuses a directory that is not empty. |
 | `unknown-kind-directory` | warning | A directory that is not `tables`, `notes` or `groups`. | Move the files, or delete the directory. |
 | `kind-not-a-directory` | error | `tables`, `notes` or `groups` is there and is a plain file, so nothing of that kind was read. A symlinked kind directory is fine and is followed; this is about a file. | Look at what is in the file. A path in it means a symlink that was checked out as text, and the fix is a checkout that can make symlinks. Otherwise rename the file out of the way. |
 | `object-not-a-file` | error | A `*.md` name inside `tables/`, `notes/` or `groups/` is a directory rather than a file, so the object it names was not read. A symlinked object file is fine and is followed; this is about one that resolves to a directory, or that is one. | Point the link at the file rather than at the directory holding it. A directory that is not meant to be an object belongs under a name that does not end in `.md`. |

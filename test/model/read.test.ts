@@ -1081,10 +1081,25 @@ describe('_model.md', () => {
     )
 
     expect(lines(diagnostics)).toEqual([
-      '_model.md warning model-file-missing: no _model.md, so the model has no name and no engine',
+      '_model.md warning model-file-missing: no _model.md, so the model has no name and no engine; ' +
+        'add one with `kind: model`, a `name:` and an `engine:`',
     ])
     expect(model.name).toBeUndefined()
     expect(model.tables).toHaveLength(1)
+  })
+
+  // The warning above names a fix, and a named fix that has quietly stopped
+  // working is worse than no advice at all. This writes exactly the three keys
+  // the sentence asks for and nothing else, so the advice is checked rather
+  // than remembered. dbmd-s22.
+  test('the file that warning asks for is one that reads clean', async () => {
+    const { model, diagnostics } = await withModel({
+      '_model.md': '---\nkind: model\nname: kettleback\nengine: postgres\n---\n',
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.name).toBe('kettleback')
+    expect(model.engine).toBe('postgres')
   })
 
   test('one that is all prose is all body', async () => {
