@@ -147,3 +147,42 @@ now reads two more fields, `private` and `bin`, out of the manifest inside the
 tarball, for the reason this record gives for everything else it looks at: the
 tarball is what ships, and a package that installs and runs can still be one that
 npm refuses to publish.
+
+## One consequence corrected by 0062, once somebody counted the files
+
+Appended rather than edited, because what is wrong below is the size of a cost
+and not the decision it was weighed against, and a reader should be able to see
+both. **The decision stands: the tarball still ships no source maps**, for the
+two reasons given above.
+
+The fifth consequence says the studio page will log a source-map warning
+"because `main.js` still ends with a `sourceMappingURL` comment pointing at a
+file the tarball does not carry". That named one file. It was every file. On
+2026-09-07, `npm pack --dry-run --json --ignore-scripts` said all 37 `.js` files
+in the tarball carried such a comment and none of the 37 maps shipped, because
+`tsconfig.build.json` set `"sourceMap": true` and the negation in `files` takes
+the map away and leaves the pointer behind.
+
+**The 36 that were missed belong to a different reader.** They are the library
+surface this record added `main` and `exports` for, so the person who meets them
+is not the one weighed above, with devtools open on a page they had no reason to
+open. It is somebody importing `dbmd` into an application, whose bundler reports
+a missing source map once per file it pulls in. That reader could not have been
+counted on the day this was written, because the entry points had no consumers
+yet, and `smoke-pack.mjs` importing both of them is the line that says they are
+offered now.
+
+[ADR 0062](0062-the-bundler-gets-no-warning-and-the-studio-keeps-its-map.md)
+sets `"sourceMap": false` in `tsconfig.build.json`, which removes the 36, and
+leaves the client bundle exactly as described above, which is this record's trade
+and still holds. `check:pack` now resolves every `sourceMappingURL` in the
+installed package against the file beside it, so the count cannot drift back
+without turning a build red. **The sentence quoted at the top of this section is
+now true as written**, and `dist/studio/client/main.js` is the only file it is
+true of.
+
+**One number in the decision above has moved.** "esbuild's client map is
+self-contained and does work, and it is also 56 kB on top of a 129 kB tarball,
+43% more" was measured before the studio grew its diagram rendering. On
+2026-09-07 the map is 431.8 kB against a tarball of 235.4 kB packed. The
+argument is unchanged and the trade has gone further the way it already went.
