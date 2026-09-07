@@ -112,3 +112,32 @@ export function indexKeysText(columns: readonly IndexKey[]): string {
     .map((key) => (typeof key === 'string' ? key : `{ expression: ${key.expression} }`))
     .join(', ')
 }
+
+/**
+ * Whether a keys field holds the panel's own spelling of an expression, typed
+ * back into it.
+ *
+ * The panel shows a held row's keys as `{ expression: lower(email) }`, because
+ * that is what the file says, and the row beside it is an ordinary editable
+ * field. So the shortest path from "I want one of those" to a keystroke is to
+ * copy the line above, and this is what notices that it happened.
+ *
+ * It changes nothing about what gets written. The keys are still the characters
+ * that were typed, so a column genuinely called `{ expression: x }` is still
+ * reachable from this field and `index-column-unknown` still fires on it; this
+ * only lets the row say which of the two the person probably meant. Guessing
+ * would be ADR 0026's mistake and ADR 0022's; saying what it looks like, and
+ * writing the other thing anyway, is not guessing.
+ *
+ * It reads the whole field rather than one key because `parseIndexColumns`
+ * splits on commas and an expression may contain one: `{ expression:
+ * date_trunc('day', created_at) }` reaches the parser as two keys and is
+ * recognisable as neither.
+ *
+ * Narrow on purpose: the mapping spelling and nothing else. `lower(email)` is
+ * not this, because `lower(email)` is a legal column name and what the
+ * validator already says about one is the right thing to say.
+ */
+export function looksLikeExpressionKey(text: string): boolean {
+  return /\{\s*expression\s*:/.test(text)
+}

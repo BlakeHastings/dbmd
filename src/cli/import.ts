@@ -13,11 +13,13 @@
  * testable without a filesystem. What this file owns is the four things around
  * it:
  *
- * 1. **The parse.** A provider never sees the raw text, so it cannot own its own
- *    most likely failure, which is a paste that stopped early. This is the call
- *    site that has the text, so this is where truncation is named, and named
- *    without knowing the engine, because sniffing one out of the characters
- *    would put an engine's name outside `src/import/providers/`.
+ * 1. **The parse.** A provider never sees the raw text, so it cannot own the
+ *    failure that arrives before there is a document at all: a file that is not
+ *    JSON, because a client wrote a header above the value, a row count under it
+ *    or because the copy stopped early. This is the call site that has the text,
+ *    so this is where those are told apart, and told apart without knowing the
+ *    engine, because sniffing one out of the characters would put an engine's
+ *    name outside `src/import/providers/`. ADR 0045.
  * 2. **The refusal to write into a directory that is not empty**, which names
  *    dbmd-42, so that a user can tell "not built yet" from "not allowed".
  * 3. **Nothing prompts.** With no `--file` and a terminal on standard input
@@ -302,24 +304,26 @@ async function sourceText(
 }
 
 /**
- * The pasted text as JSON, with truncation named when it is not.
+ * The pasted text as JSON, and what went wrong when it is not.
  *
- * A paste that stopped early is this feature's most likely failure and no
- * provider can say so, because a provider is handed a value and never the
- * characters. It is also not worth working out which engine it was before
- * mentioning: the engine's own query already says what its client does to a long
- * result, in the comment block on top of the SQL, which is the text the person
- * about to copy a result is certainly looking at. So this points there rather
- * than repeating it, which keeps it true for the engines that do not exist yet
- * and keeps an engine's name inside `src/import/providers/`. ADR 0007.
+ * No provider can answer this, because a provider is handed a value and never
+ * the characters, so the call site holding the text is the one that has to. It
+ * is also not worth working out which engine it was before answering: the
+ * engine's own query already says what its client writes round a result, in the
+ * comment block on top of the SQL, which is the text the person about to save
+ * one is certainly looking at. So this points there rather than repeating it,
+ * which keeps it true for the engines that do not exist yet and keeps an
+ * engine's name inside `src/import/providers/`. ADR 0007.
  */
 function parseJson(text: string, where: Source, directory: string, out: Output): Attempt<unknown> {
+  // A byte-order mark on the front is what more than one client's "save the
+  // result" leaves behind, and `JSON.parse` refuses it with a message about
+  // position 0 that says nothing about a character nobody can see.
+  const body = text.startsWith(BOM) ? text.slice(1) : text
   try {
-    // A byte-order mark on the front is what more than one client's "save the
-    // result" leaves behind, and `JSON.parse` refuses it with a message about
-    // position 0 that says nothing about a character nobody can see.
-    return { ok: true, value: JSON.parse(text.startsWith(BOM) ? text.slice(1) : text) }
+    return { ok: true, value: JSON.parse(body) }
   } catch (error) {
+    const cause = whyNotJson(body.trim())
     return {
       ok: false,
       report: {
@@ -327,20 +331,103 @@ function parseJson(text: string, where: Source, directory: string, out: Output):
         text:
           `${out.style.bad('dbmd:')} ${out.style.strong(where.label)} is not JSON: ` +
           `${messageOf(error)}\n` +
-          `The usual cause is a paste that stopped early. A client that hands a long result\n` +
-          `back in pieces produces JSON that looks finished and is not, which is why the\n` +
-          `comment above the query you ran says how to save its result rather than copy it.\n`,
+          `The file to import is one value that begins { and ends }, with no header above\n` +
+          `it, no row count under it and no padding round it.\n` +
+          cause.lines.map((line) => `${line}\n`).join('') +
+          `The comment above the query you ran says how to save it from your client.\n`,
         json: {
           directory,
           source: where.source,
           error: {
             code: 'input-not-json',
             message: `${where.label} is not JSON: ${messageOf(error)}`,
-            likelyCause: 'the paste stopped early',
+            likelyCause: cause.likelyCause,
           },
         },
       },
     }
+  }
+}
+
+/** What the file's own two ends say about why it did not parse. */
+interface NotJson {
+  /** The one phrase a `--json` caller reads instead of the paragraph. */
+  readonly likelyCause: string
+  /** The paragraph, already wrapped, that says the same thing to a person. */
+  readonly lines: readonly string[]
+}
+
+/**
+ * Which of the four ways a file arrives wrong this one is, read off the file
+ * rather than off the parser's message.
+ *
+ * The position `JSON.parse` reports is the obvious thing to branch on, and it is
+ * not reliably there to branch on. A file with a column header in front of the
+ * JSON, which is what psql writes without `-t`, fails with `Unexpected token
+ * 'd', " dbmd_intro"... is not valid JSON` and names no position at all, so the
+ * one case a position would settle most cleanly is the case it is missing from.
+ * ADR 0045.
+ *
+ * What is always there is the text, and the shape it has to have is the one both
+ * engines' comment blocks state: one value that begins `{` and ends `}`. So the
+ * two ends are compared against that, and the pair the ends cannot separate, a
+ * file that is too long at the back against one that stopped early, is separated
+ * by parsing the prefix. That either is a whole value with something written
+ * after it or it is not, which is a fact rather than a guess.
+ */
+function whyNotJson(body: string): NotJson {
+  if (!body.startsWith('{')) {
+    return {
+      likelyCause: 'a header in front of the JSON',
+      lines: [
+        'This one does not begin with {, so the parse stopped in front of your schema',
+        'rather than inside it and nothing in it was truncated. What is above the JSON is',
+        "your client's own: a column header, a rule of dashes, or a frame round the value.",
+      ],
+    }
+  }
+
+  const close = body.lastIndexOf('}')
+  if (close !== -1 && close < body.length - 1 && parses(body.slice(0, close + 1))) {
+    return {
+      likelyCause: 'a footer after the JSON',
+      lines: [
+        'This one holds a whole JSON value and then more, so it is too long rather than',
+        'too short and nothing in it was truncated. What follows the last } is your',
+        "client's own footer, usually a row count.",
+      ],
+    }
+  }
+
+  if (!body.endsWith('}')) {
+    return {
+      likelyCause: 'the paste stopped early',
+      lines: [
+        'This one begins { and does not end }, so the likeliest cause is a paste that',
+        'stopped early: a client that hands a long result back in pieces, or a grid with a',
+        'display cap of its own, gives you JSON that looks finished and is not.',
+      ],
+    }
+  }
+
+  return {
+    likelyCause: 'a break inside the JSON',
+    lines: [
+      'This one begins { and ends }, so both ends are right and what is wrong is between',
+      'them, where the position above says. A client that breaks a long value across',
+      'lines writes something of its own into every break, and a copy that lost a piece',
+      'in the middle looks the same from here.',
+    ],
+  }
+}
+
+/** Whether a slice of the file is a whole JSON value. Nothing is kept from it. */
+function parses(slice: string): boolean {
+  try {
+    JSON.parse(slice)
+    return true
+  } catch {
+    return false
   }
 }
 

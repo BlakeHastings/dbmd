@@ -4,14 +4,16 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with two agents in flight and no pull request open.**
+**As of 2026-09-07, with three agents in flight and no pull request open.**
 
 ## Where the work is
 
-Ninety-four pull requests have merged, all through `merge-pr.mjs`, and the
-provenance audit is clean across every commit on `main`. **64 items closed, 9
-open.** Five of the seven epics are closed. Of what is left, two are dispatched,
-two wait on the owner, and one is an epic nobody has started.
+One hundred and five pull requests have merged, all through `merge-pr.mjs`, and
+the provenance audit is clean across every commit on `main`. **76 items closed, 7
+open.** Five of the eight epics are closed. The seven still open are three epics,
+their two children (**dbmd-45** dispatched, **dbmd-42** the owner's), and two
+small ones now dispatched as well. **Nothing open is undispatched except the
+owner's decisions.**
 
 From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
@@ -53,6 +55,56 @@ before today's work is still open, it has neither the file watcher nor the
 staleness guard and a hand edit made under it can still be lost, so restarting
 it is the safe move either way.
 
+## In flight, and what is actually left
+
+- **dbmd-45**, `on delete` on a `ref`, and where the model-not-migration line
+  sits. It waited all day because it touches the reader, the writer, the
+  validator and the contract seam together, and it says so in its own text.
+- **dbmd-h5s**, a missed `slashed()` call in `src/cli/export.ts`, so one error
+  message prints a Windows path where the JSON three lines below it does not.
+- **dbmd-vdh**, P4, whether the studio should be able to write an expression
+  index at all. Its brief says plainly that "do not build it" is a real answer
+  and that an ADR saying why is a deliverable I will merge.
+
+**Everything else open is the owner's**, so the whole backlog is either dispatched
+or waiting on a decision.
+
+## What is waiting on the owner
+
+- **The three re-import merge rules.** What happens to a table that vanished from
+  the database, a column whose type changed, and a column removed while the prose
+  still names it. Recommendations and costs are on **dbmd-42**; nothing is blocked
+  behind them.
+- **Whether the tool should read prose at all.** The narrow version shipped: a
+  rename now says which sentences it leaves behind. A general check over every
+  body changes what the tool is, and **dbmd-x82** says not to build it without
+  asking.
+- **Publishing to npm.** Asked four times, never answered, and nothing depends on
+  it. The package is publishable and `check:pack` proves it on every run;
+  removing one line is the whole decision, which is why **dbmd-5** stays open.
+- **The beads schema recovery.** One destructive statement, refused by the
+  harness, backup taken. The stopgap has carried every backlog write today.
+
+## What a successor would otherwise have to reconstruct
+
+- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
+  again after every harness restart, alone on the command line.
+- **`bd` needs `--ignore-schema-skew`** on this machine and is not on an agent's
+  PATH. `.git/factory/machine.md` has the story, and a brief has to hand agents
+  the full path.
+- **An agent in a worktree sees committed files and nothing else.** Put the brief
+  in the dispatch message.
+- **Merge on the report, not on a checks listing.** Both merge-timing rules are
+  in `orchestrating.md` with what each one cost. The second was found today and
+  put a reverted commit onto `main`.
+- **Close items when their branch lands**, in the same motion as the merge.
+- **`bd list` sorts the highest priority first, and I read it with `tail`.** For
+  most of 2026-09-07 I reported the backlog as holding nothing but the owner's
+  decisions. It also held **dbmd-45**, a P2 under the P0 epic `dbmd-1`, which
+  sorts to the **top** of the listing where a `tail` never looks. It was not
+  blocked on anything but a file collision. Read the whole list, or grep it, and
+  do not trust a summary of it that was produced by looking at one end.
+
 ## What has been driven, not just tested
 
 The owner asked whether the studio was validated by actually interacting with
@@ -86,26 +138,6 @@ documents that promised them are true again.
 **A note can sit on top of a group’s header**, because notes render in front and
 groups behind. The next person to try dragging a group will find it does not
 move and will file a defect. It is the note. Move it and the drag works.
-
-## What a successor would otherwise have to reconstruct
-
-- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
-  again after every harness restart, alone on the command line.
-- **`bd` needs `--ignore-schema-skew`** on this machine and is not on an agent's
-  PATH. `.git/factory/machine.md` has the story, and a brief has to hand agents
-  the full path.
-- **An agent in a worktree sees committed files and nothing else.** Put the brief
-  in the dispatch message.
-- **Merge on the report, not on a checks listing.** Both merge-timing rules are
-  in `orchestrating.md` with what each one cost. The second was found today and
-  put a reverted commit onto `main`.
-- **Close items when their branch lands**, in the same motion as the merge.
-
-## In flight
-
-- **dbmd-aud**, the truncation message, which now names a cause that is wrong
-  for both documented routes, and the test that goes red if somebody rewraps the
-  paragraph.
 
 ## What proved out, and is easy to lose
 
@@ -292,10 +324,53 @@ rather than by reading.
   ADR 0019's protection working against a second **writer** rather than a hand
   edit, which is the case `wire.ts` says the revision exists for.
 
+- **The whole note and group lifecycle, driven, and the model came back
+  byte-identical.** A note created by pointing, named, recoloured, given a
+  markdown body and deleted; a group created with a label and a colour, a table
+  joined from its own panel, the table taken out again, the group deleted. After
+  each, only the files that should have changed had. After both, `diff -rq`
+  against the original found nothing.
+  - **The group file never gains a member list or a coordinate.** Membership is
+    one `group:` line in the member's own file, and the group file carries `kind`
+    and `color` and stops. Joining a table changed `tables/customers.md` and not
+    `groups/billing.md`.
+  - **A group whose last member leaves draws a dashed placeholder** rather than
+    vanishing, and `dbmd check` warns `group-empty` with the sentence that names
+    the likely cause: an empty group is usually a rename that missed a file.
+  - **A note the studio writes is canonical.** It has no blank line after the
+    frontmatter where the committed notes do, which looks wrong and is not: the
+    blank line belongs to the body, bodies are preserved byte for byte, and the
+    canonical writer reports the file `unchanged`.
+  - Each colour swatch's tooltip is the line it writes, down to
+    `no colour: the file has no \`color\` key`.
 
-## What is waiting on the owner
+- **The index editor writes what you type, and the error teaches the rest.**
+  `Add index` appends a nameless, columnless row and writes it immediately, which
+  produces two `empty-value` warnings that the panel also shows inline where you
+  are editing. Typing an expression into the columns field writes a bare column
+  name, and the resulting error is one of the best in the tool: it names the
+  column, says the table does not have it, and **tells you to write
+  `{ expression: lower(email) }` instead.** The studio cannot author an
+  expression key, but it **carries one it did not write**: with that key on
+  `customers`, moving the table wrote only the `layout:` line and the key came
+  through byte-identical. Filed as a P4 because the asymmetry is real and the
+  workaround is one message away.
 
-- **Publishing to npm.** Asked three times, never answered, and nothing depends
-  on it. The package is ready; removing one line is the whole decision.
-- **The beads schema recovery.** One destructive statement, refused by the
-  harness, backup taken. The stopgap has carried every backlog write today.
+- **The diagram markers refuse rather than guess, and one message forgot the
+  slashes.** A file carrying `<!-- dbmd:diagram -->` without its closing pair is
+  exit 1 with a message naming both markers; a file carrying neither gets the
+  section appended. Both are what `docs/format.md` promises. But that error
+  prints a Windows path where the same report's `--json` and the two success
+  lines all print a slashed one, three lines apart in the same file, whose helper
+  carries a comment explaining exactly why that matters. **`slashed` is
+  export-only and it is one missed call site rather than a pattern**: every other
+  command already prints forward slashes. Filed as a P3.
+
+- **The output contract holds on a model that fails**, which is the case CI
+  depends on. A dangling ref gives exit 1 in both forms; `--json` carries
+  `schema: 1`, `ok: false`, the counts, and a diagnostic with its code, severity
+  and file; and **stderr is empty in `--json` mode**, so a job capturing stdout
+  gets the envelope and nothing leaks past it. No ANSI escapes when piped, with
+  `NO_COLOR`, or with `--no-color`. Colour is not dead code either: `output.ts`
+  detects a TTY per stream and `test/cli/output.test.ts` exists to pin the three
+  inputs to that one decision, which is the part a pty-less session cannot drive.

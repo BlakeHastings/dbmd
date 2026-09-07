@@ -591,33 +591,66 @@ somebody finds a year later.
 
 One failure is not in the table, because it happens before there is a document
 to point into. Text that is not JSON at all never reaches a provider, so
-`dbmd import` says so itself, in one line with no code and no path:
+`dbmd import` says so itself, with no code and no path.
+
+**The file you import is one value that begins `{` and ends `}`**, with no column
+header above it, no row count under it and no padding round it. Almost every way
+this fails is a client writing something of its own round a value that is
+byte-for-byte correct, so the message compares your file against that shape and
+says which of four things happened. It reads the file rather than the parser's
+position, because the position is not always there to read:
+[ADR 0045](architecture/decisions/0045-the-file-says-which-way-it-is-wrong.md).
+
+**Something in front of the JSON**, which is what psql writes without `-t`. Note
+that the parser names no position at all here, because it stopped on the first
+character:
 
 ```
-dbmd: trunc.json is not JSON: Expected double-quoted property name in JSON at position 900
-The usual cause is a paste that stopped early. A client that hands a long result
-back in pieces produces JSON that looks finished and is not, which is why the
-comment above the query you ran says how to save its result rather than copy it.
+dbmd: model.json is not JSON: Unexpected token 'd', " dbmd_intro"... is not valid JSON
+The file to import is one value that begins { and ends }, with no header above
+it, no row count under it and no padding round it.
+This one does not begin with {, so the parse stopped in front of your schema
+rather than inside it and nothing in it was truncated. What is above the JSON is
+your client's own: a column header, a rule of dashes, or a frame round the value.
+The comment above the query you ran says how to save it from your client.
 ```
 
-`dbmd import --json` reports it as `input-not-json`, and a file that could not be
-read as `file-unreadable`. Both are failures of the command rather than
-diagnostics about a document, which is why neither carries the `import/` prefix
-and neither is in the table.
-
-The message says "usually" because there is a second cause and the position
-tells them apart. A position short of the end of your schema is a copy that
-stopped early. A position at the end of the JSON, with something after it, is a
-client footer:
+**Something after the JSON**, which is sqlcmd's `(1 rows affected)` line written
+after a value that is correct. `SET NOCOUNT ON` removes it, from a second input
+file rather than from the query:
+[ADR 0041](architecture/decisions/0041-a-client-footer-is-the-clients-to-remove.md).
 
 ```
 dbmd: model.json is not JSON: Unexpected non-whitespace character after JSON at position 2333
+...
+This one holds a whole JSON value and then more, so it is too long rather than
+too short and nothing in it was truncated. What follows the last } is your
+client's own footer, usually a row count.
 ```
 
-That is sqlcmd's `(1 rows affected)` line, written into the file after a value
-that is byte-for-byte correct. `SET NOCOUNT ON` removes it, from a second input
-file rather than from the query: [ADR
-0041](architecture/decisions/0041-a-client-footer-is-the-clients-to-remove.md).
+**A copy that stopped early**, which is still what it usually is when the file
+begins `{` and does not end `}`: a client that hands a long result back in
+pieces, or a grid with a display cap of its own.
+
+```
+dbmd: trunc.json is not JSON: Expected double-quoted property name in JSON at position 900
+...
+This one begins { and does not end }, so the likeliest cause is a paste that
+stopped early: a client that hands a long result back in pieces, or a grid with a
+display cap of its own, gives you JSON that looks finished and is not.
+```
+
+**Both ends right and the middle wrong**, which is the one it cannot name. A
+client that breaks a long value across lines writes a continuation character into
+every break, and a copy that lost a piece in the middle looks the same from here,
+so the message says where to look instead of picking one.
+
+`dbmd import --json` reports all four as `input-not-json`, with the case in
+`likelyCause`: `a header in front of the JSON`, `a footer after the JSON`,
+`the paste stopped early` or `a break inside the JSON`. A file that could not be
+read is `file-unreadable`. Both are failures of the command rather than
+diagnostics about a document, which is why neither carries the `import/` prefix
+and neither is in the table.
 
 ### Reading the file
 

@@ -4,6 +4,7 @@ import {
   endingOf,
   indexKeysText,
   keysAreEditableAsText,
+  looksLikeExpressionKey,
   parseIndexColumns,
   parseRef,
   survivesATextarea,
@@ -173,6 +174,33 @@ describe('the columns of an index, typed as one field', () => {
       'tenant_id, { expression: lower(email) }',
     )
     expect(indexKeysText([{ expression: 'lower(email)' }])).not.toContain('[object Object]')
+  })
+
+  /**
+   * The panel prints the mapping spelling on the row it will not edit, and the
+   * row below it is an ordinary field, so the spelling gets copied. What it
+   * produces is a column called `{ expression: lower(email) }` and a validator
+   * message offering to wrap it a second time, which is why the row says
+   * something before the footer does. ADR 0047.
+   */
+  it('recognises its own printed spelling of an expression, typed back into the field', () => {
+    expect(looksLikeExpressionKey(indexKeysText([{ expression: 'lower(email)' }]))).toBe(true)
+    expect(looksLikeExpressionKey('{expression:lower(email)}')).toBe(true)
+    // A comma inside the expression reaches `parseIndexColumns` as two keys, so
+    // this reads the field rather than a key and still sees it.
+    expect(looksLikeExpressionKey("{ expression: date_trunc('day', created_at) }")).toBe(true)
+    // Among columns, because that is a mixture somebody meant.
+    expect(looksLikeExpressionKey('tenant_id, { expression: lower(email) }')).toBe(true)
+  })
+
+  it('says nothing about a name that is merely SQL-shaped, because that one is a legal column', () => {
+    // `lower(email)` is a name a table may really have, and the validator's
+    // message about it already says the right thing. Treating it as an
+    // expression is the guess ADR 0026 refuses.
+    expect(looksLikeExpressionKey('lower(email)')).toBe(false)
+    expect(looksLikeExpressionKey('customer_id, placed_at')).toBe(false)
+    expect(looksLikeExpressionKey('')).toBe(false)
+    expect(looksLikeExpressionKey('{ column: email }')).toBe(false)
   })
 })
 

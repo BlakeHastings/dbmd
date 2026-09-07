@@ -6,8 +6,9 @@
  * wrong that are not the model's fault, and each of them has a test because each
  * of them is a sentence somebody reads at the worst moment:
  *
- * - the paste stopped early, which is this feature's most likely failure and
- *   the one no provider can name, because a provider never sees the characters
+ * - the file is not JSON, which is the failure no provider can name because a
+ *   provider never sees the characters, and which arrives in four shapes that
+ *   want four different answers
  * - the directory already has a model in it, where the difference between
  *   "not built yet" and "not allowed" is the whole of the message
  * - the catalogue handed back a name no file can hold, which is a fact about the
@@ -81,6 +82,20 @@ async function runWithStdin(argv: readonly string[], stdin: Input): Promise<Run>
     stdin,
   )
   return { code, out: written.out, err: written.err }
+}
+
+/**
+ * Narration as one run of words.
+ *
+ * Every sentence `dbmd import` prints is wrapped to about 80 columns, so a
+ * phrase asserted raw is partly an assertion about where a line happened to
+ * break. dbmd-aud found that the hard way in `test/import/sqlserver.test.ts`,
+ * where `/stopped early/` against the comment block went red on a rewrap and on
+ * nothing else, which teaches people not to improve the paragraph. Flatten
+ * first and a reflow is not a red build, while a deletion still is.
+ */
+function flat(text: string): string {
+  return text.replace(/\s+/g, ' ')
 }
 
 describe('the happy path', () => {
@@ -182,23 +197,92 @@ describe('nothing prompts, and nothing is written over', () => {
   })
 })
 
-describe('a paste that stopped early', () => {
+/**
+ * A file that is not JSON, and which of the four it is.
+ *
+ * Until dbmd-aud every one of these got the same sentence, "the usual cause is a
+ * paste that stopped early", and ADR 0041 measured that being wrong for both
+ * documented routes at once: sqlcmd's row count makes the file too long at the
+ * back, and psql's header makes it too long at the front. So each shape has a
+ * test, and each test asserts the shape it is told rather than only that
+ * something was said. ADR 0045 is the argument for reading the file's two ends
+ * instead of the parser's position, and the header case below is the evidence
+ * for it: that message carries no position at all.
+ */
+describe('a file that is not JSON', () => {
   const whole = postgresFile([table('orders')])
 
-  test('names truncation as the likely cause, without guessing at an engine', async () => {
+  /** What psql writes without -t: a header, a rule of dashes, then the value. */
+  const withHeader = ` dbmd_introspection\n${'-'.repeat(20)}\n ${whole}\n(1 row)\n`
+  /** What sqlcmd writes without SET NOCOUNT ON: the value, then a row count. */
+  const withFooter = `${whole}\n\n(1 rows affected)\n`
+
+  test('names a header in front of it, and no truncation, when the file has one', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(['--dir', dir], piped(withHeader))
+
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('is not JSON')
+    expect(flat(run.err)).toContain('does not begin with {')
+    expect(flat(run.err)).toContain('nothing in it was truncated')
+    expect(flat(run.err)).not.toContain('stopped early')
+    // And this is the evidence for ADR 0045: on the case a position would settle
+    // most cleanly, V8 reports the offending token and no position at all. If
+    // this ever goes green the other way, the record is the thing to reread
+    // rather than the assertion.
+    const [parserMessage = ''] = run.err.split('\n')
+    expect(parserMessage).not.toMatch(/position \d/)
+  })
+
+  test('names a footer after it, and no truncation, when the file has one', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(['--dir', dir], piped(withFooter))
+
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('too long rather than too short')
+    expect(flat(run.err)).toContain('nothing in it was truncated')
+    expect(flat(run.err)).not.toContain('stopped early')
+  })
+
+  test('still names truncation where truncation is what happened', async () => {
     const dir = join(await workspace(), 'db-model')
     const run = await runWithStdin(['--dir', dir], piped(whole.slice(0, whole.length - 40)))
 
     expect(run.code).toBe(1)
-    expect(run.err).toContain('is not JSON')
-    expect(run.err).toContain('a paste that stopped early')
-    // The engine's own query header is where the reason lives, per engine. This
+    expect(flat(run.err)).toContain('a paste that stopped early')
+    // The engine's own query header is where the per-client fix lives. This
     // points at it and names no engine, because it has not read one yet.
-    expect(run.err).toContain('comment above the query you ran')
-    expect(run.err).not.toContain('SQL Server')
+    expect(flat(run.err)).toContain('comment above the query you ran')
+    expect(flat(run.err)).not.toContain('SQL Server')
   })
 
-  test('is a code in --json, so a caller does not parse the prose', async () => {
+  test('says so rather than guessing when both ends are right', async () => {
+    // A client that breaks a long value across lines and writes a continuation
+    // character into every break. Both ends are the right characters and the
+    // damage is in the middle, which is the case nothing here can name, so the
+    // message says where to look instead of inventing a cause.
+    const dir = join(await workspace(), 'db-model')
+    const broken = `${whole.slice(0, 30)}.\n${whole.slice(30)}`
+    const run = await runWithStdin(['--dir', dir], piped(broken))
+
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('both ends are right')
+    expect(flat(run.err)).not.toContain('stopped early')
+    expect(flat(run.err)).not.toContain('was truncated')
+  })
+
+  test('gives the shape of a correct file whichever of the four it is', async () => {
+    // The one sentence a reader can act on without knowing which case they are
+    // in, so it is in all four rather than in the one that ran out of answers.
+    const dir = await workspace()
+    for (const text of [withHeader, withFooter, whole.slice(0, 40), `${whole} ${whole}`]) {
+      const run = await runWithStdin(['--dir', join(dir, 'db-model')], piped(text))
+      expect(flat(run.err)).toContain('one value that begins { and ends }')
+      expect(flat(run.err)).toContain('no row count under it and no padding round it')
+    }
+  })
+
+  test('is a code and a cause in --json, so a caller does not parse the prose', async () => {
     const dir = join(await workspace(), 'db-model')
     const { environment, written } = captureEnvironment()
     const code = await runImport(
@@ -210,6 +294,19 @@ describe('a paste that stopped early', () => {
     const report = JSON.parse(written.out) as { error: { code: string; likelyCause: string } }
     expect(report.error.code).toBe('input-not-json')
     expect(report.error.likelyCause).toBe('the paste stopped early')
+  })
+
+  test('carries the header case into --json too, and not as a truncation', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const { environment, written } = captureEnvironment()
+    const code = await runImport(
+      ['--dir', dir],
+      createOutput(environment, { json: true, noColor: true }),
+      piped(withHeader),
+    )
+    expect(code).toBe(1)
+    const report = JSON.parse(written.out) as { error: { likelyCause: string } }
+    expect(report.error.likelyCause).toBe('a header in front of the JSON')
   })
 
   test('an empty paste says so rather than complaining about position 0', async () => {
