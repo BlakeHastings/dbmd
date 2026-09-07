@@ -19,7 +19,7 @@ there is no release cadence, and issues and pull requests may sit.
 
 ## One picture and one file, and they are the same thing
 
-![The dbmd studio: eight tables of the examples/shop model on a canvas with two amber sticky notes and a violet box labelled "Written by the depot handheld" drawn round two of the tables, the shipments table selected and outlined with its relationships highlighted, and an editing panel on the right headed "shipments / tables/shipments.md" showing its name, its group and its columns](docs/media/studio-shipments.png)
+![The dbmd studio: eight tables of the examples/shop model on a canvas with two amber sticky notes and a violet box labelled "Written by the depot handheld" drawn round shipments and stock_movements, every foreign key written on a line of its own under the column that holds it so no reference is cut short, the shipments table selected and outlined with its relationships to orders and stock_movements highlighted, and an editing panel on the right headed "shipments / tables/shipments.md" showing its name, its group and its columns, where order_id carries its reference to orders.id above an "on delete: restrict" and an "on update: unsaid" control](docs/media/studio-shipments.png)
 
 That is `dbmd studio` open on [`examples/shop`](examples/shop), a coffee
 roastery's order book. `shipments` is selected, so the panel on the right is
