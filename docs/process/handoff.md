@@ -12,8 +12,10 @@ epic closed.**
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
 `gh pr list --state merged` said 158. Every pull request has merged through
 `merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
-for the number, run the command. As of the last measurement: **158 merged, 114
-items closed, 5 open, and no P1s.** **All eight epics are closed**, the last
+for the number, run the command. As of the last measurement: **164 merged, 118
+items closed, 5 open, and no P1s.** Three of the five open are the owner's: the
+visuals epic, the stale screenshot, and a character count in `README.md` that
+cannot be corrected while they have that file open. **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 **Two of the five open are the owner's** and neither blocks anything: the visuals
@@ -103,28 +105,39 @@ loaded. `orchestrating.md` carries the general form.
 
 ## In flight, and what is actually left
 
-**One agent is running**, on the owner's own request rather than on a backlog
-item: adding [`agentation`](https://www.npmjs.com/package/agentation) to the
-studio as a development-only overlay, so the owner can click an element and send
-back a note about it. Their words: _"This is so I can give you realtime feedback
-on the UI/UX"_. ADR 0064 is theirs.
+**Two agents are running.** `dbmd-6j7`, a check for the five `--json` payloads
+now shown across four pages, none of which anything runs; and `dbmd-y6k`,
+keyboard access to the canvas. ADRs 0066 and 0067 are theirs.
 
-**Three facts about that package the next person should not re-derive.** It is a
-React component and its only exports are React components, so it needs `react`
-and `react-dom` as devDependencies in a repository that has no UI framework at
-all. Its licence is PolyForm Shield 1.0.0, which is not open source; as a
-devDependency it is never distributed and this project stays MIT, and the owner
-was told. And **it builds selectors from `#id`, then a class, then
-`tag:nth-child(n)`, and never reads data attributes**, which matters because
-every object on our canvas carries its name in `data-table`, `data-note` or
-`data-group` and carries no id. Without a change on our side a click on
-`shipments` comes back as a position. `dbmd-sko`.
+**The feedback overlay landed** and `npm run studio:dev` is the one command. The
+owner asked for it so they can point at the studio instead of describing it:
+_"This is so I can give you realtime feedback on the UI/UX"_. #160, ADR 0064.
 
-**The constraint that decides that work is the owner's:** it must not reach the
-tarball. `dist/studio/client/main.js` ships and is a third of the package, and
-esbuild inlines anything reachable from its entry point, so a runtime flag is
-not enough. The guarantee wanted is structural, plus a guard that has been seen
-to fail.
+Five facts about it the next person should not re-derive:
+
+- **It is React**, and this repository has no UI framework otherwise. `react`,
+  `react-dom` and their types are devDependencies for that one overlay.
+- **Its licence is PolyForm Shield 1.0.0**, which is not open source. As a
+  devDependency it is never distributed and this project stays MIT. The owner
+  was told rather than left to find out.
+- **It never ships, three ways.** `dev.ts` imports `main.ts` and nothing imports
+  `dev.ts`, so the release entry has no path to it whatever esbuild does; the dev
+  bundle is written to `.studio-dev/` which `files` cannot pack and `.gitignore`
+  excludes; and `check-pack-guard.mjs` has a second round that puts the overlay
+  back on the release path and asserts `check:pack` refuses.
+- **It reads `#id` first**, then a class, then position, and never a data
+  attribute. That is why `nameForPointing` exists: a click now returns
+  `#table-shipments` rather than a path all eight boxes share.
+- **The sync half is wired.** `agentation-mcp` listens on 4747 and the start
+  command says whether it answered, naming `agentation-mcp doctor` when it did
+  not. Registering that server with a session is the owner's step and was
+  deliberately not done here.
+
+**The canvas now names itself to a screen reader** and still cannot be reached
+without a pointer. #162 and ADR 0065 did the first half and recorded the second
+as `dbmd-y6k`, which is now in flight. Before that change the boxes had no
+accessible name, the group used a role that cannot carry one, and the two notes
+were announced by their file paths.
 
 **Both branches that were cancelled on 2026-09-07 have landed.** The
 documentation one had no commits at all: its work survived only as a patch, it
