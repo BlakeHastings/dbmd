@@ -12,10 +12,20 @@ epic closed.**
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
 `gh pr list --state merged` said 158. Every pull request has merged through
 `merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
-for the number, run the command. As of the last measurement: **164 merged, 118
-items closed, 5 open, and no P1s.** Three of the five open are the owner's: the
-visuals epic, the stale screenshot, and a character count in `README.md` that
-cannot be corrected while they have that file open. **All eight epics are closed**, the last
+for the number, run the command. As of the last measurement: **168 merged, 120
+items closed, 4 open, and no P1s.**
+
+**Three of the four open need the owner rather than an agent.** The visuals epic,
+which is taste. The stale screenshot, which needs a browser extension whose
+server failed to connect in this session, so it is not one click any more. And a
+character count in `README.md` that cannot be corrected while they have that
+file open, which is `dbmd-53w` and is now the last unmeasured instance of a
+number checked in three other places.
+
+**The fourth, `dbmd-s22`, is dispatchable and small**: run `dbmd studio` on an
+empty directory and it starts, lets you add a table, and warns forever about a
+`_model.md` it has no way to create. Every other refusal in this tool says what
+to do next and that one does not. **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 **Two of the five open are the owner's** and neither blocks anything: the visuals
@@ -105,39 +115,29 @@ loaded. `orchestrating.md` carries the general form.
 
 ## In flight, and what is actually left
 
-**Two agents are running.** `dbmd-6j7`, a check for the five `--json` payloads
-now shown across four pages, none of which anything runs; and `dbmd-y6k`,
-keyboard access to the canvas. ADRs 0066 and 0067 are theirs.
+**Nothing is running and nothing is queued.** Every branch has landed and the
+backlog is four items, three of which need the owner rather than an agent.
 
-**The feedback overlay landed** and `npm run studio:dev` is the one command. The
-owner asked for it so they can point at the studio instead of describing it:
-_"This is so I can give you realtime feedback on the UI/UX"_. #160, ADR 0064.
+**The session was restarted here so that the annotation server's tooling is
+available**, which is what turns the owner's design feedback into something a
+session can read directly rather than something they paste. `npm run studio:dev`
+brings the studio up with the toolbar on it, and the server it posts to is
+`agentation-mcp` on port 4747, which the start command checks and names.
 
-Five facts about it the next person should not re-derive:
+## What was destroyed, because a successor will find the gap
 
-- **It is React**, and this repository has no UI framework otherwise. `react`,
-  `react-dom` and their types are devDependencies for that one overlay.
-- **Its licence is PolyForm Shield 1.0.0**, which is not open source. As a
-  devDependency it is never distributed and this project stays MIT. The owner
-  was told rather than left to find out.
-- **It never ships, three ways.** `dev.ts` imports `main.ts` and nothing imports
-  `dev.ts`, so the release entry has no path to it whatever esbuild does; the dev
-  bundle is written to `.studio-dev/` which `files` cannot pack and `.gitignore`
-  excludes; and `check-pack-guard.mjs` has a second round that puts the overlay
-  back on the release path and asserts `check:pack` refuses.
-- **It reads `#id` first**, then a class, then position, and never a data
-  attribute. That is why `nameForPointing` exists: a click now returns
-  `#table-shipments` rather than a path all eight boxes share.
-- **The sync half is wired.** `agentation-mcp` listens on 4747 and the start
-  command says whether it answered, naming `agentation-mcp doctor` when it did
-  not. Registering that server with a session is the owner's step and was
-  deliberately not done here.
+**Ten `layout:` files under `examples/shop` were the owner's uncommitted work and
+I destroyed them** with `git reset --hard` in the main checkout. They were an
+afternoon of dragging boxes into place. Their `README.md` edit came back out of a
+dangling stash object; the layout lines existed nowhere else and are gone.
 
-**The canvas now names itself to a screen reader** and still cannot be reached
-without a pointer. #162 and ADR 0065 did the first half and recorded the second
-as `dbmd-y6k`, which is now in flight. Before that change the boxes had no
-accessible name, the group used a role that cannot carry one, and the two notes
-were announced by their file paths.
+So `examples/shop` is exactly what is committed. If the owner's positions matter
+to anything later, they were never captured and re-dragging is the only route.
+
+**The rule that came out of it is above**, under the read-only heading, and it is
+a state rather than a judgement: in the main checkout, edit, `git add` by name,
+commit, push, and nothing else. Every branch switch, rebase, reset and force
+happens in a throwaway worktree.
 
 **Both branches that were cancelled on 2026-09-07 have landed.** The
 documentation one had no commits at all: its work survived only as a patch, it
