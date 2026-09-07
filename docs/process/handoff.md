@@ -4,7 +4,7 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with one agent in flight and no pull request open.**
+**As of 2026-09-07, with three agents in flight and no pull request open.**
 
 ## Where the work is
 
@@ -12,9 +12,8 @@ One hundred and five pull requests have merged, all through `merge-pr.mjs`, and
 the provenance audit is clean across every commit on `main`. **76 items closed, 7
 open.** Five of the eight epics are closed. The seven still open are three epics,
 their two children (**dbmd-45** dispatched, **dbmd-42** the owner's), and two
-small ones nobody is on: **dbmd-h5s**, a path printed with backslashes in one
-export message, and **dbmd-vdh**, an expression index the studio can carry and
-not write.
+small ones now dispatched as well. **Nothing open is undispatched except the
+owner's decisions.**
 
 From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
@@ -61,11 +60,14 @@ it is the safe move either way.
 - **dbmd-45**, `on delete` on a `ref`, and where the model-not-migration line
   sits. It waited all day because it touches the reader, the writer, the
   validator and the contract seam together, and it says so in its own text.
+- **dbmd-h5s**, a missed `slashed()` call in `src/cli/export.ts`, so one error
+  message prints a Windows path where the JSON three lines below it does not.
+- **dbmd-vdh**, P4, whether the studio should be able to write an expression
+  index at all. Its brief says plainly that "do not build it" is a real answer
+  and that an ADR saying why is a deliverable I will merge.
 
-**dbmd-h5s** and **dbmd-vdh** are small, nobody is on them, and neither collides
-with dbmd-45: one is a missed `slashed()` call in `src/cli/export.ts`, the other
-is a P4 note about the studio's index editor. Everything else open is the
-owner's.
+**Everything else open is the owner's**, so the whole backlog is either dispatched
+or waiting on a decision.
 
 ## What is waiting on the owner
 
