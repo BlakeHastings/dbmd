@@ -49,6 +49,25 @@ export function saidAbout(diagnostics: readonly Diagnostic[], path: string): str
 }
 
 /**
+ * Whether the read this came from failed to open anything at all.
+ *
+ * The same question as `saidAbout` with the path taken off, and it is here
+ * rather than beside its one caller for the reason the rest of this module is:
+ * a second way of asking what counts as unreadable is a second chance for two
+ * places to disagree about somebody's disk. Both answers come from the same
+ * two lines, so a session that says "nothing here is unreadable" cannot be
+ * holding an object whose refusal would say otherwise.
+ *
+ * Its caller is ADR 0061's recheck, which is allowed to re-read the model
+ * directory only while this is true, and stops the moment it is not.
+ */
+export function anythingUnreadable(diagnostics: readonly Diagnostic[]): boolean {
+  return diagnostics.some(
+    (diagnostic) => diagnostic.code === 'file-unreadable' && diagnostic.at.in === 'file',
+  )
+}
+
+/**
  * What a scene says in place of "did not parse", for the object whose file the
  * reader could not open.
  *

@@ -473,3 +473,20 @@ object the session is holding from memory is still refused, it is refused with
 same fact, and the sentence repeats the reader's clause and guesses nothing. A
 lock and a permission change read identically, which is the rule the second
 amendment settled and the third re-settled, and this one does not reopen it.
+
+## The last thing the second amendment left open is closed by ADR 0061
+
+"Nothing wakes the studio when a lock is released" stood above as a thing this
+record was content to leave, on the grounds that it is `fs.watch` being what
+this record already says it is and that "polling `stat` is the answer if it
+turns out to bite". It bit, in the small way the paragraph predicted, and the
+answer turned out to be cheaper than a poll:
+[ADR 0061](0061-a-read-that-hangs-off-the-question-the-page-was-already-asking.md)
+has `GET /api/model` re-read while and only while the session is holding a file
+it could not open. The page was already asking that question on a beat and on
+focus, and only the answer was coming out of memory.
+
+Nothing in this record changes. The re-read goes through the same `reload`, so
+**the watcher still only ever says "look again"** and the echo is still answered
+by the fingerprint comparison, which is the sentence `src/studio/watch.ts` leans
+on and which this leans on harder.

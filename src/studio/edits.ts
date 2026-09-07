@@ -82,7 +82,7 @@ import { isSafeSegment, resolveWithin } from './safe-path.js'
 // It moved out of this file when the page had to ask it too: the canvas and the
 // panel say why an object is incomplete, and three copies of this rule would be
 // three chances to answer it differently. dbmd-c7q.
-import { saidAbout } from './unreadable.js'
+import { anythingUnreadable, saidAbout } from './unreadable.js'
 import { ModelWatcher } from './watch.js'
 import type {
   GroupPatch,
@@ -498,6 +498,36 @@ export class Edits {
       this.log(`removed ${path}`)
       await this.adopt()
     })
+  }
+
+  /**
+   * Look again, but only while the session is holding a file it could not read.
+   *
+   * **A lock being released is not a filesystem event.** Nothing is delivered
+   * to `fs.watch` when whatever had `orders.md` open lets go of it, so the
+   * watcher does not fire and the session goes on saying the file cannot be
+   * read until something else under the model directory moves. ADR 0019's own
+   * "revisit when" named polling `stat` as the answer if that ever bit; ADR
+   * 0061 is what it turned out to cost, which is less than a timer, because the
+   * page is already asking on a beat and on focus and only the server was
+   * answering out of memory.
+   *
+   * Two properties, and the second is the one that makes this affordable.
+   *
+   * **It is `reload`, not a new read.** Same `readModel`, same fingerprint
+   * comparison, same `absorb`, same queue, so a re-read that finds what the
+   * session already serves changes nothing and does not move the revision. That
+   * is ADR 0019's answer to the echo, and this deliberately does not become a
+   * second way of adopting a directory.
+   *
+   * **It costs nothing while everything is readable**, which is every session
+   * that is not in this state. The gate is the diagnostics of the read being
+   * served, so it closes itself: the read that makes the file readable is the
+   * read that removes the diagnostic that was licensing the next one.
+   */
+  async recheckUnreadable(): Promise<void> {
+    if (!anythingUnreadable(this.diagnostics)) return
+    await this.reload()
   }
 
   /** Write anything pending, now, and re-read. Idempotent when nothing is pending. */

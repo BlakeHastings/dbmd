@@ -257,7 +257,10 @@ export class ModelWatcher {
  * directory read: `Edits.reload` re-reads, compares a fingerprint and returns
  * silently when nothing moved. That second half is the load-bearing one. If that
  * comparison ever stops being how the echo is answered (ADR 0019), this stops
- * being harmless, and this comment is the first place to look.
+ * being harmless, and this comment is the first place to look. ADR 0061 leans on
+ * the same sentence harder: `GET /api/model` re-reads while anything is
+ * unreadable, through the same `reload`, so a change to that comparison is now
+ * two things rather than one.
  */
 function isRootEntry(filename: string): boolean {
   return filename === MODEL_FILE || KIND_DIRECTORIES.has(filename)
