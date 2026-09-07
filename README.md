@@ -186,9 +186,15 @@ is the fastest way to get the picture above onto your own screen.
 
 ## The commands
 
-In the order you meet them. Every block below is real output, and all of it is
-on stderr: **stdout is data and stderr is narration**, in every command, so
-`dbmd check 2>/dev/null` is the quiet flag this CLI does not have.
+In the order you meet them. Every block below is output, and all of it is on
+stderr: **stdout is data and stderr is narration**, in every command, so
+`dbmd check 2>/dev/null` is the quiet flag this CLI does not have. A block that
+could not have been run says so in the sentence above it and calls itself a
+sketch. The rest of the import walkthrough reads a fixture committed here, so
+the test suite runs those blocks on every build and they have to print exactly
+what they show.
+[ADR 0056](docs/architecture/decisions/0056-a-block-in-the-readme-is-a-run-or-a-sketch.md)
+is why one block on a page can be evidence only if the others say they are not.
 
 **`dbmd init`** writes a model to start from, in a directory called `db-model`.
 
@@ -227,7 +233,7 @@ to write, defaulting to `db-model` like every other command; `--engine <id>`
 overrides the engine the file says it is; `--confirm` makes the changes a run
 over a directory that already holds a model lists.
 
-```
+```dbmd-run
 $ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
 Imported 2 tables from postgres into shop-model, 3 files:
   _model.md
@@ -241,7 +247,11 @@ Every table body says nobody has documented it yet. That line is the prompt.
 `shop-model/tables/orders.md` is then this, in full, and it is the first diff
 anybody reviews:
 
-```markdown
+<!-- Prettier formats the inside of a markdown block, and this one is a file dbmd
+     wrote rather than prose: it rewrote `default: "0"` to `default: '0'`, which
+     is how the block came to differ from the file it claims to be. -->
+<!-- prettier-ignore -->
+```markdown dbmd-file:shop-model/tables/orders.md
 ---
 kind: table
 table: orders
@@ -263,7 +273,7 @@ columns:
   - name: total
     type: numeric(12,2)
     nullable: false
-    default: '0'
+    default: "0"
   - name: notes
     type: text
     nullable: true
@@ -290,9 +300,13 @@ a reader could not already see two lines up.
 
 Run it again over that directory next release and it is a **re-import**. It
 compares what the database says against what the files say, prints every
-difference as an itemised list naming the file it is about, and writes nothing:
+difference as an itemised list naming the file it is about, and writes nothing.
+The block below is a **sketch**: `next-release.json` is a database that changed
+rather than a file in this repository, and the model it is read against holds
+more than the two tables above, because the interesting deltas are the ones with
+something in them. Every other block in this walkthrough is a run:
 
-```
+```dbmd-sketch
 $ dbmd import --file next-release.json --dir shop-model
 Re-importing shop-model from postgres would make 3 changes:
 
@@ -332,11 +346,12 @@ the paragraph about it exactly as written, and the list is what tells you the
 sentence has gone stale.
 
 An unchanged database prints one line and exits 0, so a re-import is safe to
-leave in CI:
+leave in CI. Running the first command again is exactly that case, because
+nothing above was confirmed and so nothing was written:
 
-```
-$ dbmd import --file next-release.json --dir shop-model
-shop-model already says what this postgres import says: 4 tables, nothing to change.
+```dbmd-run
+$ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
+shop-model already says what this postgres import says: 2 tables, nothing to change.
 ```
 
 Nothing prompts, in either half.
