@@ -53,11 +53,7 @@ export function readingOrder(objects: readonly Reachable[]): Reachable[] {
 }
 
 /** Where `kind` and `name` sit in `order`, or -1 when they are not in it. */
-export function positionOf(
-  order: readonly Reachable[],
-  kind: ObjectKind,
-  name: string,
-): number {
+export function positionOf(order: readonly Reachable[], kind: ObjectKind, name: string): number {
   return order.findIndex((object) => object.kind === kind && object.name === name)
 }
 
