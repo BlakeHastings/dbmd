@@ -4,6 +4,7 @@ import {
   boundsOf,
   clampScale,
   fitTo,
+  panToReveal,
   stepScale,
   toModel,
   toScreen,
@@ -12,6 +13,12 @@ import {
   type Rect,
   type Viewport,
 } from '../../src/studio/client/geometry.js'
+import {
+  positionOf,
+  readingOrder,
+  stepFrom,
+  type Reachable,
+} from '../../src/studio/client/reach.js'
 import { columnTitle, refLabel } from '../../src/studio/client/columns.js'
 import { placeTables } from '../../src/studio/client/place.js'
 import {
@@ -746,5 +753,123 @@ describe('what a column row says', () => {
     expect(columnTitle({ name: 'owner', type: '', ref: { table: 'people', column: 'id' } })).toBe(
       'owner → people.id',
     )
+  })
+})
+
+/**
+ * The line an arrow key walks through the plane, and the pan that keeps the end
+ * of it on screen. Both are arithmetic, both decide what somebody without a
+ * pointer can reach, and neither is visible in a screenshot. ADR 0067.
+ */
+describe('reaching an object without a pointer', () => {
+  function at(kind: Reachable['kind'], name: string, x: number, y: number): Reachable {
+    return { kind, name, rect: { x, y, w: 220, h: 120 } }
+  }
+
+  /** `examples/shop`, which is the arrangement this was measured against. */
+  const shop: Reachable[] = [
+    at('table', 'addresses', 40, 40),
+    at('table', 'order_items', 900, 40),
+    at('table', 'products', 1340, 40),
+    at('note', 'the-copies-are-deliberate', 900, 320),
+    at('note', 'there-is-no-stock-column', 1340, 320),
+    at('table', 'customers', 40, 340),
+    at('table', 'orders', 480, 340),
+    at('table', 'shipments', 900, 640),
+    at('table', 'stock_movements', 1340, 640),
+    at('table', 'subscriptions', 40, 640),
+  ]
+
+  const named = (order: readonly Reachable[]): string[] => order.map((object) => object.name)
+
+  it('walks the top edge first and the left edge second', () => {
+    expect(named(readingOrder(shop))).toEqual([
+      'addresses',
+      'order_items',
+      'products',
+      'the-copies-are-deliberate',
+      'there-is-no-stock-column',
+      'customers',
+      'orders',
+      'subscriptions',
+      'shipments',
+      'stock_movements',
+    ])
+  })
+
+  it('does not band rows, and the cost of that is exactly twenty pixels', () => {
+    // The two notes sit at y 320 and two tables at y 340, so the notes come
+    // first. That is the price of an exact sort and it is recorded rather than
+    // patched with a tolerance nobody can derive. ADR 0067.
+    const order = named(readingOrder(shop))
+    expect(order.indexOf('the-copies-are-deliberate')).toBeLessThan(order.indexOf('customers'))
+  })
+
+  it('is a total order, so the same canvas walks the same way twice', () => {
+    const twins: Reachable[] = [
+      at('note', 'same', 100, 100),
+      at('table', 'same', 100, 100),
+      at('group', 'same', 100, 100),
+    ]
+    const kinds = readingOrder(twins).map((object) => object.kind)
+    expect(kinds).toEqual(['group', 'note', 'table'])
+    expect(readingOrder([...twins].reverse()).map((o) => o.kind)).toEqual(kinds)
+  })
+
+  it('leaves the array it was given alone', () => {
+    const before = named(shop)
+    readingOrder(shop)
+    expect(named(shop)).toEqual(before)
+  })
+
+  it('wraps at both ends, because a plane has no last object', () => {
+    const order = readingOrder(shop)
+    const last = order.length - 1
+    expect(stepFrom(order, last, 1)?.name).toBe('addresses')
+    expect(stepFrom(order, 0, -1)?.name).toBe('stock_movements')
+  })
+
+  it('lands somewhere on the first press, from nowhere', () => {
+    const order = readingOrder(shop)
+    expect(positionOf(order, 'table', 'nothing-like-this')).toBe(-1)
+    expect(stepFrom(order, -1, 1)?.name).toBe('addresses')
+    expect(stepFrom(order, -1, -1)?.name).toBe('stock_movements')
+  })
+
+  it('has nowhere to go on an empty canvas rather than throwing', () => {
+    expect(stepFrom([], -1, 1)).toBeUndefined()
+    expect(stepFrom([], 0, -1)).toBeUndefined()
+  })
+})
+
+describe('panning so the focused object can be seen', () => {
+  const into = { w: 800, h: 600 }
+
+  it('does nothing when the object is already on screen', () => {
+    const view: Viewport = { pan: { x: 0, y: 0 }, scale: 1 }
+    expect(panToReveal(view, into, { x: 100, y: 100, w: 220, h: 120 })).toEqual(view)
+  })
+
+  it('moves the least it can, and never changes the zoom', () => {
+    // A box just off the right edge: 900 + 220 = 1120, and the far edge has to
+    // land on 800 - 32.
+    const view: Viewport = { pan: { x: 0, y: 0 }, scale: 1 }
+    const next = panToReveal(view, into, { x: 900, y: 100, w: 220, h: 120 })
+    expect(next.scale).toBe(1)
+    expect(next.pan).toEqual({ x: 768 - 1120, y: 0 })
+  })
+
+  it('reads the scale, because a box at 0.5 is half as far away', () => {
+    const view: Viewport = { pan: { x: 0, y: 0 }, scale: 0.5 }
+    // 900 * 0.5 = 450, and 450 + 110 = 560, which is inside 800 - 32.
+    expect(panToReveal(view, into, { x: 900, y: 100, w: 220, h: 120 })).toEqual(view)
+  })
+
+  it('shows the corner that says what it is when the box is too big to fit', () => {
+    // A group box wider than the canvas. Centring it would show the middle,
+    // which is a wash of colour; the top left is where its label is.
+    const view: Viewport = { pan: { x: 0, y: 0 }, scale: 1 }
+    const next = panToReveal(view, into, { x: 200, y: 100, w: 2000, h: 1500 })
+    expect(next.pan).toEqual({ x: 32 - 200, y: 32 - 100 })
   })
 })

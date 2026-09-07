@@ -6,7 +6,7 @@
  * and pan and zoom are a CSS transform on the element that holds both. This
  * file is that sentence.
  *
- * Five things in here are the difference between a canvas that looks finished
+ * Six things in here are the difference between a canvas that looks finished
  * and one that is, and each is at the line it happens:
  *
  * 1. **One coordinate conversion.** Every interaction goes through
@@ -36,6 +36,14 @@
  *    file that can know it. It is taken once per layout and kept as an offset
  *    inside the box, so a drag carries it along for free and only a change to
  *    what a box contains asks for it again.
+ * 6. **One tab stop, and the arrows do the rest.** Eleven objects that were
+ *    each their own tab stop would be eleven presses before the toolbar. So
+ *    exactly one object carries `tabindex="0"` at a time and the rest carry
+ *    `-1`, the arrows move that stop, and `Enter` selects. `moveFocus` is where
+ *    it happens and ADR 0067 is why. Arrows deliberately do not select: the
+ *    selection opens the inspector, which takes width off the canvas, and doing
+ *    that on every press would move the boxes under somebody who was walking
+ *    between them.
  *
  * **A group has no coordinates and nothing here gives it any.** Its box is
  * computed by `groups.ts` from the boxes of its members on every draw, which
@@ -65,6 +73,7 @@ import {
   clampScale,
   fitTo,
   panBy,
+  panToReveal,
   stepScale,
   toModel,
   zoomAbout,
@@ -75,6 +84,7 @@ import {
 import { groupBoxes, groupPath, GROUP_HEADER, type GroupBox, type Outsider } from './groups.js'
 import { parseMarkdown, type Block, type Span } from './markdown.js'
 import { tintClass } from './palette.js'
+import { positionOf, readingOrder, stepFrom, type Reachable } from './reach.js'
 import { couldNotBeReadNow } from '../unreadable.js'
 
 const SVG = 'http://www.w3.org/2000/svg'
@@ -266,6 +276,18 @@ export class Canvas {
   private view: Viewport = { pan: { x: 0, y: 0 }, scale: 1 }
   private drag: Drag | undefined
   private selected: Selected | null = null
+  /**
+   * Which object carries the canvas's one tab stop, which is not the same
+   * question as which object is selected.
+   *
+   * A keyboard walks with the arrows and selects with `Enter`, so between those
+   * two presses there is an object a person is standing on and has not chosen.
+   * Selecting does move the stop, so a box that was clicked is where `Tab`
+   * comes back to; clearing the selection deliberately does not move it back,
+   * because a composite that forgets where somebody was is a composite they
+   * have to walk into again from the start.
+   */
+  private focused: Selected | null = null
   private frame: number | undefined
   /** Armed by `arm`: the next press names a spot instead of grabbing a box. */
   private armed = false
@@ -337,10 +359,21 @@ export class Canvas {
     this.host.addEventListener('lostpointercapture', this.onPointerUp)
     // Not passive: a wheel over the canvas zooms and must not also scroll.
     this.host.addEventListener('wheel', this.onWheel, { passive: false })
+    // On the host rather than the document, so these keys are the canvas's for
+    // exactly as long as focus is inside it. The inspector's fields are outside
+    // this element, and an arrow key typed in one of them stays theirs without
+    // this handler having to know anything about them.
+    this.host.addEventListener('keydown', this.onKeyDown)
+    this.host.addEventListener('focusin', this.onFocusIn)
   }
 
   /** Replace everything on the canvas. A live update from disk calls this again. */
   show(scene: Scene, positions: ReadonlyMap<string, Point>): void {
+    // Every element below is about to be thrown away, and one of them may be
+    // the one a person is standing on. A watcher redraw arriving while somebody
+    // is walking the canvas must not drop them back on `<body>`, so where they
+    // were is remembered here and given back at the bottom.
+    const standingHere = this.host.contains(document.activeElement) ? this.focused : null
     this.rowSizes.disconnect()
     this.boxes.clear()
     this.notes.clear()
@@ -378,6 +411,8 @@ export class Canvas {
 
     this.rebuildEdges()
     this.drawGroups()
+    this.updateReach()
+    this.refocus(standingHere)
   }
 
   /**
@@ -398,6 +433,7 @@ export class Canvas {
   update(next: Table): void {
     const box = this.boxes.get(next.name)
     if (box === undefined) return
+    const standingHere = box.element === document.activeElement
     const element = renderTable(next, this.handlers.unreadable(next.path))
     element.classList.toggle('selected', this.isSelected('table', next.name))
     placeElement(element, box.position)
@@ -414,12 +450,15 @@ export class Canvas {
     this.tables = this.tables.map((table) => (table.name === next.name ? next : table))
     this.rebuildEdges()
     this.drawGroups()
+    this.updateReach()
+    if (standingHere) this.refocus({ kind: 'table', name: next.name })
   }
 
   /** Redraw one note: its prose is rendered, so an edit to the body changes it. */
   updateNote(next: Note): void {
     const held = this.notes.get(next.name)
     if (held === undefined) return
+    const standingHere = held.element === document.activeElement
     const element = renderNote(next, this.handlers.unreadable(next.path))
     element.classList.toggle('selected', this.isSelected('note', next.name))
     const rect = { ...held.rect }
@@ -430,6 +469,8 @@ export class Canvas {
     // in the patch: a body edit arriving mid-drag must not teleport the note
     // back to where its file still says it is.
     placeNote(element, rect)
+    this.updateReach()
+    if (standingHere) this.refocus({ kind: 'note', name: next.name })
   }
 
   /** Redraw one group: its label and colour are on the file, and its box is not. */
@@ -437,17 +478,27 @@ export class Canvas {
     this.groups = this.groups.map((group) => (group.name === next.name ? next : group))
     const element = this.groupElements.get(next.name)
     if (element === undefined) return
+    const standingHere = element === document.activeElement
     const replacement = renderGroupShell(next)
     replacement.classList.toggle('selected', this.isSelected('group', next.name))
     element.replaceWith(replacement)
     this.groupElements.set(next.name, replacement)
     this.drawGroups()
+    this.updateReach()
+    if (standingHere) this.refocus({ kind: 'group', name: next.name })
   }
 
   select(selected: Selected | null): void {
     if (sameSelection(this.selected, selected)) return
     this.selected = selected
+    // The one tab stop follows a selection, so `Tab` comes back to the box that
+    // was clicked rather than to wherever the keyboard was last. It
+    // deliberately does not follow a clearing: `select(null)` is Escape and the
+    // background, and neither of those is somebody asking to be put back at the
+    // top left of the canvas.
+    if (selected !== null) this.focused = selected
     this.markSelection()
+    this.updateReach()
     this.handlers.onSelect(selected)
   }
 
@@ -786,6 +837,210 @@ export class Canvas {
         this.view.scale * factor,
       ),
     )
+  }
+
+  // ------------------------------------------------------------------------
+  // Reaching an object without a pointer.
+  // ------------------------------------------------------------------------
+
+  /**
+   * The canvas's keys, and only while focus is inside the canvas.
+   *
+   * Arrows and `Home`/`End` move the one tab stop; `Enter` and `Space` select
+   * what it is on, which is what opens the inspector. Every other key falls out
+   * of `default` without being consumed, and that is load-bearing twice over:
+   * `Escape` has to reach the document handler in `main.ts` that clears the
+   * selection, and `Tab` has to reach the browser so it can leave the canvas
+   * for the toolbar.
+   *
+   * A modifier means the press is somebody else's. Reading it as an arrow would
+   * quietly break the browser's own shortcuts on a canvas that had no business
+   * claiming them.
+   *
+   * Moving and selecting are two presses rather than one on purpose. Selection
+   * opens the inspector, which is a column that takes width off the canvas, so
+   * selection-follows-focus would relay out the drawing under a person on every
+   * arrow press. It also keeps `#selection` saying one sentence per chosen
+   * object rather than one per step across the canvas. ADR 0067.
+   */
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+    // The press has to be on an object itself and not on something inside one.
+    // A note whose prose is taller than the note scrolls, and Chromium makes a
+    // scroller like that focusable on its own account, without any attribute
+    // this file wrote: measured on 2026-09-07, `Tab` off the last table box
+    // landed in the body of `there-is-no-stock-column`. That was true before
+    // this canvas had a tab order at all, and it is right, because prose nobody
+    // can scroll to is prose nobody can read. What would not be right is
+    // stealing the arrow keys that scroll it, so the canvas's keys stop at the
+    // edge of an object rather than reaching inside it. ADR 0067.
+    if (!(event.target instanceof HTMLElement)) return
+    if (!event.target.matches('.box, .note-card, .group')) return
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        this.moveFocus(1)
+        break
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        this.moveFocus(-1)
+        break
+      case 'Home':
+        this.moveFocus('first')
+        break
+      case 'End':
+        this.moveFocus('last')
+        break
+      case 'Enter':
+      case ' ':
+        if (this.focused !== null) this.select(this.focused)
+        break
+      default:
+        return
+    }
+    // Only reached by a key this canvas answered, so nothing else is swallowed.
+    event.preventDefault()
+  }
+
+  /**
+   * Focus arrived from somewhere this file did not send it, so learn where.
+   *
+   * `Tab` into the canvas is the one that matters. The browser puts focus on
+   * whichever element carries `tabindex="0"`, and without this the canvas would
+   * not know it happened: `focused` would still be null, and the first arrow
+   * press would be read as "start from nowhere" and land on the object the tab
+   * stop was already on. One press that does nothing, every time somebody
+   * arrives. Measured on 2026-09-07 before this handler existed, and it is why
+   * it exists.
+   */
+  private readonly onFocusIn = (event: FocusEvent): void => {
+    const object = objectOf(event.target)
+    if (object !== null) this.focused = object
+  }
+
+  /**
+   * Move the tab stop along the reading order and take focus with it.
+   *
+   * The order is recomputed on every press rather than kept, because a drag
+   * changes it and there is no event that says "the arrangement settled". Eleven
+   * objects sorted once per keystroke is not worth a cache that can be wrong.
+   */
+  private moveFocus(to: 1 | -1 | 'first' | 'last'): void {
+    const order = this.reachables()
+    if (order.length === 0) return
+    const from =
+      this.focused === null ? -1 : positionOf(order, this.focused.kind, this.focused.name)
+    const next =
+      to === 'first'
+        ? order[0]
+        : to === 'last'
+          ? order[order.length - 1]
+          : stepFrom(order, from, to)
+    if (next === undefined) return
+    this.focused = { kind: next.kind, name: next.name }
+    this.updateReach()
+    this.refocus(this.focused)
+    this.reveal(next.rect)
+  }
+
+  /**
+   * Pan so a rectangle is on screen, and do nothing at all when it already is.
+   *
+   * Asked only after a keyboard move. A pointer cannot select what it cannot
+   * point at, so this question does not arise for a click, and panning on a
+   * click would move the drawing out from under the hand that was aiming at it.
+   */
+  private reveal(rect: Rect): void {
+    const host = this.host.getBoundingClientRect()
+    const next = panToReveal(this.view, { w: host.width, h: host.height }, rect)
+    if (next.pan.x === this.view.pan.x && next.pan.y === this.view.pan.y) return
+    this.setViewport(next)
+  }
+
+  /**
+   * Put the DOM focus on an object, without the browser scrolling to it.
+   *
+   * `preventScroll` is not a nicety here. `#canvas` is `overflow: clip` so that
+   * nothing but the transform can move the content, and "scroll the focused
+   * element into view" is exactly the thing that rule exists to stop. `reveal`
+   * is this canvas's version of the same idea, expressed as pan, which is the
+   * only coordinate the rest of the file believes in.
+   */
+  private refocus(target: Selected | null): void {
+    if (target === null) return
+    this.elementFor(target)?.focus({ preventScroll: true })
+  }
+
+  /**
+   * Write the one tab stop, and `-1` on everything else.
+   *
+   * Called after anything that creates elements or changes what is chosen. The
+   * stop goes on the object the keyboard last stood on; failing that on the
+   * selection, so a canvas that was only ever clicked still hands `Tab` the box
+   * somebody was looking at; failing that on the first object in reading order,
+   * so a page that has just loaded has a way in. An object named by `focused` or
+   * `selected` that is no longer on the canvas is skipped rather than trusted:
+   * a delete or a rename leaves both fields naming something that has gone, and
+   * a canvas with no `tabindex="0"` on it is a canvas `Tab` goes straight past.
+   */
+  private updateReach(): void {
+    const order = this.reachables()
+    const stop = this.tabStop(order)
+    for (const object of order) {
+      const element = this.elementFor(object)
+      if (element === undefined) continue
+      element.tabIndex =
+        stop !== null && stop.kind === object.kind && stop.name === object.name ? 0 : -1
+    }
+  }
+
+  private tabStop(order: readonly Reachable[]): Selected | null {
+    for (const candidate of [this.focused, this.selected]) {
+      if (candidate !== null && this.elementFor(candidate) !== undefined) return candidate
+    }
+    const first = order[0]
+    return first === undefined ? null : { kind: first.kind, name: first.name }
+  }
+
+  /**
+   * Every object a keyboard can reach, in reading order.
+   *
+   * A group's rectangle is the one `computeGroupBoxes` works out from where its
+   * members are this instant, grown upwards by its header, which is the part of
+   * a group somebody can point at. Nothing is stored: ADR 0005 says a group has
+   * no coordinates, and a reading order taken from a remembered rectangle would
+   * be one.
+   */
+  private reachables(): Reachable[] {
+    const objects: Reachable[] = []
+    for (const [name, box] of this.boxes) {
+      objects.push({
+        kind: 'table',
+        name,
+        rect: { x: box.position.x, y: box.position.y, w: box.size.w, h: box.size.h },
+      })
+    }
+    for (const [name, note] of this.notes) objects.push({ kind: 'note', name, rect: note.rect })
+    for (const box of this.computeGroupBoxes()) {
+      if (!this.groupElements.has(box.name)) continue
+      objects.push({
+        kind: 'group',
+        name: box.name,
+        rect: {
+          x: box.rect.x,
+          y: box.rect.y - GROUP_HEADER,
+          w: box.rect.w,
+          h: box.rect.h + GROUP_HEADER,
+        },
+      })
+    }
+    return readingOrder(objects)
+  }
+
+  private elementFor(target: Selected | Reachable): HTMLElement | undefined {
+    if (target.kind === 'table') return this.boxes.get(target.name)?.element
+    if (target.kind === 'note') return this.notes.get(target.name)?.element
+    return this.groupElements.get(target.name)
   }
 
   // ------------------------------------------------------------------------
@@ -1413,6 +1668,26 @@ function placeNote(element: HTMLElement, rect: Rect): void {
   element.style.transform = `translate(${rect.x}px, ${rect.y}px)`
   element.style.width = `${rect.w}px`
   element.style.height = `${rect.h}px`
+}
+
+/**
+ * Which object an element belongs to, from the attributes the drawing already
+ * finds objects by.
+ *
+ * `data-table`, `data-note` and `data-group` rather than `id` or `aria-label`:
+ * those two are 0064's and 0065's, written for a tool and for a person, and
+ * neither is what this file navigates by. Reading them here would be the third
+ * reader ADR 0065 says would have to be decided rather than discovered.
+ */
+function objectOf(target: EventTarget | null): Selected | null {
+  const element = target instanceof Element ? target.closest('.box, .note-card, .group') : null
+  if (!(element instanceof HTMLElement)) return null
+  const table = element.dataset['table']
+  if (table !== undefined) return { kind: 'table', name: table }
+  const note = element.dataset['note']
+  if (note !== undefined) return { kind: 'note', name: note }
+  const group = element.dataset['group']
+  return group === undefined ? null : { kind: 'group', name: group }
 }
 
 function sameSelection(a: Selected | null, b: Selected | null): boolean {

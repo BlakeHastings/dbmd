@@ -530,6 +530,53 @@
         color: var(--muted);
       }
 
+      /* --------------------------------------------------------------------
+         The focus ring, and why it is not the selected ring.
+
+         An object that can be focused has to look focused, and on this canvas
+         focus and selection are two different states that are true at the same
+         time: the arrows move focus, `Enter` selects, so between those presses
+         a person is standing on a box they have not chosen. One ring for both
+         would not say which. So selection keeps the solid accent it has always
+         had, and focus is a dashed ring in the text colour, sitting three
+         pixels outside it. Dashed against solid is legible without a second
+         colour, and `--ink` has contrast on the page, on a white box and on all
+         six note tints, because it is what the words on them are written in.
+
+         `:focus-visible` rather than `:focus`, so a click does not draw it.
+         Clicking a box already tells you what you clicked.
+
+         **These four declarations are the whole of it, deliberately.** The
+         visuals phase is going to choose what this page looks like, and a focus
+         style spread across six rules is six places to fight. It is one block
+         and it borrows tokens that already exist rather than adding one.
+
+         Written after the `.selected` rules on purpose: `.box:focus-visible`
+         and `.box.selected` have the same specificity, so this is the half of
+         the pair that has to come second to win where both are true. ADR 0067.
+         -------------------------------------------------------------------- */
+      .box:focus-visible,
+      .note-card:focus-visible,
+      .group:focus-visible > header {
+        outline: 2px dashed var(--ink);
+        outline-offset: 3px;
+      }
+
+      /* Said to a screen reader and to nobody else. `hidden` and
+         `display: none` would take it out of the accessibility tree as well as
+         off the page, which is the opposite of what this is for. */
+      .to-be-heard {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
+
       .toolbar {
         position: absolute;
         top: 12px;
@@ -820,7 +867,18 @@
   </head>
   <body>
     <main class="stage">
-      <div id="canvas"></div>
+      <!-- `role="group"` for the same reason a group box on the canvas needs
+           one (ADR 0065): an unroled `div` is a `generic`, and a `generic`
+           cannot carry a name or a description at all. With a role it can, and
+           what it carries is the one sentence saying that the arrow keys do
+           something, which is otherwise discoverable only by guessing. It is a
+           description rather than part of the name so that it is offered on the
+           way in and not repeated on every object inside. ADR 0067. -->
+      <div id="canvas" role="group" aria-label="Canvas" aria-describedby="canvas-keys"></div>
+      <p id="canvas-keys" class="to-be-heard">
+        Tab reaches one object on the canvas. Arrow keys move between objects, Home and End go to
+        the first and the last, and Enter opens the panel for the one you are on.
+      </p>
       <div class="toolbar">
         <button id="zoom-out" type="button" aria-label="Zoom out">&minus;</button>
         <span id="zoom-level">100%</span>

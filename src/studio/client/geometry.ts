@@ -147,3 +147,52 @@ export function fitTo(content: Rect, into: Size, margin = 48): Viewport {
     },
   }
 }
+
+/**
+ * The smallest change to the pan that brings `rect` inside `into`.
+ *
+ * The scale is not touched. This is for a keyboard walking from one object to
+ * the next, where the answer to "I cannot see it" is to move the paper, and
+ * never to change how big everything is under somebody who did not ask.
+ *
+ * It is needed because the canvas deliberately cannot scroll. `#canvas` is
+ * `overflow: clip` precisely so nothing can move the content behind the one
+ * transform that owns pan, and the browser's own "scroll the focused element
+ * into view" is one of the things that would. So focusing an object that is
+ * off-screen would put a focus ring where nobody can see it, and this is what
+ * puts it on screen instead. dbmd-y6k.
+ *
+ * A rectangle already inside the margin gives the viewport back unchanged, so a
+ * step between two objects that are both on screen moves nothing at all. A
+ * rectangle too large for the room it has is aligned to its top-left corner,
+ * which is where a table's name and a group's label are: showing the corner
+ * that says what the thing is beats centring a box whose middle says nothing.
+ */
+export function panToReveal(viewport: Viewport, into: Size, rect: Rect, margin = 32): Viewport {
+  return {
+    scale: viewport.scale,
+    pan: {
+      x: reveal(viewport.pan.x, viewport.scale, into.w, rect.x, rect.w, margin),
+      y: reveal(viewport.pan.y, viewport.scale, into.h, rect.y, rect.h, margin),
+    },
+  }
+}
+
+function reveal(
+  pan: number,
+  scale: number,
+  extent: number,
+  at: number,
+  size: number,
+  margin: number,
+): number {
+  // Two bounds on the pan, from the two edges of the rectangle. Any pan at or
+  // above `least` keeps the near edge inside the margin; any pan at or below
+  // `most` keeps the far edge inside it.
+  const least = margin - at * scale
+  const most = extent - margin - (at + size) * scale
+  // `least` above `most` is the arithmetic saying the rectangle is larger than
+  // the room it has. Both edges cannot be shown, and the near one wins.
+  if (least > most) return least
+  return Math.min(most, Math.max(least, pan))
+}
