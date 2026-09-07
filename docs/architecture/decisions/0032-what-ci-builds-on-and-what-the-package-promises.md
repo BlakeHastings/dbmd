@@ -127,3 +127,36 @@ than the floor, and that the floor is 22.
   matrix over operating system are the same mechanism and would multiply, and the
   question then is which combinations are worth a runner rather than which are
   expressible.
+
+## Amended by dbmd-55, once a control leg and an independent fix agreed on the cause
+
+The bullet above draws its conclusion from a single failing leg, which is
+exactly the mistake it exists to warn against. dbmd-55 went looking for a
+version-specific break and found the fuller picture instead.
+
+`test/studio/watch.test.ts` failed on four of eight legs while dbmd-55 was
+being verified, a different assertion each time, having failed on none of the
+twenty-five Node 20 runs before it. That distribution looks exactly like a
+version-specific break, and it is not one. A run with a third leg on Node 20
+added as a control passed on all three at once, which rules out the Node move
+as the cause. The mechanism was `settle()`, a fixed 500ms sleep set against
+write debounces of 250ms and 400ms: the margin was 100ms to 250ms, and a loaded
+runner spent it. The failures clustered in one twelve-minute window rather than
+on one version. **The honest limit stands as it was first put: one paired
+sample rules out a deterministic version break. It does not prove the failure
+rates are equal.**
+
+Independent confirmation arrived afterward, from someone who was not looking at
+Node at all. PR #44 (dbmd-52) found that `settle` was that same sleep plus a
+`GET /api/model` a comment called a fence, and was not one, because that route
+answers from `edits.snapshot()` and never awaits a flush. Reproduced
+deliberately by taxing filesystem calls, replacing the fence with
+`POST /api/flush` took the suite from 19.4s to 7.8s. Two independent
+derivations of the same cause is a stronger claim than either alone.
+
+The flake is fixed on `main` now, so this amendment is written for a reader who
+will never see it fail. The reason to keep the original bullet rather than
+correct it in place is the lesson, not the bug: **read the failing leg before
+believing the shape of the failure** is what both versions of this bullet
+arrive at, and it says more sitting next to the one time this record did not
+follow its own advice than it would standing alone.
