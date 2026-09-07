@@ -19,12 +19,17 @@ checking the premise is part of the job.
 
 ## Branch and commits
 
-```
-<area>/<issue-number>-<short-slug>
-```
+**Name the branch for what changed, not for the item.** Recent ones:
+`model-file-missing-names-the-fix`, `keyboard-reaches-the-canvas`,
+`json-payloads-are-run`. A prefix like `docs/` or `studio/` is welcome and not
+required.
 
-for example `format/4-markdown-parser` or `cli/9-studio-server`. The number is
-the beads id's numeric part, so `dbmd-4` becomes `format/4-markdown-parser`.
+This used to say `<area>/<issue-number>-<short-slug>`, with the number taken
+from the id, so that `dbmd-4` became `format/4-markdown-parser`. **Beads stopped
+issuing numeric ids**: they are short random suffixes now, like `dbmd-6j7` and
+`dbmd-y6k`, and there is no numeric part to take. Every branch merged on
+2026-09-07 was named for its change instead, which is also what a reviewer
+reading a list of branches wants to see.
 
 Commit messages say **why**, not what. The diff already says what.
 

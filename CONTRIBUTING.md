@@ -227,8 +227,9 @@ not substitutes for each other.
 The backlog is beads, not GitHub issues. `AGENTS.md` says how to read it,
 including how to read it with `node` when `bd` is not installed, and
 [ADR 0002](docs/architecture/decisions/0002-initialisation-answers.md) says why.
-Branches are `<area>/<number>-<slug>`, where the number is the numeric part of a
-`dbmd-N` id.
+Branches are named for what changed rather than for the item, because beads ids
+are short random suffixes with no number to take. `docs/process/working-an-issue.md`
+has the detail.
 
 ## Decision records
 
