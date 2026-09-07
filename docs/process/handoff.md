@@ -22,11 +22,17 @@ smoke and the pack guard. That is the command `release.yml` runs through
 `prepublishOnly`, so it is the closest thing there is to a rehearsal of the
 publish.
 
-**Four of the last hundred check runs on `main` went red and nobody noticed**,
-including me. Two were a race the flush repair had already fixed by the time I
-read them; two are live and both are in `test/studio/watch.test.ts`. `dbmd-056`
-carries the evidence and `dbmd-rjd` carries the general problem, which is that
+**Seven of the 140 check runs on `main` went red and nobody noticed**, including
+me. Four were a race the flush repair had already fixed by the time I read them.
+Three are live and all three are in `test/studio/watch.test.ts`. `dbmd-056`
+carries the census and `dbmd-rjd` carries the general problem, which is that
 `merge-pr.mjs` prevents a red merge and nothing detects a red result.
+
+**The seventh was the post-merge run of the pull request that reported four**,
+and I did not notice for about an hour. That pull request also said four because
+I read `gh run list --limit 100` against a branch with 140 runs. Both halves of
+that are in `orchestrating.md` under the listing-is-a-window heading; the short
+version is that a truncated listing looks exactly like a complete one.
 
 **Nothing is blocked.** That has been true since the owner answered the two
 questions that were, at about 13:20.
@@ -65,24 +71,45 @@ invented a version number.
 `npm view dbmd versions` is the answer to "is it out" that a page cannot get
 wrong.
 
-**`examples/shop` has four uncommitted edits from the owner**, one `layout` line
-each, all four written at 04:32 on 2026-09-07 and untouched since. The model
-checks clean, including `--strict`. **Do not commit or revert them.**
+**`examples/shop` is clean and the owner's edits are gone.** This file carried
+"four uncommitted edits from the owner, do not commit or revert them" for hours
+after the owner said _"You can remove my edits if I have any on disk"_ and after
+something removed them. Checked on 2026-09-07: `git diff HEAD -- examples/shop`
+is empty, no commit since 04:00 changes a `layout` line there, so the edits were
+discarded rather than landed.
 
-Whether a studio is still open on them is **not known**: this session cannot tell
-which local process is one, and probing unknown ports is not something to do
-blindly. Earlier notes asserted one was open, which was never verifiable. What is
-verifiable is that nothing has written those files since 04:32. If a studio from
-before today's work is still open, it has neither the file watcher nor the
-staleness guard and a hand edit made under it can still be lost, so restarting
-it is the safe move either way.
+**That paragraph is the reason to distrust an instruction in this file more than
+a description in it.** A stale description is merely out of date. A stale
+instruction directs whoever reads it, and this file is read by the most degraded
+version of the orchestrator, immediately after a compaction, with nothing else
+loaded. `orchestrating.md` carries the general form.
 
 ## In flight, and what is actually left
 
-**Nothing is running, and the three stopped agents are cancelled rather than
-paused.** The harness refuses to resume an agent the owner stopped, and says to
-treat its work as cancelled and to launch a fresh one only if the owner asks.
-So **re-dispatching those three is the owner's call, not mine.**
+**Two agents are running**, dispatched from `df806f2` after reading the machine:
+11.4 GB free of 31.9, 64% used, 58 GB of disk, and the largest consumer six
+`claude` sessions at 2.8 GB rather than anything of this project's. Two rather
+than the usual three for that reason.
+
+- **`dbmd-056`**, the P1, in `src/studio/` and `test/studio/`. Two flaky watcher
+  tests, and the brief refuses a fix that waits longer or retries. ADR 0057 is
+  theirs if the fix changes behaviour.
+- **`dbmd-58d`**, in `scripts/smoke-pack.mjs`. Drive `query` and `refs` against
+  the installed binary, and say in the docstring why `import` stays out. ADR 0059
+  is theirs, and 0058 is deliberately skipped because an unmerged branch has it.
+
+The split is by collision surface and it also avoids the two cancelled branches:
+neither agent touches `merge-pr.mjs`, `check-main-provenance.mjs` or
+`test/guards/broken-on-purpose.test.ts`, which is what `2f69db1` changed.
+
+**The owner's instruction was to keep the machine in mind when initiating
+batches, not to stop initiating them.** Reading it as a ban made the tool they
+asked for pointless, and that reading cost most of an afternoon of queue.
+
+**The three earlier stopped agents are still cancelled rather than paused.** The
+harness refuses to resume an agent the owner stopped, and says to treat its work
+as cancelled and to launch a fresh one only if the owner asks. So
+**re-dispatching those is the owner's call, not mine.**
 
 What survives, and where:
 
