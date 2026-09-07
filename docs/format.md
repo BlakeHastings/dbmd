@@ -570,10 +570,24 @@ The target also has to identify one row, and when it does not you get a
 
 A column identifies one row when it is the table's whole primary key, or when a
 `unique: true` index covers it and nothing else. One column of a composite key
-is not enough, and neither is one column of a two-column unique index: `unique`
-on `(room, starts_at)` says nothing at all about `room`. It is a warning rather
-than an error because pointing at a non-unique column is occasionally deliberate
-and much more often a typo.
+is not enough on its own, and neither is one column of a two-column unique
+index: `unique` on `(room, starts_at)` says nothing at all about `room`. It is a
+warning rather than an error because pointing at a non-unique column is
+occasionally deliberate and much more often a typo.
+
+**On its own** is the whole of the exception. A composite foreign key is one
+constraint written one `ref:` per column, so dbmd reads the refs from one table
+into one target table as a **set**, and asks of that set whether it covers a
+whole key. If `orders` is `unique (tenant_id, code)` and `order_lines` refs
+`orders.tenant_id` and `orders.code`, the pair identifies a row and neither ref
+is warned about. If it refs only `tenant_id`, the warning stays and names `code`,
+because half a key is still half a key. This is [ADR 0033][adr33], and it is why
+a freshly imported model with composite foreign keys in it passes
+`dbmd check --strict` in silence.
+
+The set is per target table and never pools across targets. A `ref` at
+`orders.tenant_id` and a `ref` at `archived_orders.code` are two halves of two
+different constraints, and two warnings.
 
 Which makes this the third file of the model this page has been building, and
 the one `invoice_lines` has been pointing at since the top of it:
@@ -991,7 +1005,7 @@ And about the model, with a path and no line:
 | --- | --- | --- | --- |
 | `ref-table-unknown` | error | A `ref:` whose table half names no file in `tables/`. | Fix the spelling, or add the table. |
 | `ref-column-unknown` | error | A `ref:` whose table exists and whose column half is not one of its columns. | Check it against that table's `columns:`. |
-| `ref-target-not-unique` | warning | A `ref:` at a column that is neither a whole primary key nor covered by a single-column unique index. | Add the `unique: true` index the database already has, or fix the ref. |
+| `ref-target-not-unique` | warning | A `ref:` at a column that does not identify one row: it is in no key of the target at all, or it is one column of a composite key whose other columns this table does not also `ref`. The message says which, and the second names what is missing. | Add the missing `ref:`, add the `unique: true` index the database already has, or fix the ref. |
 | `duplicate-table` | error | Two tables in one model under one name. A directory cannot do this; an import of two schemas can. | Rename one of them. |
 | `duplicate-column` | error | Two columns of one table under one name. | Delete one. Both are carried, so neither wins. |
 | `duplicate-index` | error | Two indexes of one table under one name. | Rename one. The database would refuse the second. |
@@ -1090,9 +1104,13 @@ complete is worse than one that says where it ends.
   somebody wrote; a table's comment does survive, as the body of its file.
 - **No name on a foreign key, and no way to say that two `ref`s are one
   constraint.** A composite foreign key arrives from an import as one `ref` per
-  column, paired by position, and `dbmd check` then says
-  `ref-target-not-unique` about each of them, correctly: no one of those columns
-  identifies a row on its own and the format cannot say that the pair does.
+  column, paired by position, and the pair has nowhere to carry the constraint's
+  name. `dbmd check` no longer complains about it: it reads the refs from one
+  table into one target as a set and stays silent when the set covers a whole
+  key ([ADR 0033][adr33]). So the tool knows the two belong together and the
+  format still cannot *say* it, which shows up if you delete one of them: what
+  is left is a warning about a half-covered key rather than an error about a
+  broken constraint.
 
 ## Where the truth is
 
@@ -1127,4 +1145,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr29]: architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md
 [adr30]: architecture/decisions/0030-a-group-is-drawn-and-a-colour-is-a-name.md
 [adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
+[adr33]: architecture/decisions/0033-a-composite-foreign-key-is-judged-as-a-set.md
 [prettier]: https://prettier.io

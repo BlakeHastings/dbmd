@@ -74,6 +74,7 @@ function blocksIn(page: string): Block[] {
 }
 
 const page = await readFile(formatPage, 'utf8')
+const source = await readFile(codesFile, 'utf8')
 const blocks = blocksIn(page)
 const good = blocks.filter((block) => block.expected === undefined)
 const bad = blocks.filter((block) => block.expected !== undefined)
@@ -144,26 +145,73 @@ describe('docs/format.md is right about what goes wrong', () => {
   )
 })
 
-describe('docs/format.md keeps up with the reader', () => {
-  test('every diagnostic code has a row in the page', async () => {
-    // Read out of the source rather than duplicated here, so that adding a code
-    // to `ModelDiagnosticCode` and forgetting the reference is a red build rather
-    // than a gap somebody finds a year later. The union is a run of `| 'code'`
-    // lines with no blank line in it, which is what the slice below relies on.
-    //
-    // It lives in `src/diagnostics.ts` rather than in `src/model/types.ts`
-    // since dbmd-13 made the model reader and the import contract share one
-    // `Diagnostic`. This page documents the model half, so it is the model half
-    // that is read: the import codes are `docs/import-format.md`'s.
-    const source = await readFile(codesFile, 'utf8')
-    const start = source.indexOf('export type ModelDiagnosticCode =')
-    expect(start).toBeGreaterThan(-1)
-    const union = source.slice(start, source.indexOf('\n\n', start))
-    const codes = [...union.matchAll(/\|\s*'([a-z-]+)'/g)].map(
-      (match) => match[1] as ModelDiagnosticCode,
-    )
+/**
+ * The `ModelDiagnosticCode` declaration, as source text.
+ *
+ * Read out of the source rather than duplicated here, so that adding a code and
+ * forgetting the reference is a red build rather than a gap somebody finds a
+ * year later. It lives in `src/diagnostics.ts` rather than in
+ * `src/model/types.ts` since dbmd-13 made the model reader and the import
+ * contract share one `Diagnostic`. This page documents the model half, so it is
+ * the model half that is read: the import codes are `docs/import-format.md`'s.
+ *
+ * Sliced at the next top-level `export`, which is what `test/import/docs.test.ts`
+ * does and for the same reason. This used to slice at the first blank line,
+ * which made the formatting of a type declaration load-bearing in a way nobody
+ * would guess: a blank line put inside the union to space out a long doc comment
+ * dropped every code after it out of the checked set, and the suite stayed green
+ * while the guarantee below covered less than it claimed (dbmd-8ms). The only
+ * formatting rule left is one TypeScript imposes anyway.
+ */
+function unionText(): string {
+  const declaration = 'export type ModelDiagnosticCode ='
+  const start = source.indexOf(declaration)
+  if (start === -1) throw new Error('`ModelDiagnosticCode` is not declared in src/diagnostics.ts')
+  const rest = source.slice(start + declaration.length)
+  const next = /^export /m.exec(rest)
+  return next === null ? rest : rest.slice(0, next.index)
+}
 
-    expect(codes.length).toBeGreaterThan(10)
-    expect(codes.filter((code) => !page.includes(`\`${code}\``))).toEqual([])
+const union = unionText()
+const codes = [...union.matchAll(/\|\s*'([a-z][a-z-]*)'/g)].map(
+  (match) => match[1] as ModelDiagnosticCode,
+)
+
+/**
+ * Every code the page gives a row to, across the reader table and the validator
+ * one.
+ *
+ * A row, not a mention: the check this replaces asked only whether the code
+ * appeared anywhere in the page, which a passing reference in prose satisfies.
+ * What a reader looks up is the row.
+ */
+const rows = [...page.matchAll(/^\| `([a-z][a-z-]*)` \| (?:error|warning) \|/gm)].map(
+  (match) => match[1] as string,
+)
+
+describe('docs/format.md keeps up with the reader', () => {
+  test('the union read is the model half, and all of it', () => {
+    // Thirty: twenty-one the reader raises, nine the validator does. The exact
+    // count, not a floor, so that a slice which stopped early or ran long says
+    // so. The floor this replaces was `toBeGreaterThan(10)`, which passed
+    // happily on the twenty-eight a blank line near the end of the declaration
+    // used to leave behind: a control that only fires on the case nobody hits
+    // is the reason nobody looks again. Adding a code means changing this
+    // number, which is the point.
+    expect(codes.length).toBe(30)
+    // `ImportDiagnosticCode` is the next declaration in that file, so a slice
+    // that ran past the end of this one would pick it up.
+    expect(union).not.toContain('ImportDiagnosticCode')
+  })
+
+  test('every code has a row, and every row has a code', () => {
+    // Both directions since dbmd-8ms. A code with no row is the gap the page
+    // was written to close; a row naming no code is what a rename leaves
+    // behind, and sends a reader to look up something that cannot happen.
+    expect([...rows].sort()).toEqual([...codes].sort())
+  })
+
+  test('no code is given two rows', () => {
+    expect([...new Set(rows)].length).toBe(rows.length)
   })
 })
