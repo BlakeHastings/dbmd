@@ -9,12 +9,15 @@ epic closed.**
 
 ## Where the work is
 
-One hundred and thirty-six pull requests have merged, all through
-`merge-pr.mjs`, and the provenance audit is clean across every commit on `main`.
-**100 items closed, 9 open**. **All eight epics are closed**, the last two on
-2026-09-07: import, which closed when re-import landed, and publishing. The one
-P1 is mine rather than the owner's: `dbmd-056`, the flaky watcher test, because
-the publish the owner has been asked to trigger runs the suite it sits in.
+One hundred and forty pull requests have merged, all through `merge-pr.mjs`, and
+the provenance audit is clean across every commit on `main`. **103 items closed,
+11 open**. **All eight epics are closed**, the last two on 2026-09-07: import,
+which closed when re-import landed, and publishing.
+
+**Two P1s, both mine rather than the owner's.** `dbmd-056`, the flaky watcher
+test, because the publish the owner has been asked to trigger runs the suite it
+sits in. `dbmd-rjd`, because nothing looks at what a merge did to `main`, and
+that was demonstrated by the merge of the pull request that filed it.
 
 **`npm run check` passes on `main` as of 2026-09-07**, run whole and locally:
 typecheck, format, the four content checks, 1,021 tests, the build, the pack
