@@ -3,13 +3,39 @@ import { join, relative, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
+/**
+ * Which fixture answers which question, because picking the wrong one is a way
+ * a test goes quiet without going red.
+ *
+ * **A test whose fixture is already canonical cannot tell "wrote a little" from
+ * "wrote everything."** Every file in such a directory renders to what it
+ * already says, so the writer skips all of them whether or not the caller
+ * narrowed the write, and an assertion about *not* rewriting neighbours passes
+ * either way. That is not hypothetical: the studio's "writes exactly that one
+ * file" case and the writer's own `only` case both ran against `examples/shop`,
+ * dbmd-14 made `examples/shop` byte-canonical months later in a change about
+ * something else, and neither noticed. dbmd-47. So a claim about what was *not*
+ * written wants `untidyModel`, and a claim about the writer skipping a file
+ * whose content already matches wants `canonicalModel`.
+ */
+
 /** A ten-table model written by the writer, so every file in it is canonical. */
 export const canonicalModel = fileURLToPath(new URL('../fixtures/canonical', import.meta.url))
 
-/** The demo model, hand-written by a person from ADR 0003 and nothing else. */
+/**
+ * The demo model, hand-written by a person from ADR 0003 and nothing else, and
+ * byte-canonical since dbmd-14 so that a new user's first save produces no diff.
+ * `round-trip.test.ts` pins that. It is the model to reach for when a test wants
+ * realistic material; it is the wrong one for a test about what was left alone.
+ */
 export const exampleShop = fileURLToPath(new URL('../../examples/shop', import.meta.url))
 
-/** The same sort of model, hand-written badly. Every file parses; none is canonical. */
+/**
+ * The same sort of model, hand-written badly. Every file parses; none is
+ * canonical, so a whole-model write over it rewrites all five and a narrowed
+ * one rewrites exactly what it was told to. That difference is the whole reason
+ * this fixture exists, and `round-trip.test.ts` pins it by name.
+ */
 export const untidyModel = fileURLToPath(new URL('../fixtures/untidy', import.meta.url))
 
 /**
