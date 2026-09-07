@@ -9,4 +9,11 @@
 
 export { startStudio } from './server.js'
 export type { Studio, StudioOptions } from './server.js'
-export type { TablePatch, WireModel, WireModelResponse, WireStatus, WireWrite } from './wire.js'
+export type {
+  TablePatch,
+  WireConflict,
+  WireModel,
+  WireModelResponse,
+  WireStatus,
+  WireWrite,
+} from './wire.js'

@@ -62,6 +62,15 @@ export interface StudioOptions {
   readonly log?: (message: string) => void
   /** How long an edit waits for the next one before being written. ADR 0004. */
   readonly debounceMs?: number
+  /** How long a burst of filesystem events is collected before one re-read. ADR 0019. */
+  readonly watchDebounceMs?: number
+  /**
+   * Watch the model directory for changes made outside the studio, on by
+   * default. Turning it off leaves the studio safe rather than only quiet: the
+   * check that refuses to write over a file that moved runs at the write, not
+   * in the watcher. ADR 0019.
+   */
+  readonly watch?: boolean
   /**
    * The built client. Defaults to the `client/` directory beside this module,
    * which is where `scripts/build-client.mjs` puts the bundle.
@@ -82,6 +91,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   const clientDir = options.clientDir ?? fileURLToPath(new URL('client/', import.meta.url))
   const edits = await Edits.open(options.dir, {
     ...(options.debounceMs === undefined ? {} : { debounceMs: options.debounceMs }),
+    ...(options.watchDebounceMs === undefined ? {} : { watchDebounceMs: options.watchDebounceMs }),
+    ...(options.watch === undefined ? {} : { watch: options.watch }),
     log,
   })
 
