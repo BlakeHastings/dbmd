@@ -174,7 +174,18 @@ interface Box {
   rows: Map<string, number>
   /** The header's centre, where an edge goes when this box has no such column. */
   header: number
-  draggable: boolean
+  /**
+   * Whether the table's file parsed, which decides two separate things.
+   *
+   * A table whose file did not parse holds less in memory than on disk, and the
+   * server refuses to write it (ADR 0013), so it cannot be dragged: refusing
+   * here is the same refusal, said before the developer has moved anything. It
+   * is also drawn with the reader's complaint in place of its rows, so an edge
+   * that could not find a row on this box is unanchored for a different reason
+   * than one that named a column its table genuinely does not have. One fact,
+   * so the two answers cannot drift apart.
+   */
+  complete: boolean
   /** The group this table declares itself a member of, if any. */
   group: string | undefined
 }
@@ -335,10 +346,7 @@ export class Canvas {
         size: { w: 220, h: 120 },
         rows: new Map(),
         header: 0,
-        // A table whose file did not parse holds less in memory than on disk,
-        // and the server refuses to write it (ADR 0013). Refusing the drag here
-        // is the same refusal, said before the developer has moved anything.
-        draggable: table.complete,
+        complete: table.complete,
         group: table.group,
       })
       placeElement(element, position)
@@ -380,7 +388,7 @@ export class Canvas {
     this.rowSizes.unobserve(box.element)
     box.element.replaceWith(element)
     box.element = element
-    box.draggable = next.complete
+    box.complete = next.complete
     // A table that joined or left a group changes two group boxes and no
     // coordinate: the boxes are recomputed below from membership as it now
     // stands, and nothing about the group's own file has moved.
@@ -571,7 +579,7 @@ export class Canvas {
       this.select({ kind: 'group', name: groupName })
       const started = new Map<string, Point>()
       for (const [name, box] of this.boxes) {
-        if (box.group === groupName && box.draggable) started.set(name, box.position)
+        if (box.group === groupName && box.complete) started.set(name, box.position)
       }
       this.drag = {
         kind: 'group',
@@ -595,7 +603,7 @@ export class Canvas {
     // A table whose file did not parse is still selectable, so the developer
     // can read what is wrong with it; the background drag it falls through to
     // pans, which is what it would have done anyway.
-    if (name === null || box === undefined || !box.draggable) {
+    if (name === null || box === undefined || !box.complete) {
       this.startPan(event)
       return
     }
@@ -805,6 +813,7 @@ export class Canvas {
         h: box.size.h,
         rows: box.rows,
         header: box.header,
+        drawsRows: box.complete,
       })
     }
     return rects
@@ -1220,10 +1229,27 @@ function measure(box: Box): void {
     header === null ? box.size.h / 2 : border + header.offsetTop + header.offsetHeight / 2
 }
 
+/**
+ * What the edge is about, and why an end of it is not on a row.
+ *
+ * The reason is the end's own, not a single sentence covering both, because the
+ * two causes are different facts and a reader acts differently on each: a column
+ * that is not there is a `ref` to correct, and a table that did not parse is a
+ * file to fix, after which the column is very probably where it always was.
+ * Saying the first about the second sends somebody looking for a column the
+ * model still holds.
+ */
 function edgeTitle(edge: RoutedEdge): string {
   const said = `${edge.from.table}.${edge.from.column} references ${edge.to.table}.${edge.to.column}`
   if (edge.unanchored.length === 0) return said
-  return `${said}. Drawn at the table's name because there is no ${edge.unanchored.join(' and no ')}.`
+  const because = edge.unanchored
+    .map((end) =>
+      end.why === 'no-such-column'
+        ? `there is no ${end.table}.${end.column}`
+        : `${end.table} did not parse, so its columns are not drawn`,
+    )
+    .join(' and ')
+  return `${said}. Drawn at the table's name because ${because}.`
 }
 
 function placeElement(element: HTMLElement, position: Point): void {

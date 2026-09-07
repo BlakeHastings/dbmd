@@ -203,7 +203,13 @@ describe('edges', () => {
       h: FIRST_ROW + columns.length * ROW_PITCH + 8,
       header: HEADER,
       rows: new Map(columns.map((name, index) => [name, FIRST_ROW + index * ROW_PITCH])),
+      drawsRows: true,
     }
+  }
+
+  /** A table whose file did not parse: its box shows a complaint, not columns. */
+  function brokenBoxOf(x: number, y: number): TableBox {
+    return { x, y, w: 220, h: 60, header: HEADER, rows: new Map(), drawsRows: false }
   }
 
   function rowY(box: TableBox, column: string): number {
@@ -373,7 +379,57 @@ describe('edges', () => {
     // the box is the one answer ruled out: that is the old bug in a disguise.
     expect(ends(edge.d).y).toBe(customers.y + HEADER)
     expect(ends(edge.d).y).not.toBe(customers.y + customers.h / 2)
-    expect(edge.unanchored).toEqual(['customers.nope'])
+    expect(edge.unanchored).toEqual([{ table: 'customers', column: 'nope', why: 'no-such-column' }])
+  })
+
+  it('blames the file, not the column, when the table drew no rows to land on', () => {
+    // `type: 42` on one column makes the whole table incomplete, so the box
+    // shows the reader's complaint instead of its rows. Every column it still
+    // holds is then unanchored, and saying `there is no api_keys.account_id`
+    // about one of them sends the reader after a column the model still has.
+    const broken = new Map<string, TableBox>([
+      ['api_keys', brokenBoxOf(0, 0)],
+      ['customers', customers],
+    ])
+    const edge = only(
+      routeEdges(
+        [
+          {
+            from: { table: 'api_keys', column: 'account_id' },
+            to: { table: 'customers', column: 'id' },
+          },
+        ],
+        broken,
+      ),
+    )
+    expect(edge.unanchored).toEqual([
+      { table: 'api_keys', column: 'account_id', why: 'table-did-not-parse' },
+    ])
+    // Still the header rather than the middle of the box, which is the part
+    // that was already right and has to stay right.
+    expect(starts(edge.d).y).toBe(HEADER)
+  })
+
+  it('gives each end of an edge its own reason', () => {
+    const mixed = new Map<string, TableBox>([
+      ['api_keys', brokenBoxOf(0, 0)],
+      ['customers', customers],
+    ])
+    const edge = only(
+      routeEdges(
+        [
+          {
+            from: { table: 'api_keys', column: 'account_id' },
+            to: { table: 'customers', column: 'nope' },
+          },
+        ],
+        mixed,
+      ),
+    )
+    expect(edge.unanchored).toEqual([
+      { table: 'api_keys', column: 'account_id', why: 'table-did-not-parse' },
+      { table: 'customers', column: 'nope', why: 'no-such-column' },
+    ])
   })
 
   it('keeps an anchor on the box when a row offset is older than the box it is in', () => {

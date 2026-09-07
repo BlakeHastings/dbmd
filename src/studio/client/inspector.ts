@@ -85,7 +85,7 @@ import {
   type LineEnding,
 } from './fields.js'
 import type { Point } from './geometry.js'
-import { referrersTo, referrerText } from './model.js'
+import { agreeing, referrersTo, referrerText, renamePlan } from './model.js'
 import { PALETTE, unknownColorNote } from './palette.js'
 import { clashFor, NEW_TABLE_SHAPE, suggestName, suggestTableName } from './tables.js'
 
@@ -668,25 +668,32 @@ export class Inspector {
     const button = el('button', 'primary', 'Rename')
     button.type = 'button'
     const confirmHost = el('div', 'confirm-host')
+    const refused = el('p', 'notes')
+    refused.dataset['field'] = 'rename-notes'
+    refused.hidden = true
 
     const askToRename = (): void => {
       const to = input.value.trim()
       const from = table.name
+      confirmHost.replaceChildren()
+      refused.hidden = true
       if (to === from || to === '') {
         input.value = from
-        confirmHost.replaceChildren()
         return
       }
-      const referrers = referrersTo(this.handlers.model(), from)
-      const files = [...new Set(referrers.map((referrer) => referrer.table))]
-      const lines = [
-        `Rename \`${from}\` to \`${to}\`?`,
-        `This writes tables/${to}.md and deletes tables/${from}.md.`,
-        files.length === 0
-          ? 'Nothing else in the model refs this table, so no other file changes.'
-          : `${referrers.length} ref${referrers.length === 1 ? '' : 's'} point here and will be moved with it, which edits ${files.length} other file${files.length === 1 ? '' : 's'}: ${files.map((file) => `tables/${file}.md`).join(', ')} (${referrerText(referrers)}).`,
-      ]
-      this.confirm(confirmHost, lines, 'Rename', () => {
+
+      // Worked out before anything is drawn, rather than after the developer has
+      // agreed to it. The server refuses a taken name too and has to, because a
+      // client is not a permission system; what it cannot do is get its answer
+      // in before the paragraph is read, and the moment before the button is
+      // pressed is the one moment that paragraph exists for.
+      const plan = renamePlan(this.handlers.model(), from, to)
+      if (plan.kind === 'refused') {
+        refused.textContent = plan.said
+        refused.hidden = false
+        return
+      }
+      this.confirm(confirmHost, plan.lines, 'Rename', () => {
         confirmHost.replaceChildren()
         this.handlers.onRename(from, to)
       })
@@ -698,6 +705,7 @@ export class Inspector {
       if (event.key === 'Escape') {
         input.value = table.name
         confirmHost.replaceChildren()
+        refused.hidden = true
       }
     })
 
@@ -707,6 +715,7 @@ export class Inspector {
       note(
         'Renaming is not a keystroke: it writes one file, deletes another and edits everyone who refs it, so it waits for the button.',
       ),
+      refused,
       confirmHost,
     )
     return section
@@ -843,7 +852,7 @@ export class Inspector {
       host,
       [
         `Remove \`${name}.${row.was}\`?`,
-        `${referrers.length} ref${referrers.length === 1 ? '' : 's'} point at it and will be left dangling: ${referrerText(referrers)}.`,
+        `${referrers.length} ${agreeing(referrers.length, 'ref points', 'refs point')} at it and will be left dangling: ${referrerText(referrers)}.`,
         'Those files are not edited. dbmd will report each one as `ref-column-unknown` until you fix it.',
       ],
       'Remove anyway',
@@ -901,7 +910,7 @@ export class Inspector {
         const orphans = referrersTo(this.handlers.model(), name, row.was)
         if (orphans.length > 0) {
           said.push(
-            `${orphans.length} ref${orphans.length === 1 ? '' : 's'} still point at \`${name}.${row.was}\` and are not being moved: ${referrerText(orphans)}`,
+            `${orphans.length} ${agreeing(orphans.length, 'ref still points', 'refs still point')} at \`${name}.${row.was}\` and ${agreeing(orphans.length, 'is', 'are')} not being moved: ${referrerText(orphans)}`,
           )
         }
       }
@@ -1160,7 +1169,7 @@ export class Inspector {
           `This deletes ${table.path} and edits no other file.`,
           orphans.length === 0
             ? 'Nothing else in the model refs this table, so nothing is left pointing at it.'
-            : `${orphans.length} ref${orphans.length === 1 ? '' : 's'} in ${files.length} other file${files.length === 1 ? '' : 's'} will be left pointing at nothing: ${referrerText(orphans)}. Those files are not edited. dbmd will report each one as \`ref-table-unknown\` until you fix it.`,
+            : `${orphans.length} ${agreeing(orphans.length, 'ref', 'refs')} in ${files.length} other ${agreeing(files.length, 'file', 'files')} will be left pointing at nothing: ${referrerText(orphans)}. Those files are not edited. dbmd will report each one as \`ref-table-unknown\` until you fix it.`,
           ...this.lastMemberWarning(table),
           'Undo is `git checkout`, and only for a file that was committed. This one is gone from the disk either way.',
         ],

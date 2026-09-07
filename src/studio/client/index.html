@@ -210,7 +210,9 @@
       }
       /* An end that could not find its column is drawn at the table's name, and
          has to be readable as that rather than as an ordinary arrow. Hover it
-         for which column is missing. */
+         for which end it is and why: a column that is not there and a table
+         that did not parse are different facts and a reader acts on each
+         differently. */
       .edge.unanchored {
         stroke-dasharray: 5 4;
       }
@@ -221,7 +223,8 @@
         fill: context-stroke;
       }
 
-      .boxes {
+      /* The third layer, scoped for the reason the other two are. */
+      .scene > .boxes {
         position: absolute;
         top: 0;
         left: 0;
@@ -293,9 +296,19 @@
       /* ------------------------------------------------------------------
          Notes and groups (ADR 0005). Both are inside `.scene`, so both are
          positioned in model coordinates and neither knows about the zoom.
+
+         Written as a child of `.scene` rather than as the bare class, and it
+         is a fix rather than a flourish. The inspector's red validation
+         paragraph is a `p.notes`, so an unscoped `.notes` absolutely
+         positioned every one of them at the top-left corner of the page: the
+         create form's "there is already a table called `orders`" was drawn
+         behind the toolbar, on the far side of the window from the field it
+         was about. That is the same accident the `.note-card` comment below
+         describes, one plural along, so the answer is the same one said in
+         CSS: a rule about a layer of the scene says so.
          ------------------------------------------------------------------ */
-      .notes,
-      .groups {
+      .scene > .notes,
+      .scene > .groups {
         position: absolute;
         top: 0;
         left: 0;
