@@ -41,10 +41,17 @@ consistently that nobody checks it is there.
 `AGENTS.md` and `README.md` both say so. Two files claimed otherwise for a day and
 that false claim is why a CI recipe invented a version number.
 
-**The owner has a studio open on `examples/shop`**, started before today's studio
-work, so it has neither the file watcher nor the staleness guard. Restarting it
-picks both up. Four files are modified, one `layout` line each; the model checks
-clean. Do not commit or revert them.
+**`examples/shop` has four uncommitted edits from the owner**, one `layout` line
+each, all four written at 04:32 on 2026-09-07 and untouched since. The model
+checks clean, including `--strict`. **Do not commit or revert them.**
+
+Whether a studio is still open on them is **not known**: this session cannot tell
+which local process is one, and probing unknown ports is not something to do
+blindly. Earlier notes asserted one was open, which was never verifiable. What is
+verifiable is that nothing has written those files since 04:32. If a studio from
+before today's work is still open, it has neither the file watcher nor the
+staleness guard and a hand edit made under it can still be lost, so restarting
+it is the safe move either way.
 
 ## What has been driven, not just tested
 
