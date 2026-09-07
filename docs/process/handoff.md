@@ -8,9 +8,10 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Seventy-four pull requests have merged, all through `merge-pr.mjs`, and the
-provenance audit is clean across every commit on `main`. **43 items closed, 18
-open, 1 blocked, none in progress that is not dispatched.**
+Seventy-six pull requests have merged, all through `merge-pr.mjs`, and the
+provenance audit is clean across every commit on `main`. **64 items closed, 9
+open.** Five of the seven epics are closed. Of what is left, two are dispatched,
+two wait on the owner, and one is an epic nobody has started.
 
 From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
