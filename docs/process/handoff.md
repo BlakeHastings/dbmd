@@ -93,11 +93,6 @@ you run it with the client you already trust, and `dbmd import` reads what came
 back. It was proved against a PostgreSQL 16 container: query, run, import,
 `dbmd check` clean. No credential and no driver is ever this tool's business.
 
-Until 2026-09-07 that journey had no first step. `dbmd query` was named by four
-error messages, the format page, ADR 0007 and `AGENTS.md`, and did not exist.
-**The tool told people to run a command it then rejected**, and there was no
-backlog item to build it. Look for that shape: a thing referred to so
-consistently that nobody checks it is there.
 
 **Publishing was decided on 2026-09-07**, so `"private": true` came out of
 `package.json` and the version is `0.1.0`. Nothing is on the registry yet. A

@@ -500,6 +500,47 @@ whose green is stale or which is behind, so every bad reading was refused at the
 merge rather than merged on. The prevention held while the detection was wrong,
 which is the fourth constraint doing its job.
 
+## A reference repeated everywhere is a reference nobody checked
+
+**Four times now, and it is the highest-yield thing to look for in this
+repository.** The shape: something is named so consistently, by so many files,
+that every reader assumes somebody upstream verified it. Nobody did, and the
+consistency is what hides it, because there is nothing inconsistent for a grep to
+find and nothing wrong-looking for a reviewer to catch.
+
+- **`dbmd query` did not exist.** It was named by four error messages, the format
+  page, ADR 0007 and `AGENTS.md`. The tool told people to run a command it then
+  rejected. The headline journey of the product could not be run end to end by
+  anybody following the documentation, and there was no backlog item to build it.
+  Found by accident, weeks late. ADR 0036.
+- **The merge guard named a test that lives in another repository.**
+  `scripts/guard-merge.mjs` says its command reader is checked against the other
+  copies by a test at scripts/command-reader.test.mjs, written bare because that
+  file is in b-fac and a backtick here would be a claim it is in this repository.
+  Ours was a
+  fourth copy nothing had ever read, and it had drifted a generation: 118
+  significant lines against 147. dbmd-x58.
+- **Ten `--json` payloads were shown and none was run.** Four pages, plain
+  fences, and the machinery on those pages matches only its own info strings. The
+  proof it mattered was already on the front page: `README.md` claimed the
+  introspection query was 9,827 characters when it was 12,403. dbmd-6j7.
+- **Three counts in `AGENTS.md`**, of which one was ever right. The survivor is
+  the one whose number and list are the same sentence, so editing the list puts
+  your cursor next to the number. ADR 0043.
+
+**What to do with it.** When something is referred to often, that is a reason to
+check it rather than a reason to trust it. The check is usually one command: run
+the thing, resolve the path, count the list. `check:commands` now resolves every
+`dbmd` subcommand, every `npm run` script and every `scripts/` path written in
+backticks, and `test/docs/payloads.test.ts` runs every payload, so two of these
+four can no longer happen. The other two were caught by reading, which is not a
+mechanism.
+
+**The tell is a claim with no cost attached.** Nobody re-derives a number in
+prose, nobody runs a fenced block that has no tag, and nobody opens a path in a
+comment. If a sentence would be equally easy to write whether or not it were
+true, it is worth ten seconds of checking.
+
 ## The tracked backlog export conflicts between any two branches that file an item
 
 `.beads/issues.jsonl` is generated and tracked. Beads rewrites it on every write,
