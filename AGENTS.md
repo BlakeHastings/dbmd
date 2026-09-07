@@ -146,6 +146,14 @@ on the line you wrote it: `<!-- hypothetical: dbmd fmt -->` in markdown, or
 it fails once the thing exists, so the sentence gets reread on the day it stops
 being hypothetical. ADR 0036.
 
+**A command that exists owes `README.md` an entry.** The same script reads the
+registry the other way, and fails when a command on it is documented nowhere. An
+entry is a paragraph under "The commands" that opens with the command in bold
+code, the way the ones already there are written; being named in a sentence
+elsewhere on the page is not one. This file and `docs/ci.md` are not checked,
+because neither promises the full list. `dbmd import` and `dbmd query` each
+shipped over a README that had not heard of them. ADR 0043.
+
 ## Conventions
 
 - TypeScript, ESM, Node 22 or later. `"type": "module"`, `NodeNext` resolution,
