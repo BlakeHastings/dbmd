@@ -12,6 +12,7 @@ import {
   type Rect,
   type Viewport,
 } from '../../src/studio/client/geometry.js'
+import { columnTitle, refLabel } from '../../src/studio/client/columns.js'
 import { placeTables } from '../../src/studio/client/place.js'
 import {
   edgeSpecsOf,
@@ -709,5 +710,41 @@ describe('the colour palette', () => {
 
   it('offers names rather than hex values, because the diff is the point', () => {
     for (const color of PALETTE) expect(color).toMatch(/^[a-z]+$/)
+  })
+})
+
+describe('what a column row says', () => {
+  it('leads a ref with the arrow, so the second line reads as a continuation', () => {
+    expect(refLabel({ table: 'customers', column: 'id' })).toBe('→ customers.id')
+  })
+
+  it('holds the whole row in the title, ref and all', () => {
+    // The reason this item existed. In `examples/shop` seven of sixty-four rows
+    // ran out of room in one span, and what a person saw was
+    // `subscription_id uuid → subsc…` with no title to hover. The ref has its
+    // own line now, but a long enough name or table still runs out of a 220px
+    // box, and this is the string that is there whatever the row does. ADR 0055.
+    expect(
+      columnTitle({
+        name: 'subscription_id',
+        type: 'uuid',
+        ref: { table: 'subscriptions', column: 'id' },
+      }),
+    ).toBe('subscription_id uuid → subscriptions.id')
+  })
+
+  it('says what the row says and nothing more, so the two cannot disagree', () => {
+    // No `PK`. The badge is the stylesheet's, it is two characters, and it has
+    // never been the part that ran out of room.
+    expect(columnTitle({ name: 'id', type: 'uuid', pk: true })).toBe('id uuid')
+  })
+
+  it('drops a type nobody has filled in rather than describing it', () => {
+    // `NEW_TABLE_COLUMNS` leaves `id` untyped on purpose. The row shows nothing
+    // there and the tooltip says nothing about it either.
+    expect(columnTitle({ name: 'id', type: '', pk: true })).toBe('id')
+    expect(columnTitle({ name: 'owner', type: '', ref: { table: 'people', column: 'id' } })).toBe(
+      'owner → people.id',
+    )
   })
 })

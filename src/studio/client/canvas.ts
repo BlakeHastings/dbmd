@@ -58,6 +58,7 @@
  */
 
 import type { Column, Group, Layout, Note, ObjectKind, Table } from '../../model/types.js'
+import { columnTitle, refLabel } from './columns.js'
 import { edgeSpecsOf, routeEdges, type EdgeSpec, type RoutedEdge, type TableBox } from './edges.js'
 import {
   boundsOf,
@@ -1023,6 +1024,21 @@ function renderTable(table: Table): HTMLElement {
   return element
 }
 
+/**
+ * One column's row: its name, its type, and, on a second line, what it points
+ * at.
+ *
+ * The ref is its own element rather than the tail of the type's text, and the
+ * stylesheet gives it the whole width of the row. Both halves used to share one
+ * span, and in `examples/shop` seven of sixty-four rows ran out of room in it:
+ * `subscription_id uuid → subsc…` is the picture, and the column it names is
+ * the one fact this tool draws that a diagram does not. ADR 0055 has the
+ * reasoning and what the second line costs.
+ *
+ * The `title` is on the row and holds all of it, because a row can still run
+ * out of width for a long enough name or type, and a person who is unsure has
+ * to have somewhere to go.
+ */
 function renderColumn(column: Column): HTMLElement {
   const row = document.createElement('li')
   // How `measure` finds this row again. By name rather than by position,
@@ -1031,6 +1047,7 @@ function renderColumn(column: Column): HTMLElement {
   row.dataset['column'] = column.name
   if (column.pk === true) row.classList.add('pk')
   if (column.ref !== undefined) row.classList.add('fk')
+  row.title = columnTitle(column)
 
   const name = document.createElement('span')
   name.className = 'name'
@@ -1038,12 +1055,17 @@ function renderColumn(column: Column): HTMLElement {
 
   const type = document.createElement('span')
   type.className = 'type'
-  type.textContent =
-    column.ref === undefined
-      ? column.type
-      : `${column.type} → ${column.ref.table}.${column.ref.column}`
+  type.textContent = column.type
 
   row.append(name, type)
+
+  if (column.ref !== undefined) {
+    const ref = document.createElement('span')
+    ref.className = 'ref'
+    ref.textContent = refLabel(column.ref)
+    row.append(ref)
+  }
+
   return row
 }
 

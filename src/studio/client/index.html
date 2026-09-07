@@ -266,15 +266,50 @@
         margin: 0;
         padding: 4px 0;
       }
+      /* Two lines when the column points somewhere, one when it does not. The
+         row gap is zero so that a row that does not wrap is exactly the height
+         it always was; the column gap is the 10px that separates a name from
+         its type. ADR 0055. */
       .box li {
         display: flex;
-        gap: 10px;
+        flex-wrap: wrap;
+        gap: 0 10px;
         justify-content: space-between;
         padding: 1px 10px;
         font-family: ui-monospace, monospace;
       }
+      /* `margin-left: auto` is a no-op on the ordinary row, where
+         `space-between` has already pushed the type to the right edge. It is
+         for the row whose name and type are together too wide for the box: the
+         type takes a line of its own and this is what keeps it in the same
+         column it is in on every other row, rather than under the name. */
       .box li .type {
+        margin-left: auto;
         color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      /* The whole width of the row, under the name it belongs to, right-aligned
+         so that it stays in the same column as the type it continues. A box is
+         220px wide and stays 220px wide, because a coordinate in a `layout:`
+         was written by somebody dragging boxes of that width past each other,
+         so the ref gets a line rather than the box getting the width. It keeps
+         the ellipsis and the row keeps its `title`: this is enough room for
+         every ref in `examples/shop` and not enough for every ref there could
+         be. ADR 0055.
+
+         `ref` is a name the inspector's ref field uses too, so this rule is
+         anchored on `.box` and the panel's is anchored on `#inspector`, which
+         is what ADR 0037 asks for. Worth knowing while you are here:
+         `check:scenes` reads a line at a time and the panel's is a call spread
+         over five, so it currently reports this pair as unshared. Both rules
+         are anchored either way; the check was run against a one-line copy of
+         that call to make sure. */
+      .box li .ref {
+        flex: 0 0 100%;
+        text-align: right;
+        color: var(--accent);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
