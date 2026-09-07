@@ -106,3 +106,30 @@ which is why the envelope exists.
 - **The normalised type vocabulary starts losing information** people care
   about, at which point the model needs to keep the native type alongside the
   normalised one rather than choosing.
+
+## Confirmed by dbmd-7nb, once `dbmd query` was a command rather than a sentence
+
+This record described `dbmd query --engine X` as one of the two callers that
+resolve through the registry, and for two waves it was among the only places
+that described it: the command did not exist, `introspectionQuery()` was on the
+interface with nothing calling it, and `dbmd import` told a user to run a
+command the CLI then rejected. dbmd-7nb built it. Nothing above needed changing,
+and the two things that would have shown the seam was in the wrong place did not
+happen:
+
+- **`EngineProvider` grew no method.** `introspectionQuery(): string` was the
+  whole of what the new command needed, which is the first evidence for that
+  signature from a caller rather than from the providers that implement it.
+- **No engine's name is written in `src/cli/query.ts`.** The engine list in its
+  help, the example in its help, and the message for an engine nobody provides
+  are all built from a `ProviderRegistry` at the moment they are printed, so a
+  third provider makes them right without being mentioned. The test for that
+  runs the real command against a registry of test doubles and against an empty
+  one.
+
+What it does not confirm is the SQL, and this record already says why: a
+committed fixture proves the normalisation and never the query. The pull request
+ran the printed Postgres query against a PostgreSQL 16 container, imported what
+it returned and checked the result, which is the first end-to-end run of the
+journey described here. The SQL Server half was proved against a real server by
+dbmd-44 and was printed rather than run again.

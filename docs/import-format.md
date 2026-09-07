@@ -6,6 +6,26 @@ back. This file describes that JSON: what the file must say about itself, what
 the canonical shape underneath it is, and what a person writing the third engine
 provider has to do.
 
+The whole journey, which is four commands and one of them is not dbmd's:
+
+```bash
+dbmd query --engine postgres > introspect.sql   # the SQL, on stdout, to read
+# run introspect.sql with your own client and save the one value it returns
+dbmd import --file introspection.json           # the model directory
+dbmd check db-model                             # what it says about itself
+```
+
+`dbmd query --engine <id>` prints one engine's introspection query and stops.
+It connects to nothing, asks for no credential, and takes no model directory:
+[ADR 0007](architecture/decisions/0007-engines-are-providers.md). `--engine` is
+required there and optional on `dbmd import`, because the file import reads says
+which engine produced it and at query time there is no file yet.
+
+The SQL it prints carries a comment block, and that block is the instructions
+rather than decoration: it says what the query reads, that it cannot write, and
+how to save its result without cutting it short. The SQL Server one explains the
+2033-character split, which is the way this feature most often goes wrong.
+
 If you are adding an engine, read this and then
 `docs/architecture/decisions/0007-engines-are-providers.md`, which is why the
 seam is shaped this way. The contract was written with the Postgres and the SQL
@@ -50,8 +70,8 @@ version 1 and refuses anything else, in both directions, with a message naming
 both numbers:
 
 ```
-error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 0 and this build of dbmd reads version 1; it was produced by an older dbmd, so re-run `dbmd query` with this one and import the file it prints
-error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 7 and this build of dbmd reads version 1; it was produced by a newer dbmd, so upgrade dbmd or re-run `dbmd query` with this one
+error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 0 and this build of dbmd reads version 1; it was produced by an older dbmd, so re-run the query `dbmd query --engine <id>` prints with this build and import the JSON that returns
+error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 7 and this build of dbmd reads version 1; it was produced by a newer dbmd, so upgrade dbmd, or re-run the query `dbmd query --engine <id>` prints with this build
 ```
 
 `engine` is a provider id: lower case, no spaces, permanent once shipped, since
@@ -555,7 +575,7 @@ directory yet.
 | `import/missing-field` | error | A required field is absent, or present and `null`. The path names it. | Check the path against the shapes above. In a file you did not edit, it is a provider that did not fill the field in. |
 | `import/wrong-type` | error | The field is there and is the wrong sort of JSON value: a string where a list belongs, a number where an object does. | The same. `null` is never this code, because null and absent are the same thing here. |
 | `import/empty-value` | error | A required string or list is there and says nothing: `schema: ""`, a `name` that is the empty string, a primary key or an index whose `columns` is `[]`. | Emptiness is never a fact this contract can keep, so fill it in or leave the object out: omit `primaryKey` for a table that has none. An index with no key columns is one this format cannot describe at all, which is why the SQL Server query leaves those out rather than reporting them. |
-| `import/unsupported-version` | error | `dbmdIntrospection` names a version this build does not read. The message names both numbers and says which of the two is the newer. | Re-run `dbmd query` with this build of dbmd if the file is older, and upgrade dbmd if the file is newer. |
+| `import/unsupported-version` | error | `dbmdIntrospection` names a version this build does not read. The message names both numbers and says which of the two is the newer. | Re-run the query `dbmd query --engine X` prints with this build of dbmd if the file is older, and upgrade dbmd if the file is newer. |
 | `import/unknown-engine` | error | `engine` names no provider in this build. The message lists the ones it has. | Check the spelling. A provider id never changes once shipped, so a name that used to work is a dbmd that is too old. |
 | `import/engine-overridden` | warning | `--engine` disagreed with the file and won. Never silent: [ADR 0007](architecture/decisions/0007-engines-are-providers.md). | Nothing, if you meant it. Drop the flag if you did not: the file knows which engine wrote it, and reading it as the wrong one usually fails a hundred lines later instead. |
 | `import/unknown-field` | warning | A field nothing in this version of the format reads. It is dropped and the import carries on. | Nothing, unless it is your provider and the key is a typo. This is a warning rather than an error so that adding a field to the format is not a breaking change. |

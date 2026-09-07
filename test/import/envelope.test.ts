@@ -20,7 +20,7 @@ describe('readEnvelope', () => {
     const result = readEnvelope({ dbmdIntrospection: 0, engine: 'postgres', tables: [] })
     expect(result.ok).toBe(false)
     expect(formatDiagnostics(result.diagnostics)).toEqual([
-      'error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 0 and this build of dbmd reads version 1; it was produced by an older dbmd, so re-run `dbmd query` with this one and import the file it prints',
+      'error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 0 and this build of dbmd reads version 1; it was produced by an older dbmd, so re-run the query `dbmd query --engine <id>` prints with this build and import the JSON that returns',
     ])
   })
 
@@ -28,7 +28,7 @@ describe('readEnvelope', () => {
     const result = readEnvelope({ dbmdIntrospection: 2, engine: 'postgres', tables: [] })
     expect(result.ok).toBe(false)
     expect(formatDiagnostics(result.diagnostics)).toEqual([
-      'error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 2 and this build of dbmd reads version 1; it was produced by a newer dbmd, so upgrade dbmd or re-run `dbmd query` with this one',
+      'error $.dbmdIntrospection [import/unsupported-version] this file says `dbmdIntrospection` 2 and this build of dbmd reads version 1; it was produced by a newer dbmd, so upgrade dbmd, or re-run the query `dbmd query --engine <id>` prints with this build',
     ])
   })
 
