@@ -590,9 +590,12 @@ rather than by reading.
   repository has three recorded cases of exactly that.
 - **Every relative markdown link in the repository resolves**, checked on
   2026-09-07: 122 tracked markdown files, 82 relative links, **zero broken**.
-  Checked because `scripts/check-commands.mjs` covers three kinds of reference,
-  `dbmd <command>`, `npm run <script>` and `node scripts/<file>`, and a link is a
-  fourth of the same shape: a claim that a thing exists. **No check was added and
+  Checked because `scripts/check-commands.mjs` covers several kinds of reference,
+  each a claim that a thing exists, and a link is one more of the same shape. The
+  count is left out on purpose: it was three when this was written and a bare
+  path into `scripts/` became a fourth later the same day, so a number here is a
+  number that goes stale in the file whose subject is things going stale. ADR
+  0036 carries the current list. **No check was added and
   that is deliberate.** A gate that has never caught anything is a maintenance
   cost pretending to be safety, and this one would not even have caught the thing
   that prompted the look: ADR 0028's stale reference was to a *section heading in
