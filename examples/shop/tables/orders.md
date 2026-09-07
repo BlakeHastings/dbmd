@@ -7,32 +7,32 @@ columns:
     pk: true
   - name: customer_id
     type: uuid
-    null: false
+    nullable: false
     ref: customers.id
   - name: shipping_address_id
     type: uuid
-    null: false
+    nullable: false
     ref: addresses.id
   - name: subscription_id
     type: uuid
-    null: true
+    nullable: true
     ref: subscriptions.id
   - name: status
     type: text
-    null: false
+    nullable: false
     default: "'placed'"
   - name: total_pence
     type: integer
-    null: false
+    nullable: false
   - name: psp_reference
     type: text
-    null: true
+    nullable: true
   - name: roast_day
     type: date
-    null: true
+    nullable: true
   - name: placed_at
     type: timestamptz
-    null: false
+    nullable: false
     default: now()
 indexes:
   - name: orders_customer_placed_idx

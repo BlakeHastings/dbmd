@@ -4,7 +4,7 @@ table: on
 columns:
   - name: y
     type: off
-    null: false
+    nullable: false
 layout: { x: 120, y: 420 }
 ---
 

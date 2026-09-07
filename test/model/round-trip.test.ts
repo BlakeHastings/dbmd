@@ -262,6 +262,7 @@ function generateModel(seed: number): Model {
     indexes: Array.from({ length: count(2) }, () => ({
       name: pick(AWKWARD),
       columns: Array.from({ length: count(3) }, () => pick(AWKWARD)),
+      ...(maybe() ? { unique: maybe() } : {}),
     })),
     ...(groups.length > 0 && maybe() ? { group: pick(groups).name } : {}),
     ...(maybe() ? { layout: { x: coordinate(), y: coordinate() } } : {}),
@@ -307,40 +308,20 @@ function sortByName<T extends { name: string }>(values: readonly T[]): T[] {
 // prose bodies full of fences, emphasis, colons and dashes.
 // --------------------------------------------------------------------------
 
-describe('examples/shop, hand-written from the ADR', () => {
-  test('normalises only where the ADR never said what to do, and then settles', async () => {
+describe('examples/shop', () => {
+  test('is already byte-canonical, so opening it and saving produces no diff', async () => {
     await withCopy(exampleShop, async (dir) => {
       const before = await snapshot(dir)
-      const first = await readModel(dir)
-      expect(first.diagnostics).toEqual([])
+      const { model, diagnostics } = await readModel(dir)
+      expect(diagnostics).toEqual([])
 
-      const { written } = await writeModel(dir, first.model)
-      const after = await snapshot(dir)
-
-      // Whatever moved, every changed line is a `default:`: key order,
-      // indentation, flow style and every body came back untouched. The example
-      // quotes a SQL literal as `"\'GB\'"` the way ADR 0003 shows, and quotes a
-      // non-string default as `\'1\'` the way nothing shows, and the second is
-      // the one this item had to decide.
-      for (const path of written) {
-        const changed = changedLines(before.get(path) ?? '', after.get(path) ?? '')
-        expect(changed.filter((line) => !line.trimStart().startsWith('default:'))).toEqual([])
-      }
-
-      const second = await readModel(dir)
-      expect(second.model).toEqual(first.model)
-      const secondSave = await writeModel(dir, second.model)
-      expect(secondSave.written).toEqual([])
+      // The example is the thing a new user copies into their own repository,
+      // and a copy that produces a whole-file diff the first time the studio
+      // saves it teaches, on day one, that saving is destructive. It was not
+      // canonical while `default: '1'` had no settled spelling; dbmd-11 settled
+      // that and dbmd-14 brought the file the rest of the way.
+      expect((await writeModel(dir, model)).written).toEqual([])
+      expect(await snapshot(dir)).toEqual(before)
     })
   })
 })
-
-/** The lines in one text and not in the other, in both directions. */
-function changedLines(before: string, after: string): string[] {
-  const kept = new Set(after.split('\n'))
-  const original = new Set(before.split('\n'))
-  return [
-    ...before.split('\n').filter((line) => !kept.has(line)),
-    ...after.split('\n').filter((line) => !original.has(line)),
-  ]
-}

@@ -7,31 +7,32 @@ columns:
     pk: true
   - name: sku
     type: text
-    null: false
+    nullable: false
   - name: name
     type: text
-    null: false
+    nullable: false
   - name: cms_slug
     type: text
-    null: false
+    nullable: false
   - name: origin
     type: text
-    null: false
+    nullable: false
   - name: roast_level
     type: text
-    null: false
+    nullable: false
   - name: bag_grams
     type: integer
-    null: false
+    nullable: false
   - name: price_pence
     type: integer
-    null: false
+    nullable: false
   - name: retired_at
     type: timestamptz
-    null: true
+    nullable: true
 indexes:
   - name: products_sku_key
     columns: [sku]
+    unique: true
   - name: products_live_idx
     columns: [retired_at, origin]
 layout: { x: 1340, y: 40 }

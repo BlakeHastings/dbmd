@@ -35,10 +35,7 @@ export interface Column {
   readonly type: string
   /** `pk: true`. Two columns with it are a composite primary key. */
   readonly pk?: boolean
-  /**
-   * The frontmatter key is literally `null`, so `null: false` here is
-   * `nullable: false`. Absent means the file did not say.
-   */
+  /** `nullable: false`. Absent means the file did not say. */
   readonly nullable?: boolean
   /**
    * The SQL default, verbatim, as the author wrote it inside the YAML scalar.
@@ -53,6 +50,14 @@ export interface Column {
 export interface Index {
   readonly name: string
   readonly columns: readonly string[]
+  /**
+   * `unique: true`. Absent means the file did not say, which is a plain index.
+   *
+   * Uniqueness is an index's property and never a column's, even when the index
+   * has one column. A unique constraint has a name, that name is what the engine
+   * prints when the constraint fires, and a column has nowhere to put one.
+   */
+  readonly unique?: boolean
 }
 
 /** What every object on the canvas has, whatever its kind. */
@@ -212,6 +217,15 @@ export type DiagnosticCode =
   | 'field-wrong-type'
   /** A key that means nothing to this kind of file. */
   | 'unknown-key'
+  /**
+   * A key dbmd recognises but does not accept, because the format spells that
+   * fact under another name or in another place. The message says which.
+   *
+   * It is an error rather than a warning, and that is the whole point of having
+   * it: the fact the author wrote is a real one, and a warning would leave the
+   * object complete, so the next save would write the file back without it.
+   */
+  | 'superseded-key'
   /** A `ref:` that is not `table.column`. */
   | 'ref-malformed'
   /** A `group:` naming a group file that does not exist. */

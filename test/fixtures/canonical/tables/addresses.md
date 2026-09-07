@@ -7,17 +7,17 @@ columns:
     pk: true
   - name: customer_id
     type: uuid
-    null: false
+    nullable: false
     ref: customers.id
   - name: line1
     type: text
-    null: false
+    nullable: false
   - name: postcode
     type: varchar(16)
-    null: false
+    nullable: false
   - name: country
     type: char(2)
-    null: false
+    nullable: false
     default: "'GB'"
 indexes:
   - name: addresses_customer_idx

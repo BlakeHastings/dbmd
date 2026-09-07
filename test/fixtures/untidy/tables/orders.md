@@ -9,7 +9,7 @@ columns:
     - type: 'text'
       name: 'status'
       default: "'pending'"
-      null: false
+      nullable: false
     - name: id
       pk: true
       type: 'uuid'

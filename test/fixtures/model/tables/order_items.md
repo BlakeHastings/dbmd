@@ -5,15 +5,15 @@ columns:
   - name: order_id
     type: uuid
     pk: true
-    null: false
+    nullable: false
     ref: orders.id
   - name: product_id
     type: uuid
     pk: true
-    null: false
+    nullable: false
   - name: quantity
     type: integer
-    null: false
+    nullable: false
     default: "1"
 group: billing
 layout: { x: 820, y: 120 }

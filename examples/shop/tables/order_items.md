@@ -11,21 +11,21 @@ columns:
     pk: true
   - name: product_id
     type: uuid
-    null: false
+    nullable: false
     ref: products.id
   - name: product_name
     type: text
-    null: false
+    nullable: false
   - name: unit_price_pence
     type: integer
-    null: false
+    nullable: false
   - name: quantity
     type: integer
-    null: false
-    default: '1'
+    nullable: false
+    default: "1"
   - name: grind
     type: text
-    null: false
+    nullable: false
     default: "'whole'"
 indexes:
   - name: order_items_product_idx

@@ -7,16 +7,17 @@ columns:
     pk: true
   - name: sku
     type: text
-    null: false
+    nullable: false
   - name: name
     type: text
-    null: false
+    nullable: false
   - name: list_price
     type: numeric(12,2)
-    null: false
+    nullable: false
 indexes:
   - name: products_sku_key
     columns: [sku]
+    unique: true
 group: catalogue
 layout: { x: 1160, y: 120 }
 ---

@@ -7,24 +7,25 @@ columns:
     pk: true
   - name: email
     type: citext
-    null: false
+    nullable: false
   - name: display_name
     type: text
-    null: false
+    nullable: false
   - name: marketing_opt_in
     type: boolean
-    null: false
-    default: 'false'
+    nullable: false
+    default: "false"
   - name: anonymised_at
     type: timestamptz
-    null: true
+    nullable: true
   - name: created_at
     type: timestamptz
-    null: false
+    nullable: false
     default: now()
 indexes:
   - name: customers_email_key
     columns: [email]
+    unique: true
 layout: { x: 40, y: 340 }
 ---
 
@@ -34,9 +35,9 @@ password later is an update to the auth service, not to this row.
 
 `email` is `citext` rather than `text` because people type their own address in
 whatever case their phone decides on, and we had two customers with the same
-address in different cases before this changed. `customers_email_key` is a
-unique index; the format cannot say so yet, so this comment is the only place
-that fact is written down. Treat it as a rule until it can be declared.
+address in different cases before this changed. `customers_email_key` is what
+enforces one row per address, and `citext` is what makes it enforce that without
+caring how the address was typed.
 
 **An erasure request does not delete this row.** It rewrites `email` and
 `display_name` to placeholders and stamps `anonymised_at`. The row has to

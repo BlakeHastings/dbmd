@@ -5,7 +5,7 @@ columns:
   - {name: id, type: uuid, pk: true}
   - name: 'email'
     type: citext
-    null: false
+    nullable: false
 layout: {x: 120, y: 120}
 ---
 

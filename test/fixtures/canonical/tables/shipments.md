@@ -7,18 +7,18 @@ columns:
     pk: true
   - name: order_id
     type: uuid
-    null: false
+    nullable: false
     ref: orders.id
   - name: address_id
     type: uuid
-    null: false
+    nullable: false
     ref: addresses.id
   - name: carrier
     type: text
-    null: false
+    nullable: false
   - name: tracking
     type: text
-    null: true
+    nullable: true
 layout: { x: 480, y: 460 }
 ---
 

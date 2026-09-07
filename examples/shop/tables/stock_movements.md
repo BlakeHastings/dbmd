@@ -7,30 +7,31 @@ columns:
     pk: true
   - name: product_id
     type: uuid
-    null: false
+    nullable: false
     ref: products.id
   - name: shipment_id
     type: uuid
-    null: true
+    nullable: true
     ref: shipments.id
   - name: delta_grams
     type: integer
-    null: false
+    nullable: false
   - name: reason
     type: text
-    null: false
+    nullable: false
   - name: handheld_key
     type: text
-    null: true
+    nullable: true
   - name: occurred_at
     type: timestamptz
-    null: false
+    nullable: false
     default: now()
 indexes:
   - name: stock_movements_product_idx
     columns: [product_id, occurred_at]
   - name: stock_movements_handheld_key
     columns: [handheld_key]
+    unique: true
 group: warehouse
 layout: { x: 1340, y: 640 }
 ---
@@ -63,8 +64,9 @@ for. `products` has a `bag_grams` and the arithmetic happens at the edges.
 
 `handheld_key` is nullable here and not on `shipments`, because a `roast` or a
 `count` row is typed on a laptop in the roastery and does not come from the
-scanner. When it is present it is unique, so the retries described in the group
-note collapse to one row.
+scanner. Postgres lets a unique index hold as many nulls as it likes, so
+`stock_movements_handheld_key` collapses the retries described in the group note
+to one row while having nothing to say about the rows that never had a key.
 
 `id` is a `bigint` rather than a uuid because this is the one table that grows
 without limit and is read in `occurred_at` order. A few million rows a year is
