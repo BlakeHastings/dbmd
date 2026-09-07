@@ -281,6 +281,17 @@ rather than by reading.
   are under three seconds, so the cheap end has room and the expensive end does
   not.
 
+- **Two studios on one model directory is safe, and the loser is told why.** Both
+  bind, both serve. A edits `orders` and flushes. B, which still holds the old
+  revision and has not noticed, edits the same table: its `PATCH` is accepted at
+  B's own revision, and then B's watcher sees the file changed on disk, reloads,
+  and **drops B's edit rather than writing over A's**. B's status carries the
+  conflict and the sentence a person needs: `the studio has reloaded the file and
+  dropped its own edit to it; make the edit again if you still want it`. The file
+  keeps A's value and only that one file differs from the original. That is
+  ADR 0019's protection working against a second **writer** rather than a hand
+  edit, which is the case `wire.ts` says the revision exists for.
+
 
 ## What is waiting on the owner
 
