@@ -370,6 +370,50 @@ move and will file a defect. It is the note. Move it and the drag works.
 All clean unless a line says otherwise. Each was checked by breaking something
 rather than by reading.
 
+- **The publish path, driven as far as it can be driven without pushing a tag.**
+  Pushing one is the step `release.yml`'s own header says no agent here may
+  take, so everything below stops short of it deliberately.
+
+  **The registry name is free.** `dbmd` returns 404, and so do `db-md`, `db_md`,
+  `dbMd` and `dbmd.js`, so npm's too-similar rule has nothing to catch on.
+
+  **The tarball holds what it should and nothing else.** From
+  `npm pack --dry-run --json --ignore-scripts`: 77 files, 230 kB packed, 773 kB
+  unpacked. Everything is under `dist/` except `LICENSE`, `README.md` and
+  `package.json`, which npm forces in. No TypeScript sources, no test files, no
+  `.map` files, and the studio client bundle is present at 132 kB with its page
+  at 26 kB, which is the thing `check-pack-guard.mjs` exists to notice the
+  absence of.
+
+  **The version comparison step, driven under `bash -e`** against five tag
+  shapes, which is the shell GitHub Actions uses for `run:`:
+
+   `GITHUB_REF_NAME`  | outcome
+  --------------------|-------------------------------------------
+   `v0.1.0`           | passes, which is the tag the owner will push
+   `v0.2.0`           | refused, naming both numbers
+   `v0.1.0-rc.1`      | refused, naming both numbers
+   `0.1.0`            | passes, and is unreachable: the workflow triggers on `v*`
+   `refs/tags/v0.1.0` | refused, and is unreachable: `GITHUB_REF_NAME` is the short name
+
+  The two unreachable rows are why it was worth driving rather than reading. The
+  workflow uses `GITHUB_REF_NAME` and not `GITHUB_REF`, which is the correct one
+  of the pair, and the last row is what it would look like if that were ever
+  changed by mistake.
+
+  **The ancestry step, driven the same way**, in three repository states: on
+  `main` it passes, off `main` it refuses naming the tag, and with
+  `refs/remotes/origin/main` deleted it refuses naming the checkout. That third
+  message is new in #147; before it, the same state told somebody with a correct
+  tag to go and tag one on `main`.
+
+  **What is still unobserved, and cannot be observed from here.** Whether
+  `actions/checkout@v7` with `fetch-depth: 0` populates
+  `refs/remotes/origin/main` on a tag push. It is the only thing in the whole of
+  CI that reads a remote-tracking ref, and no tag has ever been pushed. The
+  failure is safe either way, because a missing ref exits 128 rather than 0 and
+  nothing is published.
+
 - **Every red run on `main`, in all three workflows, with the listing limit set
   above the run count.** Do it that way or the answer is a window: I first read
   `--limit 100` against a branch with 140 runs and reported four failures when
