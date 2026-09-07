@@ -359,18 +359,26 @@ are the same string.
 $ dbmd refs orders examples/shop
 2 refs point at orders in examples/shop:
 
-  order_items.order_id -> orders.id  tables/order_items.md  key
-  shipments.order_id   -> orders.id  tables/shipments.md    required
+  order_items.order_id -> orders.id  tables/order_items.md  key  on delete: cascade
+  shipments.order_id   -> orders.id  tables/shipments.md    required  on delete: restrict
 
 "key": the referring column is part of its own table's primary key, so that row cannot outlive this one.
 "required": the file says nullable: false, so the ref cannot be emptied.
+"on delete", "on update": the clause the file writes beside that ref, saying what the engine does to the row on the left
+when the row on the right is deleted or its key changes. A row without one is a ref the file said nothing about.
 ```
 
 The column, not just the table, because "two tables point here" does not say
 what to edit, and the file beside it because that is where the edit goes. The
-two marks are the difference between retargeting a ref and deleting a row.
+marks are the difference between retargeting a ref and deleting a row, and the
+question is asked immediately before a delete, so the `on delete:` and
+`on update:` clauses are on the row too, quoted from the file. A ref the file
+wrote nothing about gets nothing: absent is not `no action`, and printing one
+for the other would invent a fact about somebody's database.
+[ADR 0049](docs/architecture/decisions/0049-the-answer-before-a-delete-says-what-the-delete-does.md).
 `--outgoing` asks the other direction, and `--json` carries both directions
-whichever flag was given.
+whichever flag was given, with each action as a value on the ref rather than a
+flag beside it.
 
 **It answers a model that `dbmd export` refuses.** That is the point of it.
 Half way through a rename the model has a dangling ref, which is an error, and
@@ -388,10 +396,12 @@ There is no tables/addresses.md in shop, and something still points at that name
 
 2 refs point at addresses in shop:
 
-  orders.shipping_address_id     -> addresses.id  tables/orders.md            required
-  postal_addresses.superseded_by -> addresses.id  tables/postal_addresses.md
+  orders.shipping_address_id     -> addresses.id  tables/orders.md            required  on delete: restrict
+  postal_addresses.superseded_by -> addresses.id  tables/postal_addresses.md  on delete: restrict
 
 "required": the file says nullable: false, so the ref cannot be emptied.
+"on delete", "on update": the clause the file writes beside that ref, saying what the engine does to the row on the left
+when the row on the right is deleted or its key changes. A row without one is a ref the file said nothing about.
 ```
 
 "There is no such table" and "nothing points at it" read alike and mean opposite

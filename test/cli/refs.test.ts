@@ -1,7 +1,7 @@
 /**
  * `dbmd refs`.
  *
- * Four properties are worth more than the rest, and three of them are about a
+ * Five properties are worth more than the rest, and three of them are about a
  * model that is not in a good state, because that is the state somebody is in
  * when they ask.
  *
@@ -15,6 +15,11 @@
  *    opposite things, so the exit codes have to separate them.
  * 4. The referring column and its file, not just the referring table, because
  *    "three tables point here" does not say what to edit.
+ * 5. What the file says happens to that row, because the question is asked
+ *    immediately before a delete. A written clause is printed and an unwritten
+ *    one is not, and the two are asserted side by side in one list, because
+ *    "the file said nothing" and "the file said no action" are different facts
+ *    and it would be easy to ship a version where they read the same.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -55,7 +60,15 @@ columns:
 One row per person.
 `
 
-/** A ref at `customers` and a ref at itself, which is the case that reads oddly if it can. */
+/**
+ * A ref at `customers` and a ref at itself, which is the case that reads oddly
+ * if it can, and the two halves of the referential-action question.
+ *
+ * `customer_id` writes both clauses and the delete one is the frightening
+ * value. `superseded_by` writes `on delete: no action` and no `on update` at
+ * all, so one column carries a written default and an unwritten key, and the
+ * answer has to tell them apart.
+ */
 const ADDRESSES = `---
 kind: table
 table: addresses
@@ -67,16 +80,23 @@ columns:
     type: uuid
     nullable: false
     ref: customers.id
+    on delete: cascade
+    on update: cascade
   - name: superseded_by
     type: uuid
     nullable: true
     ref: addresses.id
+    on delete: no action
 ---
 
 An address row is never updated.
 `
 
-/** `order_id` is both the ref and part of the key, which is the "key" annotation. */
+/**
+ * `order_id` is both the ref and part of the key, which is the "key"
+ * annotation, and it writes no referential action at all, which is the row
+ * that has to stay silent beside one that says "no action".
+ */
 const ORDER_ITEMS = `---
 kind: table
 table: order_items
@@ -120,6 +140,8 @@ interface Edge {
   readonly path: string
   readonly inPrimaryKey?: boolean
   readonly nullable?: boolean
+  readonly onDelete?: string
+  readonly onUpdate?: string
 }
 
 interface Envelope {
@@ -296,6 +318,90 @@ describe('the other direction', () => {
   })
 })
 
+describe('what a delete does to the rows that point here', () => {
+  test('the clause is printed beside the row, spelled as the file spells it', async () => {
+    const directory = await shop()
+
+    const run = await runCli(['refs', 'customers', directory])
+
+    expect(run.code).toBe(0)
+    // The whole of the gap: "one ref points here" and "one ref points here and
+    // it empties when you delete" are different answers to the same question.
+    expect(unpadded(run)).toContain(
+      'addresses.customer_id -> customers.id tables/addresses.md required on delete: cascade on update: cascade',
+    )
+    expect(run.err).toContain('"on delete", "on update"')
+  })
+
+  test('a ref the file wrote nothing about prints nothing, beside one that says no action', async () => {
+    const directory = await shop()
+
+    const run = await runCli(['refs', 'addresses', directory])
+
+    // One list, two rows, and the difference between them is the fact ADR 0046
+    // refuses to collapse: absent is not `no action`.
+    expect(unpadded(run)).toContain(
+      'addresses.superseded_by -> addresses.id tables/addresses.md on delete: no action',
+    )
+    expect(unpadded(run)).toContain(
+      'order_items.order_id -> addresses.id tables/order_items.md key\n',
+    )
+    // Neither of these two refs writes an `on update`, so the words are on
+    // neither row. The legend still names the key, because one sentence covers
+    // both clauses and this list used one of them.
+    expect(run.err).not.toContain('on update: ')
+  })
+
+  test('the outgoing direction says it too, and the legend is one sentence for both', async () => {
+    const directory = await shop()
+
+    const run = await runCli(['refs', 'addresses', directory, '--outgoing'])
+
+    expect(unpadded(run)).toContain(
+      'addresses.customer_id -> customers.id required on delete: cascade on update: cascade',
+    )
+    // Two clauses on the list and one paragraph under it.
+    expect(run.err.split('"on delete", "on update"')).toHaveLength(2)
+  })
+
+  test('a list with no clause anywhere in it does not explain one', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/addresses.md': ADDRESSES.replace(/\n    on (delete|update): [a-z ]+/g, ''),
+    })
+
+    const { err } = await runCli(['refs', 'customers', directory])
+
+    expect(err).toContain('addresses.customer_id -> customers.id')
+    expect(err).not.toContain('on delete')
+  })
+
+  test('it says so half way through a rename, where dbmd export refuses', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/postal_addresses.md': ADDRESSES.replace(
+        'table: addresses',
+        'table: postal_addresses',
+      ),
+      'tables/order_items.md': ORDER_ITEMS,
+    })
+
+    const refused = await runCli(['export', directory, '--stdout'])
+    const answered = await runCli(['refs', 'addresses', directory])
+
+    // Nothing added here needs the validator: the clause comes off the ref the
+    // reader built, so it survives the state the command exists for.
+    expect(refused.code).toBe(1)
+    expect(answered.code).toBe(0)
+    expect(answered.err).toContain('may be short')
+    expect(unpadded(answered)).toContain(
+      'postal_addresses.superseded_by -> addresses.id tables/postal_addresses.md on delete: no action',
+    )
+  })
+})
+
 describe('the --json answer', () => {
   test('it carries both directions whichever flags were given', async () => {
     const directory = await shop()
@@ -310,7 +416,7 @@ describe('the --json answer', () => {
     expect(payload(incoming).outgoing).toHaveLength(2)
   })
 
-  test('an edge carries the file, the key-ness and what the file said about nullable', async () => {
+  test('an edge carries the file, the key-ness, nullable and the actions', async () => {
     const directory = await shop()
 
     const run = await runCli(['refs', 'addresses', directory, '--json'])
@@ -322,17 +428,36 @@ describe('the --json answer', () => {
         to: { table: 'addresses', column: 'id' },
         path: 'tables/addresses.md',
         nullable: true,
+        // The file wrote the default out loud, so the payload carries it. The
+        // absent `onUpdate` beside it is the other fact, and the two are only
+        // distinguishable because neither is invented.
+        onDelete: 'no action',
       },
       {
         from: { table: 'order_items', column: 'order_id' },
         to: { table: 'addresses', column: 'id' },
         path: 'tables/order_items.md',
         // Part of `order_items`' own primary key, so the row cannot be
-        // orphaned, and the file says nothing about nullable, so neither does
-        // this: a key the file did not set is a key that is not here.
+        // orphaned, and the file says nothing about nullable or about either
+        // action, so neither does this: a key the file did not set is a key
+        // that is not here.
         inPrimaryKey: true,
       },
     ])
+  })
+
+  test('the action is a value on the ref rather than a flag beside it', async () => {
+    const directory = await shop()
+
+    const run = await runCli(['refs', 'customers', directory, '--json'])
+
+    // A closed vocabulary, spelled as the file spells it, so a caller switches
+    // on the word rather than testing a boolean and losing the other four.
+    expect(payload(run).incoming[0]).toMatchObject({
+      from: { table: 'addresses', column: 'customer_id' },
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    })
   })
 
   test('the same model answered twice produces the same bytes', async () => {

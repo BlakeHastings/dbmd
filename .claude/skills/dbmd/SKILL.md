@@ -117,11 +117,13 @@ dbmd refs customers shop
 ```
 3 refs point at customers in shop:
 
-  addresses.customer_id     -> customers.id  tables/addresses.md      required
-  orders.customer_id        -> customers.id  tables/orders.md         required
-  subscriptions.customer_id -> customers.id  tables/subscriptions.md  required
+  addresses.customer_id     -> customers.id  tables/addresses.md      required  on delete: restrict
+  orders.customer_id        -> customers.id  tables/orders.md         required  on delete: restrict
+  subscriptions.customer_id -> customers.id  tables/subscriptions.md  required  on delete: restrict
 
 "required": the file says nullable: false, so the ref cannot be emptied.
+"on delete", "on update": the clause the file writes beside that ref, saying what the engine does to the row on the left
+when the row on the right is deleted or its key changes. A row without one is a ref the file said nothing about.
 ```
 
 The table comes first and the directory second, which is the opposite of every
@@ -132,6 +134,11 @@ other command and is the one thing to remember about it.
   goes. `key` means the column is part of the referring table's own primary key,
   so that row cannot outlive this one. `required` means `nullable: false`.
   Together they are the difference between retargeting a ref and deleting a row.
+- **And what a delete does to those rows.** `on delete: cascade` beside a row
+  means deleting the row on the right takes the row on the left with it;
+  `restrict` and `no action` mean the delete is refused instead. The clause is
+  quoted from the file, so a row without one is a ref that wrote none, which is
+  not the same fact as `no action` and is not printed as one. ADR 0049.
 - **It answers a model with errors in it**, which `dbmd export` refuses. That is
   the state you are in half way through a rename, so you can ask during rather
   than only before. It says the model has errors first, because a file that did
@@ -330,8 +337,11 @@ rename that missed a file.
 
 `dbmd refs <table>` first, and read the marks. A `key` referrer cannot be
 retargeted to nothing: that row exists because this one does, and letting it go
-is a decision rather than a tidy-up. Delete the file, remove or retarget
-every ref that pointed at it, canonicalise the files you changed, and check.
+is a decision rather than a tidy-up. **An `on delete: cascade` referrer is the
+one to say out loud**, because dropping that constraint changes what a delete
+does to real rows and nothing in the diff will look like it. Delete the file,
+remove or retarget every ref that pointed at it, canonicalise the files you
+changed, and check.
 Then sweep the prose, as above.
 
 `dbmd check` will not miss a dangling ref, but it will happily let you delete a
