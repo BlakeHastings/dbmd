@@ -31,7 +31,13 @@ jobs:
         # developed on. Two versions rather than every version: these are the
         # ends of the supported range, and the middle is not where a break
         # appears on its own. ADR 0032.
-        node: [22, 24]
+        # TEMPORARY: 20 is a control leg and is reverted in the next commit.
+        # test/studio/watch.test.ts started failing intermittently on this
+        # branch and never on the 25 Node 20 runs before it, and the question
+        # "did moving off 20 do this" cannot be answered by rerunning 22 and 24.
+        # Three legs of the same commit, started at the same moment on the same
+        # runner pool, is the paired sample that answers it.
+        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
