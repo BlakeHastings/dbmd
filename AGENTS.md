@@ -61,7 +61,8 @@ npm run check
 ```
 
 `npm run check` is typecheck, format check, decision-record numbering, the
-reviewable-diff check, tests, a build, a smoke test over the packed tarball, and
+reviewable-diff check, the check that every command named in this tree exists,
+tests, a build, a smoke test over the packed tarball, and
 one deliberate break of that smoke test, in that order. It is the only mechanical
 gate and it is exactly what CI runs, so a green local run and a green CI run mean
 the same thing. CI runs it twice, once on Node 22 and once on Node 24, so the
@@ -122,6 +123,17 @@ assigns the number, checked against `main` and every open branch.
 that the model is markdown so the diff is the review, and a file git treats as
 binary produces no diff at all. `scripts/check-reviewable.mjs` fails on a NUL
 byte in a tracked file, and it runs in `npm run check`. See Gotchas.
+
+**A command written in backticks is a claim that it exists.**
+`scripts/check-commands.mjs` resolves every `dbmd <command>`, `npm run <script>`
+and `node scripts/<file>` written inside backticks, against the CLI's registry,
+`package.json` and the filesystem. It reads code spans and fenced blocks only,
+so prose like "dbmd reads the model" is not a reference and costs you nothing.
+If you mean something that does not exist yet, a future `dbmd fmt` say, mark it
+on the line you wrote it: `<!-- hypothetical: dbmd fmt -->` in markdown, or
+`hypothetical: dbmd fmt` in a source comment. A marker holds for its file, and
+it fails once the thing exists, so the sentence gets reread on the day it stops
+being hypothetical. ADR 0036.
 
 ## Conventions
 

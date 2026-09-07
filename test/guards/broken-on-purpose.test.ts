@@ -52,6 +52,13 @@
  *
  * `scripts/merge-pr.mjs` is absent too, and that one is a gap rather than a
  * decision. See ADR 0034.
+ *
+ * ONE THING THIS DIRECTORY IS EXEMPT FROM
+ * `scripts/check-commands.mjs` does not scan `test/guards/`, and this file is
+ * why: the fixtures below name `dbmd fmt`, run `npm run bogus` and mark a
+ * command that exists as hypothetical, because each of those is a case that
+ * check refuses. Pointing it at them would fail the build on the evidence that
+ * it works. ADR 0036.
  */
 
 import { execFileSync, spawn } from 'node:child_process'
@@ -255,6 +262,252 @@ describe('check:adr, broken on purpose', () => {
 
     expect(ran.code).toBe(0)
     expect(ran.out).toContain('2 decision records, no number claimed twice')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// check-commands.mjs: a page naming a command that is not there
+// ---------------------------------------------------------------------------
+
+describe('check:commands, broken on purpose', () => {
+  /**
+   * A real git repository again, for the same reason: the check reads
+   * `git ls-files`, so a page written but not added proves nothing.
+   *
+   * The tree carries a CLI registry and a `package.json` rather than pointing
+   * at the real ones, because the point of most of these cases is what the
+   * check does with a name that is *not* on the list, and a scratch list is the
+   * only way to know what that list is. The registry is the shape
+   * `src/cli/main.ts` has: an array of imported `Command` values, each one
+   * declaring the word a user types.
+   */
+  async function repository(files: Record<string, string>): Promise<string> {
+    const root = await scratchWith('check-commands.mjs')
+    const base: Record<string, string> = {
+      'package.json': `${JSON.stringify({ scripts: { check: 'true', build: 'true' } }, null, 2)}\n`,
+      'src/cli/main.ts': [
+        "import { checkCommand } from './check.js'",
+        "import { initCommand } from './init.js'",
+        '',
+        'const COMMANDS: readonly Command[] = [initCommand, checkCommand]',
+        '',
+      ].join('\n'),
+      'src/cli/init.ts': "export const initCommand: Command = {\n  name: 'init',\n}\n",
+      'src/cli/check.ts': "export const checkCommand: Command = {\n  name: 'check',\n}\n",
+    }
+    for (const [path, contents] of Object.entries({ ...base, ...files })) {
+      const full = join(root, path)
+      await mkdir(dirname(full), { recursive: true })
+      await writeFile(full, contents)
+    }
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root, stdio: 'ignore' })
+    execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'ignore' })
+    // The checker is the tool here, not part of the tree it is pointed at. Its
+    // own header names `dbmd query` and `dbmd import`, which are real in this
+    // repository and are not on the two-command registry above, so leaving it
+    // tracked would fail every case whose point is that nothing is wrong.
+    execFileSync('git', ['rm', '--cached', '-q', 'scripts/check-commands.mjs'], {
+      cwd: root,
+      stdio: 'ignore',
+    })
+    return root
+  }
+
+  test('a page naming a command that does not exist fails, with the file and the line', async () => {
+    const root = await repository({
+      'docs/guide.md': [
+        '# Guide',
+        '',
+        'Run `dbmd check` first.',
+        '',
+        'Then run `dbmd fmt`.',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    // The line, because "something in the docs names a command that does not
+    // exist" is worse than the defect it caught.
+    expect(ran.err).toContain('docs/guide.md:5')
+    expect(ran.err).toContain('`dbmd fmt` is not a dbmd command')
+    // And what the commands actually are, so the fix does not need a second
+    // command to find out.
+    expect(ran.err).toContain('There are init, check')
+    // The convention, in the failure, because a rule you meet as a bare exit
+    // code is a rule you resent.
+    expect(ran.err).toContain('<!-- hypothetical: dbmd fmt -->')
+    // Not the line that was fine.
+    expect(ran.err).not.toContain('docs/guide.md:3')
+  })
+
+  test('the same page naming a real command passes, so the failure was the name', async () => {
+    const root = await repository({ 'docs/guide.md': 'Run `dbmd check` first.\n' })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('reference resolves')
+  })
+
+  test('prose is not a reference, which is half of what this guard is', async () => {
+    // The false positives the hand sweep hit. A check that failed these would
+    // pass every case above and be unusable, so this is as load bearing as they
+    // are. The fenced block is the other half: a block is not always a shell,
+    // and both of these lines are in this repository.
+    const root = await repository({
+      'docs/guide.md': [
+        'dbmd reads the model, dbmd describes what it found, and dbmd can print it.',
+        '',
+        '```',
+        'error this build of dbmd reads version 1, so re-run the query',
+        '# dbmd model files. Prettier rewrites the prose.',
+        '```',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('reference resolves')
+  })
+
+  test('a hypothetical is excused by the marker, and only by the marker', async () => {
+    const sentence = 'A future `dbmd fmt` will bring a directory into shape.'
+
+    const excused = await repository({
+      'docs/guide.md': `${sentence} <!-- hypothetical: dbmd fmt -->\n`,
+    })
+    expect((await runScript(excused, 'check-commands.mjs')).code).toBe(0)
+
+    // The same sentence without it, so the marker is what did the work rather
+    // than the words "a future" in front of it. Inferring from those words is
+    // the design this rejected. ADR 0036.
+    const bare = await repository({ 'docs/guide.md': `${sentence}\n` })
+    expect((await runScript(bare, 'check-commands.mjs')).code).toBe(1)
+  })
+
+  test('a marker for something that exists is stale and fails', async () => {
+    const root = await repository({
+      'docs/guide.md': 'A future `dbmd check` will do more. <!-- hypothetical: dbmd check -->\n',
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    // The half worth having: on the day the command is written, the build names
+    // every page still talking about it in the future tense.
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/guide.md:1')
+    expect(ran.err).toContain('the marker for `dbmd check` is stale')
+  })
+
+  test('a marker whose reference has gone fails too, so markers cannot pile up', async () => {
+    const root = await repository({
+      'docs/guide.md': 'Nothing here names it. <!-- hypothetical: dbmd fmt -->\n',
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('the marker for `dbmd fmt` excuses nothing in this file')
+  })
+
+  test('npm scripts and scripts/ files are checked the same way', async () => {
+    const root = await repository({
+      'docs/guide.md': ['Run `npm run check`.', '', 'Then `npm run bogus`.', ''].join('\n'),
+      'CONTRIBUTING.md': 'Land it with `node scripts/absent.mjs`.\n',
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('`npm run bogus` is not a script in package.json')
+    expect(ran.err).toContain('`node scripts/absent.mjs` is not a file in scripts/')
+    expect(ran.err).not.toContain('npm run check`')
+  })
+
+  test('the command list comes from the CLI, so adding a command is enough', async () => {
+    const page = 'Run `dbmd export --stdout` when you are done.\n'
+
+    const before = await repository({ 'docs/guide.md': page })
+    expect((await runScript(before, 'check-commands.mjs')).code).toBe(1)
+
+    // The same page, against a registry that now has the command in it, with
+    // nothing in the checker edited. A hand-written list of commands inside the
+    // check would be one more fact that can disagree with the truth, which is
+    // the defect the check exists for.
+    const after = await repository({
+      'docs/guide.md': page,
+      'src/cli/main.ts': [
+        "import { checkCommand } from './check.js'",
+        "import { exportCommand } from './export.js'",
+        "import { initCommand } from './init.js'",
+        '',
+        'const COMMANDS: readonly Command[] = [initCommand, checkCommand, exportCommand]',
+        '',
+      ].join('\n'),
+      'src/cli/export.ts': "export const exportCommand: Command = {\n  name: 'export',\n}\n",
+    })
+    expect((await runScript(after, 'check-commands.mjs')).code).toBe(0)
+  })
+
+  test('a decision record naming something that does not exist is not a finding', async () => {
+    const root = await repository({
+      'docs/architecture/decisions/0001-a-thing.md': 'Somebody will want a `dbmd fmt`.\n',
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    // A record says what was true when it was decided and is never edited, so
+    // failing one is asking an author to falsify history. The exclusion is
+    // behaviour and it is a real hole: ADR 0007 was one of the seven places
+    // that named `dbmd query`. ADR 0036 says so out loud rather than leaving it
+    // as a quiet line in the script.
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('reference resolves')
+  })
+
+  test('a page teaching the convention passes, because it uses it', async () => {
+    // The false positive this shipped with, met while writing AGENTS.md: a page
+    // explaining the marker names the marker, and the checker reads the words
+    // rather than knowing what a page is for. Documenting the rule and obeying
+    // it are the same act here, which is the resolution rather than a special
+    // case, and this locks it in.
+    const root = await repository({
+      'AGENTS.md': [
+        'A command in backticks has to exist.',
+        '',
+        'If you mean a future `dbmd fmt`, say so on the line you wrote it:',
+        '`<!-- hypothetical: dbmd fmt -->` in markdown, or `hypothetical: dbmd fmt`',
+        'in a source comment.',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('reference resolves')
+  })
+
+  test('a runner in front of the command is read wherever it appears', async () => {
+    // `npx --yes dbmd@0.1.0 check db-model` is in `docs/ci.md`, inside a YAML
+    // block, indented under `- run:`. The bare word has to begin the code
+    // because `dbmd` is also this project's name; a runner does not, because
+    // nobody writes one by accident.
+    const root = await repository({
+      'docs/ci.md': ['```yaml', '      - run: npx --yes dbmd@0.1.0 fmt db-model', '```', ''].join(
+        '\n',
+      ),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/ci.md:2')
+    expect(ran.err).toContain('`dbmd fmt` is not a dbmd command')
   })
 })
 

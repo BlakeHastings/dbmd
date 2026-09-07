@@ -325,7 +325,9 @@ export interface WriteOptions {
    *
    * Absent means the whole model, which is what `dbmd import` and a future
    * `dbmd fmt` want: they are asking for the directory to be brought into
-   * canonical form and a reformatted file is the point.
+   * canonical form and a reformatted file is the point. There is no such
+   * command, and this names one on purpose, so it says so: ADR 0036.
+   * hypothetical: dbmd fmt
    *
    * The studio wants the opposite. A model directory a person wrote by hand is
    * rarely canonical, so writing the whole model after a drag would reformat
