@@ -29,7 +29,9 @@
  * **It debounces.** An editor that writes a temporary file and renames it over
  * the target produces a delete and a create; several editors produce more. One
  * burst has to become one wake-up or the studio re-reads the directory four
- * times for one Ctrl-S.
+ * times for one Ctrl-S. That is `Burst` below, which is separate from the
+ * watching so that a test can hold it to the promise without going through
+ * `fs.watch` to do it.
  *
  * **It ignores the writer's own temporary files, at the kind directory.**
  * `write.ts` writes `.<name>.<uuid>.tmp` beside the target and renames it over.
@@ -63,17 +65,77 @@ export interface WatchOptions {
 /** What a directory watcher reports about one name, ignoring the event type. */
 type Interesting = (filename: string) => boolean
 
+/**
+ * One call per burst, where a burst is bumps no further apart than `withinMs`.
+ *
+ * The whole of this file's timing, and it is a class of its own rather than two
+ * fields on `ModelWatcher` so that "once per burst" can be held to account
+ * without `fs.watch` in the way. **A burst driven by `fs.watch` is not a burst
+ * the test made; it is one the test hoped for.** Two files saved together are two
+ * events whose delivery times belong to the operating system, and a machine
+ * under load that spaces them by more than the window has produced two bursts,
+ * which is two wake-ups and is correct. dbmd-056 is the CI runs where a case
+ * that saved two files and expected one wake-up met exactly that and reported
+ * it as `expected 2 to be 1`.
+ *
+ * A `bump` is a function call, so the cases in `watch.test.ts` that count
+ * wake-ups make their bursts rather than waiting to be given one, and nothing
+ * about them depends on how busy the machine is. What the filesystem is still
+ * asked in that file is whether the events reach here at all, which is a
+ * question it can answer.
+ *
+ * Trailing rather than leading: the wake-up belongs to the end of a burst,
+ * because the point of it is to look at a directory once everything that was
+ * going to move has moved.
+ */
+export class Burst {
+  private timer: NodeJS.Timeout | undefined
+
+  constructor(
+    private readonly withinMs: number,
+    private readonly wake: () => void,
+  ) {}
+
+  /** Another event. Push the wake-up out to `withinMs` from now. */
+  bump(): void {
+    this.cancel()
+    this.timer = setTimeout(() => {
+      this.timer = undefined
+      this.wake()
+    }, this.withinMs)
+    // A pending wake-up must never be the thing keeping `dbmd studio` alive
+    // after the listening socket has gone. Same reason the write timer is
+    // unref'd.
+    this.timer.unref()
+  }
+
+  /** Drop a wake-up the last burst had queued, if there is one. */
+  cancel(): void {
+    if (this.timer !== undefined) clearTimeout(this.timer)
+    this.timer = undefined
+  }
+}
+
 export class ModelWatcher {
   private readonly watchers = new Map<string, FSWatcher>()
-  private timer: NodeJS.Timeout | undefined
+  private readonly burst: Burst
   private closed = false
 
   private constructor(
     private readonly dir: string,
-    private readonly debounceMs: number,
+    debounceMs: number,
     private readonly onChange: () => void,
     private readonly log: (message: string) => void,
-  ) {}
+  ) {
+    this.burst = new Burst(debounceMs, () => {
+      // A kind directory created while the studio was running is reported by
+      // the root watcher, and the files put into it afterwards are not reported
+      // by anything until it has a watcher of its own. Attaching here is what
+      // makes the second save into a brand new `notes/` visible.
+      this.attachKinds()
+      this.onChange()
+    })
+  }
 
   /**
    * Start watching. `onChange` is called at most once per burst and takes no
@@ -103,8 +165,7 @@ export class ModelWatcher {
   /** Stop watching and cancel anything the last burst had queued. */
   close(): void {
     this.closed = true
-    if (this.timer !== undefined) clearTimeout(this.timer)
-    this.timer = undefined
+    this.burst.cancel()
     for (const handle of this.watchers.values()) handle.close()
     this.watchers.clear()
   }
@@ -155,17 +216,7 @@ export class ModelWatcher {
 
   private bump(): void {
     if (this.closed) return
-    if (this.timer !== undefined) clearTimeout(this.timer)
-    this.timer = setTimeout(() => {
-      this.timer = undefined
-      // A kind directory created while the studio was running is reported by
-      // the root watcher, and the files put into it afterwards are not reported
-      // by anything until it has a watcher of its own. Attaching here is what
-      // makes the second save into a brand new `notes/` visible.
-      this.attachKinds()
-      this.onChange()
-    }, this.debounceMs)
-    this.timer.unref()
+    this.burst.bump()
   }
 }
 
