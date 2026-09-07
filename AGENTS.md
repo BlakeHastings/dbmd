@@ -92,6 +92,11 @@ assigns the number, checked against `main` and every open branch.
 `scripts/check-adr-numbers.mjs` fails a collision, and it runs in
 `npm run check`.
 
+**Every tracked source file has to be readable as a diff.** This project argues
+that the model is markdown so the diff is the review, and a file git treats as
+binary produces no diff at all. `scripts/check-reviewable.mjs` fails on a NUL
+byte in a tracked file, and it runs in `npm run check`. See Gotchas.
+
 ## Conventions
 
 - TypeScript, ESM, Node 20 or later. `"type": "module"`, `NodeNext` resolution,
@@ -109,5 +114,18 @@ assigns the number, checked against `main` and every open branch.
 
 ## Gotchas
 
-Empty on purpose. An entry goes in when something has bitten twice, and comes
-out, deleted rather than annotated, when the cause is fixed.
+An entry goes in when something has bitten twice, and comes out, deleted rather
+than annotated, when the cause is fixed.
+
+**A NUL byte makes a source file binary to git, and a binary file has no diff.**
+Bitten twice: a test fixture in wave one, from a stray byte in something pasted,
+and `src/studio/client/edges.ts` in dbmd-31, from a deliberate NUL written as
+the character rather than as `\0`. Both times the file was reviewed without
+being seen, and both times a reviewer noticed only because `grep` refused to
+read it.
+
+If you want a NUL in a string, and it is a reasonable thing to want for a
+separator that cannot collide with a name, write the escape. `\0` is the same
+character and leaves the file text. `scripts/check-reviewable.mjs` now fails the
+build on the third occurrence, so this entry is here to say why that check
+exists rather than to describe a trap you still have to remember.

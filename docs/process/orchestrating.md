@@ -142,3 +142,51 @@ including the owner, so this is not a convention: it is the only path.
 Post the three-lens review record on the beads item before merging, with
 `bd comment <id> --file review.md`. The pull request body carries the same three
 headings, and the item is where it stays findable once the branch is gone.
+
+## What an agent in a worktree can actually see
+
+Three things have now cost time here, all of them the same mistake in different
+clothes: assuming an agent can see something only the orchestrator can see.
+
+**An agent's worktree contains committed files and nothing else.** Not your
+working tree, not a local database, not a tool that is only on your PATH.
+
+- **Briefs posted to the backlog are not in the worktree.** `bd comment` writes
+  to `.beads/embeddeddolt/`, which is untracked, and `bd export` rewrites the
+  tracked `.beads/issues.jsonl`, which then sits *uncommitted* in your tree. The
+  agent's worktree is made from a commit, so it reads an item with
+  `comment_count: 0` and none of the briefs. The dbmd-12 agent found this and
+  said so. The wave was unaffected only because the brief is reproduced in full
+  in the dispatch message, which it is for the compaction reason anyway.
+
+  **Do not fix this by committing the backlog before every dispatch.** That is
+  an orchestrator commit and it costs one rebase per agent in flight. Fix it by
+  not making the claim: say the tracked file has the item's description, which
+  is true and is what an agent needs for its epic and its neighbours, and put
+  the brief in the dispatch message.
+
+- **`bd` is not on an agent's PATH**, even when it is on yours. Tell them how to
+  read the backlog out of the JSONL with `node -e`, which always works.
+
+- **Your uncommitted plumbing fix is not theirs.** Land it before the wave or
+  live without it for the wave. Both are fine; assuming is not.
+
+## Agent worktrees are inside the repository, and tools scan them
+
+`.claude/worktrees/` is under the repository root. `.gitignore` keeps it out of
+`git status` and out of CI, which clones. It does not keep it out of anything
+that walks the filesystem.
+
+Measured: with nine merged agent worktrees still on disk, `npm run check` here
+reported **3927 tests instead of 457**, all of the extras belonging to branches
+that had already landed. That can turn a local run red for something you did not
+write, or green because a branch you are not on happens to pass, and it breaks
+`AGENTS.md`'s promise that a green local run and a green CI run mean the same
+thing.
+
+`vitest.config.mjs` now excludes `.claude/`. The general form is the thing to
+remember: **a new tool added to `npm run check` has to be told about that
+directory**, because CI will never notice and your local run will.
+
+**Remove an agent's worktree when its branch has landed.** `git worktree remove
+--force <path>` then `git worktree prune`.

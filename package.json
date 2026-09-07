@@ -40,8 +40,9 @@
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
     "studio": "npm run build && node dist/cli.js studio examples/shop",
     "prepack": "npm run build",
-    "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run test && npm run build",
+    "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run check:reviewable && npm run test && npm run build",
     "check:adr": "node scripts/check-adr-numbers.mjs",
+    "check:reviewable": "node scripts/check-reviewable.mjs",
     "backlog": "bd export -o .beads/issues.jsonl"
   },
   "devDependencies": {
