@@ -4,105 +4,93 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision
 records are the source of truth and this is only where the work stopped.
 
-**As of 2026-08-25, with the first real wave dispatched.**
+**As of 2026-09-06, with wave three about to be dispatched.**
 
 ## Where the work is
 
-Setup is complete and the enforcement stack is verified end to end rather than
-installed: a ruleset refuses direct pushes from everyone including the owner,
-three pull requests have landed through `merge-pr.mjs`, and the provenance audit
-has run green on each merge commit after failing correctly on the first push.
+Three waves of setup and two waves of product work have landed. `main` has a
+model reader, a canonical writer, a validated introspection contract, a working
+Postgres provider and a real example model under `examples/shop`. Eleven pull
+requests have merged, all through `merge-pr.mjs`, and `npm run check` is green
+at 298 tests.
 
-Nothing of the product itself is built yet. `src/index.ts` is still a
-placeholder.
+**There is still no CLI and no studio.** `src/index.ts` exports the reader and
+the writer and nothing else. Do not read intent from `AGENTS.md` or from a
+decision record as though it were implemented.
 
-**Two waves landed.** Wave two was dbmd-11 (canonical writer), dbmd-43
-(Postgres provider) and dbmd-61 (the example model), merged as PRs #10, #9 and
-#8. `main` now has a reader, a writer, a validated introspection contract, a
-working Postgres provider and a real example model. No CLI and no studio yet.
-
-Both send-backs in wave two came from driving the code rather than reading the
-report, and neither was visible to CI:
-
-- **dbmd-11** shipped a parse guard that was opt-in. `writeModel(dir, model)`
-  was a legal call that silently deleted two columns from a file the reader
-  could not fully read. The fix makes that call not compile, and the agent's
-  chosen shape found a better line than the one asked for: `complete` is set at
-  the phase boundary, so a file with an error that lost nothing is still
-  writable.
-- **dbmd-43** was correct, and reviewing it against a live Postgres surfaced
-  dbmd-18: an expression index is indistinguishable from a column with a strange
-  name.
-
-**Wave one landed.** dbmd-10 (the model reader, `src/model/`) and dbmd-40
-(the introspection contract and provider seam, `src/import/`) are merged as PRs
-#5 and #6 and both items are closed. Nothing is in flight.
-
-Both were verified by driving them against fixtures the orchestrator wrote
-rather than the ones in the pull requests. That is what found the one defect
-CI could not: a stray NUL byte that made the largest test file binary to git and
-unreviewable as a diff, in a repository whose premise is that the diff is the
-review.
-
-What the wave produced besides code: `dbmd-13`, filed because both agents
-independently invented a `Diagnostic` type and there are now two. It has to land
-before `dbmd-21`, because ADR 0006 makes that shape a public contract the moment
-`--json` ships.
+Nothing is in flight. There are no open pull requests and no agent worktrees.
 
 ## What a successor would otherwise have to reconstruct
 
-- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused after
-  the harness restart, having printed before it. Ask it again after every
-  restart, before the first dispatch, and alone on the command line: a
-  `PreToolUse` refusal kills anything chained to it, so a probe joined with `&&`
-  reports a comforting answer about a command that never ran.
-- **`check-setup.mjs` went 4-of-4 MISSING to 4-of-4 ok.** Both outputs were in
-  the first status update. Two of the four are dormant until a remote exists;
-  ADR 0001 says which and why none was deleted.
-- **The write boundary is owned**, recorded in `.git/factory/machine.md`, which
-  is not committed and does not survive a clone. Whoever works this repository
-  on another machine records it again, once.
-- **The remote exists.** `github.com/BlakeHastings/dbmd`, public, MIT. A ruleset
-  on `main` requires a pull request and a green `check`, allows squash only, and
+- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused on
+  2026-09-06. Ask it again after every harness restart, before the first
+  dispatch, and alone on the command line: a `PreToolUse` refusal kills anything
+  chained to it, so a probe joined with `&&` reports a comforting answer about a
+  command that never ran.
+- **`check-setup.mjs` reports 4 of 4 ok and the guest gate `n/a`.** The write
+  boundary is owned, recorded in `.git/factory/machine.md`, which is not
+  committed and does not survive a clone.
+- **The remote is `github.com/BlakeHastings/dbmd`**, public, MIT. A ruleset on
+  `main` requires a pull request and a green `check`, allows squash only, and
   has an empty bypass list. Publishing to npm has still not been asked for.
-- **Layer 3 fired on its first run and BASELINE moved once, deliberately.**
-  ADR 0001 carries the correction and the reason it is the only time.
+- **`bd` was missing from this machine entirely** on 2026-09-06 and was
+  reinstalled. It needs `--ignore-schema-skew` on every command until a
+  recovery step the owner has not yet approved is run.
+  `.git/factory/machine.md` has the whole story, the backup location and the
+  one command that fixes it permanently.
+- **Do not land an orchestrator commit while a wave is in flight.** It costs one
+  rebase per agent and, worse, puts a tree you already reviewed back into
+  motion. `docs/process/orchestrating.md` has the reasoning.
 
-## The open format questions, in the order they bind
+## The format questions, in the order they bind
 
-These came out of `examples/shop` being written by hand and they gate real work:
+These came out of `examples/shop` being written by hand, and they gate the
+import work. All of them touch the reader, the writer or the contract, so they
+mostly cannot run alongside each other.
 
-- **dbmd-14 (P0)**: a column cannot be declared unique. Blocks dbmd-41, because
-  an import would silently drop a constraint the database enforces.
+- **dbmd-14 (P0)**: a column cannot be declared unique. Blocks dbmd-41.
 - **dbmd-16**: `null: false` reads backwards. Do it before anything writes a
-  model at scale, or it becomes a migration.
+  model at scale, or it becomes a migration rather than a rename.
+- **dbmd-18**: an expression index is indistinguishable from a column. Blocks
+  dbmd-41, and it touches both `src/import/contract.ts` and the markdown format,
+  so it collides with provider work and with reader or writer work at once.
 - **dbmd-13**: two `Diagnostic` types. Blocks dbmd-21, because ADR 0006 makes
   that shape public the moment `--json` ships.
-- **dbmd-18**: expression indexes. Blocks dbmd-41.
-- **dbmd-15**: there is no format reference at all, only decision records.
+- **dbmd-15**: there is no format reference at all, only decision records. It
+  has to follow dbmd-14 and dbmd-16 or it documents a format about to change.
 
-All five touch the reader, the writer or the contract, so they mostly cannot run
-alongside each other or alongside provider work. Sequencing them is the next
-real orchestration decision.
+**dbmd-14 and dbmd-16 are batched into one item of work** for wave three. They
+touch the same files, both migrate `examples/shop`, and doing them separately
+means migrating the example twice.
+
+## Wave three
+
+Three agents, three directories, chosen for collision surface rather than theme.
+
+- **dbmd-14 + dbmd-16 batched**, in `src/model/`, `test/`, `examples/shop` and
+  an appended section on ADR 0003. ADR number 0011 if a new record is wanted.
+- **dbmd-20**, the CLI entry point and `dbmd init`, in a new `src/cli.ts`. ADR
+  number 0012.
+- **dbmd-30**, the studio server, in a new `src/studio/`. ADR number 0013.
+
+**dbmd-30 was descoped at dispatch.** Its item asks for `dbmd studio` as a
+subcommand, which would have made it and dbmd-20 both owners of `src/cli.ts` in
+the same wave. It builds the server as a module with a programmatic entry point
+instead, and **dbmd-35** was filed to carry the CLI wiring and the `npm run
+studio` script once both have landed. That script is named by
+`docs/process/working-an-issue.md` today and does not exist, which is an
+invariant standing ahead of its code.
+
+The relay both dbmd-20 and dbmd-30 were given: the frontmatter is changing under
+them, so generate model files with `writeModel` rather than hand-writing YAML.
 
 ## What is waiting on the owner
 
-- **dbmd-90**, the name. `dbmd` is a working name, free on npm as of
-  2026-08-24. Everything proceeds under it and a rename would touch
-  `package.json`, the bin name and the README only.
-Nothing. Both owner questions are answered and closed:
+- **The beads schema recovery.** It is one destructive SQL statement, the
+  harness refused it, and a full backup exists. Asked in prose at the end of the
+  session's first status update. The stopgap is verified safe, so nothing is
+  blocked on the answer.
 
-- **dbmd-90**: the name is `dbmd`, MIT, public on GitHub.
-- **dbmd-91**: Postgres and SQL Server, behind a provider seam. ADR 0007, and
-  dbmd-40 rewritten as the seam with dbmd-43 and dbmd-44 as the two engines.
-
-## What is dispatchable
-
-`dbmd-10` (the model reader) and `dbmd-40` (the introspection contract and the
-provider seam). They share no files: one is `src/model/`, the other is
-`src/import/`. Everything else in the backlog is behind one of them.
-
-**dbmd-10 was dispatched once and stopped by the owner before it reported.** It
-left `yaml@^2.9.0` in its worktree's package.json and nothing else: no commits,
-no source, nothing merged. It was not resumed and not finished by the
-orchestrator, and the item is open and unchanged.
+Both original owner questions are answered and closed: dbmd-90 settled the name
+as `dbmd`, MIT and public; dbmd-91 settled the engines as Postgres and SQL
+Server behind a provider seam, which is ADR 0007.

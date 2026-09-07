@@ -15,3 +15,8 @@ test/fixtures/
 # `docs/` is here, and the same advice we will end up giving anyone who keeps a
 # `db-model/` in a repository that runs prettier over everything.
 examples/
+
+# Untracked, machine-local agent permissions. It is not in this repository, so
+# CI never sees it, and prettier failing on it made a local `npm run check` red
+# while CI was green. AGENTS.md promises those two runs mean the same thing.
+.claude/settings.local.json
