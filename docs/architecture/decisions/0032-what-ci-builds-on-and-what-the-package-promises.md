@@ -88,6 +88,17 @@ than the floor, and that the floor is 22.
   cheaper than renaming a required check.
 - **A third Node version is now a one-line change**, and so is dropping one. That
   is deliberate: the next end-of-life date should be a line edit, not a redesign.
+- **Two runs of the suite is two chances for an intermittent test to redden the
+  gate**, and that is not theoretical: it happened on the first run of this
+  change. `test/studio/watch.test.ts`, "writes all of them, and calls none of
+  them a conflict", failed on the Node 24 leg and passed on the Node 22 leg of
+  the same commit, then passed on a rerun of the identical code. It is a
+  debounce-window timing assertion rather than anything about Node, and the
+  matrix did not cause it; what the matrix changed is how often this repository
+  will see it. The right answer is to fix the test rather than to run the suite
+  once, and it is worth saying out loud that "it went red on one leg only" is
+  therefore not by itself evidence of a version-specific break. Read the leg
+  that failed before believing the shape of the failure.
 - **The floor at 22 has an expiry.** Node 22 reaches end of life on 2027-04-30.
   This decision will be wrong on that date in exactly the way it was wrong when
   it was made, which is why the trigger below is a date rather than a feeling.
