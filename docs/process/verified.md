@@ -497,6 +497,20 @@ rather than by reading.
   catalogue cannot report a numeric scale without a precision. The case was
   correctly declined as unreachable, and now there is a reason on the record
   rather than a judgement.
+- **A re-run erases the evidence that a check ever failed**, which makes a flake
+  unmeasurable from run history. `test/studio/watch.test.ts` failed the merge
+  gate twice on 2026-09-07, on two unrelated branches an hour apart, with the
+  same assertion word for word and neither branch anywhere near the watcher.
+  **Only one of the two is in the run listing.** `gh run rerun --failed` updates
+  the run in place, so the conclusion became `success` and the failure went with
+  it. The listing says one failure in sixty runs; the truth is at least two, and
+  the gap is the size of everybody's habit of pressing re-run.
+  So: **before re-running a red check, read the log and write down what it
+  said**, because after the re-run nobody can. dbmd-056.
+- **The same test passes eight times out of eight on a quiet machine.** It needs
+  contention, which is why CI sees it and a laptop does not, and why a fix
+  claimed without a before-rate under load is a guess. Measured at 64% memory
+  with nothing dispatched.
 - **Every enforcement guard fails when neutered.** Now a suite rather than an
   afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
 - **Every diagnostic code is emitted and exercised.** The last two exceptions,
