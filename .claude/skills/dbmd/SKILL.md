@@ -25,8 +25,8 @@ Everything below writes `dbmd <command>`. Read that as `node dist/cli.js
 <command>` from the checkout, and check `package.json` for `"private": true`
 before you believe an install line anywhere else.
 
-Six commands: `dbmd init`, `dbmd query`, `dbmd import`, `dbmd check`,
-`dbmd studio`, `dbmd export`. Every one of them puts data on stdout, narration
+Seven commands: `dbmd init`, `dbmd query`, `dbmd import`, `dbmd check`,
+`dbmd refs`, `dbmd studio`, `dbmd export`. Every one of them puts data on stdout, narration
 on stderr, and its answer in the exit code. `--json` moves the report to stdout
 under a versioned envelope:
 
@@ -104,30 +104,48 @@ single-column unique one. It refuses a model that has an error in it.
 
 ### What points at this table
 
-The one question the CLI has no command for. Do not `grep` for the table name:
-`ref: orders.id` and the word "orders" in a paragraph look the same to `grep`,
-and the models where this matters are the ones full of prose. (Grep is the right
-tool for the prose itself, which is a different question and is under
+Ask the command. Do not `grep` for the table name: `ref: orders.id` and the word
+"orders" in a paragraph look the same to `grep`, and the models where this
+matters are the ones full of prose. (Grep is the right tool for the prose
+itself, which is a different question and is under
 [Rename a table](#rename-a-table).)
 
-Use the relationship lines, which are generated from `ref:` keys and from
-nothing else, one line per ref, referenced table on the left:
-
 ```bash
-dbmd export shop --stdout | grep -E '^  "customers" .* : '
+dbmd refs customers shop
 ```
 
 ```
-  "customers" ||..o{ "addresses" : "customer_id"
-  "customers" ||..o{ "orders" : "customer_id"
-  "customers" ||..o{ "subscriptions" : "customer_id"
+3 refs point at customers in shop:
+
+  addresses.customer_id     -> customers.id  tables/addresses.md      required
+  orders.customer_id        -> customers.id  tables/orders.md         required
+  subscriptions.customer_id -> customers.id  tables/subscriptions.md  required
+
+"required": the file says nullable: false, so the ref cannot be emptied.
 ```
 
-Three tables point at `customers`, and the label is the column that does it.
-Swap the sides to ask what a table points at. This is a grep over a rendering
-rather than a query, and `dbmd export` refuses a model with an error in it,
-which is exactly the state you are in half way through a rename. Ask before you
-start, not during. dbmd-81 is the item for a real command.
+The table comes first and the directory second, which is the opposite of every
+other command and is the one thing to remember about it.
+
+- **The column and the file, not just the table.** "Three tables point here"
+  does not say what to edit; the column does, and the file is where the edit
+  goes. `key` means the column is part of the referring table's own primary key,
+  so that row cannot outlive this one. `required` means `nullable: false`.
+  Together they are the difference between retargeting a ref and deleting a row.
+- **It answers a model with errors in it**, which `dbmd export` refuses. That is
+  the state you are in half way through a rename, so you can ask during rather
+  than only before. It says the model has errors first, because a file that did
+  not load is missing from the model along with every ref written in it, and the
+  answer may therefore be short.
+- **A table that is gone and still pointed at is an answer, not an error.** The
+  run says there is no `tables/<name>.md` and then lists what still points at
+  the name. That is exactly the middle of a rename.
+- **A name nothing has heard of exits 1**, with `no-such-table` on the `--json`
+  envelope. That is deliberately not the same as "nothing points at it", which
+  exits 0, because you ask this immediately before a delete.
+- **`--outgoing`** asks what this table points at. Both flags prints both.
+  `--json` carries both directions whichever flag you gave, with `path`,
+  `inPrimaryKey` and `nullable` on every edge, so an agent never runs it twice.
 
 ## Editing: the canonical form
 
@@ -262,10 +280,11 @@ table, and getting it half right passes nothing.
 Five steps, and none of them is optional.
 
 ```bash
-# 1. ask first, while the model is still valid
-dbmd export shop --stdout | grep -E '^  "addresses" .* : '
-#   "addresses" |o..o{ "addresses" : "superseded_by"      <- a self-ref counts
-#   "addresses" ||..o{ "orders" : "shipping_address_id"
+# 1. ask what points at it. You can ask again at any step: this command
+#    answers a model with a dangling ref in it.
+dbmd refs addresses shop
+#   addresses.superseded_by     -> addresses.id  tables/addresses.md   <- a self-ref counts
+#   orders.shipping_address_id  -> addresses.id  tables/orders.md
 
 # 2. move the file
 git mv shop/tables/addresses.md shop/tables/postal_addresses.md
@@ -286,7 +305,8 @@ dbmd check shop --json
 A ref you missed is `ref-table-unknown`, an error, naming the file, the column
 and the table that is not there. That is the safety net, and it is why step 1 is
 a query rather than a guess: the check tells you afterwards, and you would
-rather know before.
+rather know before. `dbmd refs addresses shop` after step 2 lists exactly what
+is still pointing at the old name, and it keeps working while that is an error.
 
 **Then sweep the prose, by hand, and this is the one place `grep` is right.**
 A body is opaque to every check there is, so a paragraph in `_model.md` or in a
@@ -308,7 +328,9 @@ rename that missed a file.
 
 ### Delete a table
 
-Ask what points at it first, the same way. Delete the file, remove or retarget
+`dbmd refs <table>` first, and read the marks. A `key` referrer cannot be
+retargeted to nothing: that row exists because this one does, and letting it go
+is a decision rather than a tidy-up. Delete the file, remove or retarget
 every ref that pointed at it, canonicalise the files you changed, and check.
 Then sweep the prose, as above.
 

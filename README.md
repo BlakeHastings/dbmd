@@ -177,7 +177,7 @@ shortcut that builds and then opens this repository's own `examples/shop`, which
 is the fastest way to get the picture above onto your own screen.
 [`CONTRIBUTING.md`](CONTRIBUTING.md) takes that from a clean clone.
 
-## The five commands
+## The seven commands
 
 In the order you meet them. Every block below is real output, and all of it is
 on stderr: **stdout is data and stderr is narration**, in every command, so
@@ -198,6 +198,19 @@ Read _model.md first. It says what the rest of them are for.
 The format is written down at https://github.com/BlakeHastings/dbmd/blob/main/docs/format.md
 If this repository runs Prettier, add db-model/ to its .prettierignore.
 Prettier rewrites the prose in these files, and the prose is the point.
+```
+
+**`dbmd query --engine <id>`** prints one engine's introspection SQL on stdout
+and nothing else. It is the first step of the journey `dbmd import` finishes,
+and the step in the middle is yours: dbmd never connects to a database and never
+asks for a credential, so you run that SQL with the client you already trust.
+
+```
+$ dbmd query --engine postgres > introspect.sql
+The PostgreSQL introspection query, 9827 characters, on stdout.
+Read the comments at the top before you run it: they say what it touches,
+and how to save its result without cutting it short.
+Run it, save the one value it returns, then "dbmd import --file <that file>".
 ```
 
 **`dbmd import`** turns the JSON printed by an introspection query into a model
@@ -335,6 +348,60 @@ with the same exit code:
 }
 ```
 
+**`dbmd refs <table> [directory]`** answers "what points at this table". A
+relationship is written on the referring column, so that adding one touches one
+file, and the table being asked about pays for it: the fact lives somewhere
+else, and its own file is the one place the answer is not written down. `grep`
+cannot stand in, because `ref: orders.id` and the word "orders" in a paragraph
+are the same string.
+
+```
+$ dbmd refs orders examples/shop
+2 refs point at orders in examples/shop:
+
+  order_items.order_id -> orders.id  tables/order_items.md  key
+  shipments.order_id   -> orders.id  tables/shipments.md    required
+
+"key": the referring column is part of its own table's primary key, so that row cannot outlive this one.
+"required": the file says nullable: false, so the ref cannot be emptied.
+```
+
+The column, not just the table, because "two tables point here" does not say
+what to edit, and the file beside it because that is where the edit goes. The
+two marks are the difference between retargeting a ref and deleting a row.
+`--outgoing` asks the other direction, and `--json` carries both directions
+whichever flag was given.
+
+**It answers a model that `dbmd export` refuses.** That is the point of it.
+Half way through a rename the model has a dangling ref, which is an error, and
+an error is where the diagram stops:
+
+```
+$ dbmd export shop --stdout
+dbmd: shop has 2 errors in it, so there is nothing safe to draw.
+Run "dbmd check shop" to see them.
+$ dbmd refs addresses shop
+shop has 2 errors in it. A file that did not load is missing from the model along with every ref
+written in it, so what follows may be short. Run "dbmd check shop".
+
+There is no tables/addresses.md in shop, and something still points at that name.
+
+2 refs point at addresses in shop:
+
+  orders.shipping_address_id     -> addresses.id  tables/orders.md            required
+  postal_addresses.superseded_by -> addresses.id  tables/postal_addresses.md
+
+"required": the file says nullable: false, so the ref cannot be emptied.
+```
+
+"There is no such table" and "nothing points at it" read alike and mean opposite
+things, so they are not the same exit code: an empty answer about a table that
+exists is a success, and a name no file carries and no `ref` mentions exits 1.
+The question gets asked immediately before a delete, and a typo must not answer
+it with permission.
+[ADR 0042](docs/architecture/decisions/0042-a-question-answers-a-model-a-diagram-refuses.md)
+is the whole argument.
+
 **`dbmd export [directory]`** draws the model as a mermaid `erDiagram` and
 writes it into the model directory's own `README.md`, between two markers,
 leaving the rest of that file alone. GitHub renders it, so a pull request that
@@ -366,8 +433,7 @@ no migration anywhere in this tool.
 themselves, with whatever client they already trust, and hands back what it
 printed. The query itself lives with the provider that emits it, one file per
 engine under `src/import/providers/`, written as a comment block meant to be
-read and pasted whole; printing it from `dbmd` rather than the source tree is
-still open work.
+read and pasted whole, and `dbmd query --engine <id>` prints it for you.
 
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md)
 and [ADR 0007](docs/architecture/decisions/0007-engines-are-providers.md) are

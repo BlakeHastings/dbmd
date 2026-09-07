@@ -21,6 +21,7 @@ import { exportCommand } from './export.js'
 import { importCommand } from './import.js'
 import { initCommand } from './init.js'
 import { queryCommand } from './query.js'
+import { refsCommand } from './refs.js'
 import { studioCommand } from './studio.js'
 import {
   createOutput,
@@ -39,15 +40,18 @@ import {
  * person meets them rather than alphabetical: `init` makes a model, `query`
  * prints the SQL that describes a database that already exists and `import`
  * turns what that printed into a model, `check` says whether it is still good,
- * `studio` is where it is edited, and `export` is how everybody else gets to see
- * it. `query` sits in front of `import` because that is the order they are run
- * in, and a reader of this list should not have to find that out later.
+ * `refs` answers a question about it, `studio` is where it is edited, and
+ * `export` is how everybody else gets to see it. `query` sits in front of
+ * `import` because that is the order they are run in, and a reader of this list
+ * should not have to find that out later. `refs` sits beside `check` because
+ * both read a model and neither changes one.
  */
 const COMMANDS: readonly Command[] = [
   initCommand,
   queryCommand,
   importCommand,
   checkCommand,
+  refsCommand,
   studioCommand,
   exportCommand,
 ]
