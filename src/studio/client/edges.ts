@@ -1,0 +1,213 @@
+/**
+ * Turning `ref`s into paths, without drawing two of them on top of each other.
+ *
+ * A relationship is a column saying `ref: customers.id` (ADR 0003), so the
+ * edges are derived from the tables and never stored. That much is easy. The
+ * part that is not is that a pair of tables very often has more than one edge
+ * between them: `orders.customer_id` and `orders.shipping_address_id` both
+ * pointing at the same table, or two tables that reference each other. Drawn
+ * from centre to centre they are one line, and a diagram that shows one
+ * relationship where there are two is wrong in the way nobody notices, which is
+ * the worst way for a diagram to be wrong.
+ *
+ * So edges are grouped by the unordered pair of tables they join, and each one
+ * in a group is drawn along a line offset sideways from the centre line. The
+ * offsets are symmetric about the centre, so one edge is straight down the
+ * middle and two edges are a matched pair either side. The anchors are computed
+ * on the offset line as well, not just the curve, so the arrowheads land in
+ * different places too: two arrowheads on the same pixel read as one edge
+ * however far apart the middles are.
+ *
+ * A table that references itself gets a loop out of its right-hand side, for
+ * the same reason: it is a real relationship and centre to centre it has no
+ * length at all.
+ *
+ * Nothing here touches the DOM. It takes rectangles and returns path data, so
+ * the arithmetic can be tested without a browser.
+ */
+
+import type { Table } from '../../model/types.js'
+import type { Point, Rect } from './geometry.js'
+
+export interface Endpoint {
+  readonly table: string
+  readonly column: string
+}
+
+export interface EdgeSpec {
+  readonly from: Endpoint
+  readonly to: Endpoint
+}
+
+export interface RoutedEdge extends EdgeSpec {
+  /** SVG path data, in model coordinates. */
+  readonly d: string
+  /** A point on the middle of the path, for a hit target or a label. */
+  readonly at: Point
+}
+
+/** Far enough apart to be two lines at zoom 0.5, close enough to read as a pair. */
+const EDGE_SPACING = 18
+/** So a line stops short of the border rather than disappearing under it. */
+const BORDER_GAP = 4
+/** How far a self-reference loops out of the side of its own box. */
+const SELF_LOOP_REACH = 56
+
+/** Every `ref` on every table, in the model's order, as an edge. */
+export function edgeSpecsOf(tables: readonly Table[]): EdgeSpec[] {
+  const specs: EdgeSpec[] = []
+  for (const table of tables) {
+    for (const column of table.columns) {
+      if (column.ref === undefined) continue
+      specs.push({
+        from: { table: table.name, column: column.name },
+        to: { table: column.ref.table, column: column.ref.column },
+      })
+    }
+  }
+  return specs
+}
+
+/**
+ * Path data for every edge whose two ends are both on the canvas.
+ *
+ * An edge naming a table that is not there is dropped rather than drawn to
+ * nowhere. Saying that the target does not exist is a diagnostic, and
+ * diagnostics belong to the reader (ADR 0008) rather than to a line.
+ */
+export function routeEdges(
+  specs: readonly EdgeSpec[],
+  boxes: ReadonlyMap<string, Rect>,
+): RoutedEdge[] {
+  const fans = new Map<string, EdgeSpec[]>()
+  for (const spec of specs) {
+    if (!boxes.has(spec.from.table) || !boxes.has(spec.to.table)) continue
+    const [first, second] =
+      spec.from.table <= spec.to.table
+        ? [spec.from.table, spec.to.table]
+        : [spec.to.table, spec.from.table]
+    // NUL as the separator, because it is the one character a table name
+    // cannot contain, so two names cannot join into a key that some third pair
+    // also produces. Written as the escape `\0` and never as the byte itself:
+    // a source file holding a literal NUL is a binary file to git, and a source
+    // file that produces no diff cannot be reviewed, which in this repository
+    // is the whole point.
+    const key = `${first}\0${second}`
+    const fan = fans.get(key)
+    if (fan === undefined) fans.set(key, [spec])
+    else fan.push(spec)
+  }
+
+  const routed: RoutedEdge[] = []
+  for (const fan of fans.values()) {
+    fan.forEach((spec, ordinal) => {
+      const from = boxes.get(spec.from.table)
+      const to = boxes.get(spec.to.table)
+      // Both were in `boxes` when the fan was built, and nothing removes from
+      // it in between; the check is here to keep the types honest.
+      if (from === undefined || to === undefined) return
+      routed.push(
+        spec.from.table === spec.to.table
+          ? selfLoop(spec, from, ordinal)
+          : between(spec, from, to, ordinal, fan.length),
+      )
+    })
+  }
+  return routed
+}
+
+function between(spec: EdgeSpec, from: Rect, to: Rect, ordinal: number, count: number): RoutedEdge {
+  const a = centreOf(from)
+  const b = centreOf(to)
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const length = Math.hypot(dx, dy) || 1
+  const along: Point = { x: dx / length, y: dy / length }
+  // Sideways is a property of the pair, not of the direction the edge is read
+  // in. Taking it from `along` flips it on the return leg of a mutual
+  // reference, the two shifts then cancel, and the pair this whole offset
+  // exists for is the one pair that comes out as a single line.
+  const canonical: Point = spec.from.table <= spec.to.table ? along : { x: -along.x, y: -along.y }
+  const across: Point = { x: -canonical.y, y: canonical.x }
+
+  // Symmetric about the centre line: one edge is centred, two straddle it.
+  const shift = (ordinal - (count - 1) / 2) * EDGE_SPACING
+  const start = leaveBox(from, offset(a, across, shift), along)
+  const end = leaveBox(to, offset(b, across, shift), { x: -along.x, y: -along.y })
+
+  // A gentle curve rather than a straight line, so that an edge crossing a box
+  // is still followable, and so the two halves of a mutual pair bow apart.
+  const reach = Math.min(140, Math.hypot(end.x - start.x, end.y - start.y) / 2)
+  const control1 = offset(start, along, reach)
+  const control2 = offset(end, along, -reach)
+  return {
+    ...spec,
+    d: `M ${pair(start)} C ${pair(control1)} ${pair(control2)} ${pair(end)}`,
+    at: cubicMidpoint(start, control1, control2, end),
+  }
+}
+
+function selfLoop(spec: EdgeSpec, box: Rect, ordinal: number): RoutedEdge {
+  const reach = SELF_LOOP_REACH + ordinal * EDGE_SPACING
+  const x = box.x + box.w
+  const top = box.y + box.h * 0.3
+  const bottom = box.y + box.h * 0.7
+  const start = { x: x + BORDER_GAP, y: top }
+  const end = { x: x + BORDER_GAP, y: bottom }
+  const control1 = { x: x + reach, y: top }
+  const control2 = { x: x + reach, y: bottom }
+  return {
+    ...spec,
+    d: `M ${pair(start)} C ${pair(control1)} ${pair(control2)} ${pair(end)}`,
+    at: cubicMidpoint(start, control1, control2, end),
+  }
+}
+
+function centreOf(rect: Rect): Point {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }
+}
+
+function offset(point: Point, direction: Point, distance: number): Point {
+  return { x: point.x + direction.x * distance, y: point.y + direction.y * distance }
+}
+
+/**
+ * Where a ray from `inside` in direction `direction` crosses the box's border.
+ *
+ * The slab method, which is the same arithmetic a ray tracer uses and is here
+ * because picking a side by comparing angles gets the corners wrong. `inside`
+ * can be slightly outside the box once a fan offset has moved it, and a
+ * negative crossing is clamped to the point itself rather than reflected.
+ */
+function leaveBox(box: Rect, inside: Point, direction: Point): Point {
+  const horizontal =
+    direction.x > 0
+      ? (box.x + box.w - inside.x) / direction.x
+      : direction.x < 0
+        ? (box.x - inside.x) / direction.x
+        : Infinity
+  const vertical =
+    direction.y > 0
+      ? (box.y + box.h - inside.y) / direction.y
+      : direction.y < 0
+        ? (box.y - inside.y) / direction.y
+        : Infinity
+  const distance = Math.max(0, Math.min(horizontal, vertical)) + BORDER_GAP
+  return offset(inside, direction, distance)
+}
+
+function cubicMidpoint(p0: Point, p1: Point, p2: Point, p3: Point): Point {
+  return {
+    x: (p0.x + 3 * p1.x + 3 * p2.x + p3.x) / 8,
+    y: (p0.y + 3 * p1.y + 3 * p2.y + p3.y) / 8,
+  }
+}
+
+/** Two decimal places is finer than a pixel at maximum zoom and keeps the DOM small. */
+function pair(point: Point): string {
+  return `${round(point.x)},${round(point.y)}`
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100
+}
