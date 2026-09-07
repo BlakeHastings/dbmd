@@ -24,6 +24,11 @@ human produced by running a query themselves.
 MIT licensed and developed at
 `github.com/BlakeHastings/dbmd`.
 
+This was 100% vibe coded using [b-fac](https://github.com/BlakeHastings/b-fac),
+and the owner built it as a tool for their own use. The README says both, near
+the top. It is also the scope you work to: solve the issue in front of you, and
+do not build for a userbase this repository does not have.
+
 **You run it from a checkout, never from an install.** `node dist/cli.js` is the
 command written as `dbmd` everywhere, and that holds whatever is on the registry:
 an agent working an issue is changing the code in front of it, and an installed
