@@ -8,12 +8,11 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-One hundred and five pull requests have merged, all through `merge-pr.mjs`, and
-the provenance audit is clean across every commit on `main`. **76 items closed, 7
-open.** Five of the eight epics are closed. The seven still open are three epics,
-their two children (**dbmd-45** dispatched, **dbmd-42** the owner's), and two
-small ones now dispatched as well. **Nothing open is undispatched except the
-owner's decisions.**
+One hundred and eleven pull requests have merged, all through `merge-pr.mjs`,
+and the provenance audit is clean across every commit on `main`. **80 items
+closed, 4 open.** Six of the eight epics are closed. The four still open are
+**dbmd-2z4**, dispatched; **dbmd-42**, the owner's; and the two epics those two
+sit under.
 
 From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
@@ -57,17 +56,12 @@ it is the safe move either way.
 
 ## In flight, and what is actually left
 
-- **dbmd-45**, `on delete` on a `ref`, and where the model-not-migration line
-  sits. It waited all day because it touches the reader, the writer, the
-  validator and the contract seam together, and it says so in its own text.
-- **dbmd-h5s**, a missed `slashed()` call in `src/cli/export.ts`, so one error
-  message prints a Windows path where the JSON three lines below it does not.
-- **dbmd-vdh**, P4, whether the studio should be able to write an expression
-  index at all. Its brief says plainly that "do not build it" is a real answer
-  and that an ADR saying why is a deliverable I will merge.
+- **dbmd-2z4**, the validator's expression advice, which offers another wrapper
+  when the name it was given is already the mapping spelling. Following it loops.
 
-**Everything else open is the owner's**, so the whole backlog is either dispatched
-or waiting on a decision.
+**Everything else open is the owner's**, and I have said that twice today when it
+was not true, so: the list above is the whole of it, printed rather than
+remembered.
 
 ## What is waiting on the owner
 
@@ -98,12 +92,15 @@ or waiting on a decision.
   in `orchestrating.md` with what each one cost. The second was found today and
   put a reverted commit onto `main`.
 - **Close items when their branch lands**, in the same motion as the merge.
-- **`bd list` sorts the highest priority first, and I read it with `tail`.** For
-  most of 2026-09-07 I reported the backlog as holding nothing but the owner's
-  decisions. It also held **dbmd-45**, a P2 under the P0 epic `dbmd-1`, which
-  sorts to the **top** of the listing where a `tail` never looks. It was not
-  blocked on anything but a file collision. Read the whole list, or grep it, and
-  do not trust a summary of it that was produced by looking at one end.
+- **Do not summarise the backlog from memory. Print it.** I claimed twice on
+  2026-09-07 that nothing was left but the owner's decisions, and both times it
+  was false, for two different reasons. The first time **dbmd-45** was a P2 under
+  the P0 epic `dbmd-1`, which sorts to the **top** of `bd list` where the `tail`
+  I was reading never looks. The second time **dbmd-2z4** was an item I had filed
+  myself twenty minutes earlier and left out of my own summary. Reading one end
+  of a sorted list and trusting a memory of the rest fails the same way twice.
+  The fix is one command: print the whole list, unfiltered, before saying what is
+  in it.
 
 ## What has been driven, not just tested
 
@@ -385,4 +382,15 @@ rather than by reading.
   `.flags` is the only overlap.** So it is one instance rather than a pattern,
   and `check:scenes` cannot see this class of thing because the name is used by
   one scene rather than two.
+
+
+- **Every referential action reaches markdown from a live database, and the
+  command you would ask about them does not mention them.** A PostgreSQL 16
+  schema with all five actions plus `on update` imported clean: `cascade`,
+  `set null`, `set default`, `restrict`, and an undeclared foreign key written
+  explicitly as `no action`. Strict clean, round trip `unchanged`. But
+  `dbmd refs`, whose own record says you ask it immediately before a delete, lists
+  the five referrers and says nothing about which of them cascade, in prose or in
+  `--json`. **Two features that each work, with an empty seam between them**,
+  because `refs` shipped first. Filed.
 
