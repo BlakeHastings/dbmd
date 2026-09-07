@@ -96,6 +96,14 @@ CI runs one check, named `check`, and it is `npm run check`. One entry point
 rather than four jobs, so that what CI runs and what you can run are the same
 thing by construction. It is a required status check on `main`.
 
+It runs on two Node versions, so `check.yml` has two jobs rather than one: a
+matrix called `verify`, which GitHub reports as `verify (22)` and `verify (24)`,
+and a job named `check` that passes only if both legs did. The required check is
+that second job, and its name is the thing the ruleset matches on. A matrix put
+straight onto the job called `check` renames the status GitHub reports, which
+does not fail: it blocks every pull request on a check that never arrives.
+[ADR 0032](../architecture/decisions/0032-what-ci-builds-on-and-what-the-package-promises.md).
+
 A second workflow, `model`, also runs on every pull request. It is the recipe
 from [`docs/ci.md`](../ci.md) pointed at [`examples/shop`](../../examples/shop),
 so the recipe this project publishes cannot quietly go stale. It is **not** a
