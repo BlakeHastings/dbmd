@@ -87,6 +87,11 @@ export interface WireStatus {
    * to be told twice: comparing the number it drew with the number it just got
    * answers "am I stale" without any state on the server about who has seen
    * what. It starts at 0 and never goes down for the life of a session.
+   *
+   * It is also the token every mutation has to name (ADR 0025). A `PATCH` that
+   * says which revision it was made against is one the server can refuse before
+   * it applies it, which is what a `conflicts` entry arriving at the flush,
+   * after the request was answered `200`, could never be.
    */
   readonly revision: number
 }
@@ -160,6 +165,41 @@ function bad(message: string): PatchError {
 
 export function isPatchError<T>(parsed: Parsed<T>): parsed is PatchError {
   return 'error' in parsed
+}
+
+/**
+ * The header a mutation names the revision it was made against in.
+ *
+ * A header rather than a key in the body, because it is not part of the edit:
+ * `TablePatch` stays exactly the shape of a table document, and `DELETE`, which
+ * has no body at all, is guarded by the same one line. It is also a second
+ * custom header on every mutation, which is the same preflight argument
+ * `server.ts` makes about `content-type`.
+ */
+export const REVISION_HEADER = 'x-dbmd-revision'
+
+/**
+ * The revision a request named, or the refusal to guess one for it.
+ *
+ * Absent is a refusal rather than a default. This server has one client and it
+ * is the page this server sent; a mutation from something that has not said
+ * what it read is a mutation made against nothing, and letting it through would
+ * leave a hole in the guard shaped exactly like the defect the guard exists
+ * for. ADR 0025.
+ */
+export function parseRevision(header: string | undefined): Parsed<number> {
+  if (header === undefined) {
+    return bad(
+      `a mutation has to say which revision of the model it was made against: send \`${REVISION_HEADER}\` ` +
+        `with the \`revision\` from the last GET /api/model. Without it this server cannot tell an edit ` +
+        `made against what the files say from one made against a version it has already replaced`,
+    )
+  }
+  const revision = Number(header.trim())
+  if (!Number.isInteger(revision) || revision < 0) {
+    return bad(`\`${REVISION_HEADER}\` takes the \`revision\` from a status, and got \`${header}\``)
+  }
+  return { value: revision }
 }
 
 const PATCH_KEYS = ['columns', 'indexes', 'layout', 'group', 'body'] as const

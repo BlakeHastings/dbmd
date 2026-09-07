@@ -34,18 +34,60 @@
  * A failed request leaves the revision ahead of what was sent, so the next edit
  * retries it. Nothing is rolled back in the page: the developer is looking at
  * what they typed, and snatching it away is a worse answer than the status line
- * saying the write failed.
+ * saying the write failed. The one exception is a refusal that says the page is
+ * stale, where retrying is the defect: the patch was computed from a model that
+ * is gone, so it is dropped and the page re-reads.
+ *
+ * **Every request names the model revision the edit was made against** (ADR
+ * 0025), and it is the revision at the moment the edit was made rather than at
+ * the moment it is sent. Those differ by exactly the window this whole file is
+ * about: an edit can sit in `wanted` while a request is in flight, and if the
+ * page adopted a change from disk in between, sending the fresher number would
+ * be the page vouching for a model this patch was never computed from.
+ * Coalescing therefore keeps the older of the two, because a merged patch is
+ * only as fresh as its oldest half.
  */
 
 import type { Table } from '../../model/types.js'
-import type { TablePatch, WireModel, WireModelResponse, WireStatus } from '../wire.js'
+import {
+  REVISION_HEADER,
+  type TablePatch,
+  type WireModel,
+  type WireModelResponse,
+  type WireStatus,
+} from '../wire.js'
 import type { Point } from './geometry.js'
 import { referrersTo, withRefsRetargeted } from './model.js'
 
 export interface WriteHandlers {
+  /** The revision the page has drawn. Read per edit, not per request. */
+  readonly revision: () => number
   /** Every response carries the write status; this is how the status line moves. */
   readonly onStatus: (status: WireStatus) => void
-  readonly onFailure: (table: string, message: string) => void
+  readonly onFailure: (table: string, failure: RequestFailed) => void
+}
+
+/**
+ * A refusal, with the server's code as well as its words.
+ *
+ * The words are for the developer and the code is for the page: `stale` and
+ * `conflicted` mean the model moved and the page has to re-read, and everything
+ * else means the edit is still the page's to retry. A page that could only read
+ * the sentence would be matching on prose.
+ */
+export class RequestFailed extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'RequestFailed'
+  }
+
+  /** Whether the answer is to re-read the model rather than to try again. */
+  get isStale(): boolean {
+    return this.code === 'stale' || this.code === 'conflicted'
+  }
 }
 
 /** What the server answered a mutation with: the table, and where the writes stand. */
@@ -54,16 +96,30 @@ interface TableResponse extends WireStatus {
 }
 
 export class TableWriter {
-  private readonly wanted = new Map<string, { patch: TablePatch; revision: number }>()
+  private readonly wanted = new Map<string, { patch: TablePatch; revision: number; base: number }>()
   private readonly sent = new Map<string, number>()
   private readonly drains = new Map<string, Promise<void>>()
   /**
    * One counter for the whole writer rather than one per table, so a revision is
    * unique and nothing has to reason about what wrapping would mean.
+   *
+   * Not to be confused with `base`, which is the *model's* revision and comes
+   * from the server. This one only ever orders this object's own edits.
    */
   private revisions = 0
 
   constructor(private readonly handlers: WriteHandlers) {}
+
+  /**
+   * Whether anything is on its way to the server or waiting to be.
+   *
+   * The page asks before it adopts a change from disk: redrawing from a model
+   * that does not yet include an edit this object is still holding would show
+   * the developer their own work disappearing and then coming back.
+   */
+  get busy(): boolean {
+    return this.drains.size > 0
+  }
 
   /** A box moved. The only edit the canvas makes, and it is an ordinary patch. */
   move(table: string, position: Point): void {
@@ -72,10 +128,14 @@ export class TableWriter {
 
   patch(table: string, patch: TablePatch): void {
     const held = this.wanted.get(table)
+    const base = this.handlers.revision()
     this.revisions += 1
     this.wanted.set(table, {
       patch: { ...held?.patch, ...patch },
       revision: this.revisions,
+      // The older of the two: a merged patch carries content computed from both
+      // models, so it is only as fresh as the staler half of it.
+      base: held === undefined ? base : Math.min(held.base, base),
     })
     void this.drain(table)
   }
@@ -117,14 +177,50 @@ export class TableWriter {
         // this page already had, so the answer is what the page computed, and
         // adopting it would rebuild a box on every keystroke of somebody's prose
         // for no change. A model that has genuinely moved underneath the page is
-        // the watcher's problem (dbmd-33) and is fixed by re-reading, not by an
-        // echo.
-        this.handlers.onStatus(await patchTable(table, want.patch))
+        // answered by the page re-reading it (ADR 0025), not by an echo, and the
+        // patch that was computed from the old one is refused rather than fed
+        // back.
+        this.handlers.onStatus(await patchTable(table, want.patch, want.base))
         this.sent.set(table, want.revision)
       }
     } catch (error) {
-      this.handlers.onFailure(table, messageOf(error))
+      const failure =
+        error instanceof RequestFailed ? error : new RequestFailed('unreachable', messageOf(error))
+      // A stale patch is not a patch to retry. It was computed from a model
+      // that is gone, so keeping it would mean the next edit to this table
+      // sending the old column list along with the new one, which is the defect
+      // this guard exists for wearing a second hat.
+      if (failure.isStale) {
+        this.wanted.delete(table)
+        this.sent.delete(table)
+      }
+      this.handlers.onFailure(table, failure)
     }
+  }
+}
+
+/**
+ * A rename that stopped part-way, and everything a developer needs in order to
+ * know where they now are.
+ *
+ * It carries the sentence rather than the pieces because there is exactly one
+ * place that shows it and three things it has to say: what landed, what did
+ * not, and that nothing is left pointing at a table that is not there.
+ */
+export class RenameStopped extends Error {
+  constructor(
+    readonly from: string,
+    readonly to: string,
+    landed: readonly string[],
+    reason: string,
+  ) {
+    super(
+      `the rename of \`${from}\` to \`${to}\` stopped part-way: ${reason} ` +
+        `${landed.length === 0 ? 'Nothing was written' : `Written so far: ${landed.join(', ')}`}, ` +
+        `and tables/${from}.md was not deleted, so nothing is left pointing at a table that is not there. ` +
+        `Undo what landed with git checkout, then rename again on top of what the files now say.`,
+    )
+    this.name = 'RenameStopped'
   }
 }
 
@@ -142,33 +238,70 @@ export class TableWriter {
  * columns are retargeted before they are sent, so the new file is born pointing
  * at itself under its new name.
  *
- * This is deliberately not one endpoint. A rename touches several files and is
- * therefore several writes whichever layer composes it, and composing it here
- * means the interface can say what it is about to do in the same words it then
- * does it in. Where it is not atomic is real and is worth knowing: a failure
- * between the steps leaves both files on disk, which is a state `git status`
- * shows and `git checkout` undoes.
+ * **Every step names the same revision, and the whole rename is abandoned the
+ * moment the model stops being on it.** That one number is what makes several
+ * requests one decision: it was the model the developer was shown and confirmed
+ * against, so a step made against a different one is a step they did not agree
+ * to. dbmd-39 was this function running to the end after one of its own patches
+ * had been refused, and leaving `addresses.md` pointing at a table the last step
+ * had just deleted.
+ *
+ * **A step is landed before the next one is issued.** The write is debounced
+ * (ADR 0004), so a `PATCH` is answered when the edit is accepted and the
+ * refusal, if there is one, comes into existence a few hundred milliseconds
+ * later. Without the flush there is nothing yet for this loop to read, which is
+ * exactly why dbmd-39 could not be closed by checking `conflicts` after each
+ * step: the conflict did not exist yet.
+ *
+ * This is still deliberately not one endpoint. A rename touches several files
+ * and is therefore several writes whichever layer composes it, and composing it
+ * here means the interface can say what it is about to do in the same words it
+ * then does it in. What has changed is that it now says what it did not do, in
+ * the same place.
  */
 export async function renameTable(
   writer: TableWriter,
   model: WireModel,
   from: string,
   to: string,
+  base: number,
 ): Promise<void> {
   const table = model.tables.find((held) => held.name === from)
   if (table === undefined) throw new Error(`no table called \`${from}\` in this model`)
+  const landed: string[] = []
+
+  /** After a step: everything it asked for is on disk and the model has not moved. */
+  const check = async (): Promise<void> => {
+    const status = await flushWrites()
+    if (status.revision === base) return
+    const refused = status.conflicts.map((conflict) => conflict.path)
+    throw new RenameStopped(
+      from,
+      to,
+      landed,
+      refused.length === 0
+        ? 'the model changed on disk while it was running.'
+        : `${refused.join(' and ')} changed on disk while it was running, so the studio kept the change and dropped its own edit.`,
+    )
+  }
 
   await writer.settle(from)
-  await createTable({
-    name: to,
-    // Retargeted before they are sent, so a table that references itself is born
-    // pointing at itself under the new name rather than at the file about to go.
-    columns: withRefsRetargeted(table.columns, from, to),
-    indexes: table.indexes,
-    body: table.body,
-    ...(table.layout === undefined ? {} : { layout: table.layout }),
-    ...(table.group === undefined ? {} : { group: table.group }),
-  })
+  await createTable(
+    {
+      name: to,
+      // Retargeted before they are sent, so a table that references itself is
+      // born pointing at itself under the new name rather than at the file
+      // about to go.
+      columns: withRefsRetargeted(table.columns, from, to),
+      indexes: table.indexes,
+      body: table.body,
+      ...(table.layout === undefined ? {} : { layout: table.layout }),
+      ...(table.group === undefined ? {} : { group: table.group }),
+    },
+    base,
+  )
+  landed.push(`tables/${to}.md`)
+  await check()
 
   for (const name of new Set(referrersTo(model, from).map((referrer) => referrer.table))) {
     if (name === from) continue
@@ -176,9 +309,21 @@ export async function renameTable(
     if (referrer === undefined) continue
     writer.patch(name, { columns: withRefsRetargeted(referrer.columns, from, to) })
     await writer.settle(name)
+    await check()
+    landed.push(`tables/${name}.md`)
   }
 
-  await deleteTable(from)
+  try {
+    await deleteTable(from, base)
+  } catch (error) {
+    // The last step is the destructive one, and the server runs the same
+    // revision check again after landing what was already queued, because that
+    // landing is allowed to discover a refusal. Reaching here means it did.
+    if (error instanceof RequestFailed && error.isStale) {
+      throw new RenameStopped(from, to, landed, 'the model changed on disk while it was running.')
+    }
+    throw error
+  }
 }
 
 export async function fetchModel(): Promise<WireModelResponse> {
@@ -186,22 +331,38 @@ export async function fetchModel(): Promise<WireModelResponse> {
   return (await answer(response)) as WireModelResponse
 }
 
+/**
+ * Land everything already accepted, and say where that left things.
+ *
+ * It names no revision because it carries no edit: what it writes was accepted
+ * by requests that each named one. See `renameTable` for the only caller and
+ * why a multi-step edit needs it.
+ */
+export async function flushWrites(): Promise<WireStatus> {
+  const response = await fetch('/api/flush', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+  })
+  return (await answer(response)) as WireStatus
+}
+
 /** A new table's file, written immediately rather than debounced (ADR 0013). */
 export async function createTable(
   body: TablePatch & { readonly name: string },
+  base: number,
 ): Promise<TableResponse> {
   const response = await fetch('/api/table', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
     body: JSON.stringify(body),
   })
   return (await answer(response)) as TableResponse
 }
 
-export async function deleteTable(name: string): Promise<WireStatus> {
+export async function deleteTable(name: string, base: number): Promise<WireStatus> {
   const response = await fetch(`/api/table/${encodeURIComponent(name)}`, {
     method: 'DELETE',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
   })
   return (await answer(response)) as WireStatus
 }
@@ -219,11 +380,11 @@ export async function deleteTable(name: string): Promise<WireStatus> {
  */
 const KEEPALIVE_LIMIT_BYTES = 48 * 1024
 
-async function patchTable(table: string, patch: TablePatch): Promise<TableResponse> {
+async function patchTable(table: string, patch: TablePatch, base: number): Promise<TableResponse> {
   const body = JSON.stringify(patch)
   const response = await fetch(`/api/table/${encodeURIComponent(table)}`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
     body,
     keepalive: body.length <= KEEPALIVE_LIMIT_BYTES,
   })
@@ -233,15 +394,20 @@ async function patchTable(table: string, patch: TablePatch): Promise<TableRespon
 /** The parsed body, or a throw carrying the server's own words for the refusal. */
 async function answer(response: Response): Promise<unknown> {
   const body: unknown = await response.json()
-  if (!response.ok) throw new Error(errorIn(body) ?? `the server answered ${response.status}`)
+  if (!response.ok) {
+    throw new RequestFailed(
+      stringIn(body, 'code') ?? 'unknown',
+      stringIn(body, 'error') ?? `the server answered ${response.status}`,
+    )
+  }
   return body
 }
 
-/** The server's own words for a refusal, which are better than a status number. */
-function errorIn(body: unknown): string | undefined {
+/** One string field of a refusal: its words, which beat a status number, or its code. */
+function stringIn(body: unknown, key: 'error' | 'code'): string | undefined {
   if (typeof body !== 'object' || body === null) return undefined
-  const message = (body as { error?: unknown }).error
-  return typeof message === 'string' ? message : undefined
+  const value = (body as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : undefined
 }
 
 function messageOf(error: unknown): string {

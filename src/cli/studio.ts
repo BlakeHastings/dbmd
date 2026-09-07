@@ -41,9 +41,11 @@ in the page is written back to the markdown, debounced, so the model on disk is
 the state and "git diff" is what you changed.
 
 It watches the directory while it runs, so editing a file in your editor is the
-same feature seen from the other side. If a file changes on disk while the
-studio has an unwritten edit to it, the studio keeps the change on disk, drops
-its own edit and says so rather than writing over your work.
+same feature seen from the other side: the page redraws from what you saved,
+between your own edits rather than in the middle of one. If a file changes on
+disk while the studio has an unwritten edit to it, or while the page is showing
+a model the files have moved on from, the studio keeps the change on disk, drops
+its own edit and says so in the page rather than writing over your work.
 
   directory       the model directory, defaulting to ${DEFAULT_DIRECTORY}
 

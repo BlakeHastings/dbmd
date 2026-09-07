@@ -206,3 +206,69 @@ the file is still there, which is the only honest way to ask.
 - **A flush becomes slow enough to feel.** Then narrow the pre-write read to the
   files being written, which is a real optimisation this deliberately did not
   take before anybody had a model where it mattered.
+
+## Amended by dbmd-48 and dbmd-39, once somebody sent a `columns` patch from a stale page
+
+Two of the sentences above are wrong, and they are wrong in the same way: this
+record treated the page as a consumer of the guard rather than as part of it.
+
+### "The data-loss half of this item is server-side and complete"
+
+It was not. The reproduction, on the code this record describes, with a watcher
+running and nothing pending:
+
+    page holds : id, email, display_name, created_at
+    server sees: id, hand_added, email, display_name, created_at
+    PATCH status 200
+    disk now   : id, email, display_name, created_at
+    conflicts  : []
+
+The check this record puts at the write is correct, and it is not the whole
+guard. It asks whether the **disk** has moved since the session read it, and
+with nothing pending `absorb` has already adopted the hand edit, so the answer
+is honestly no and the write is correctly allowed. What has moved is the
+**browser**, which holds no baseline at all, and which sends the whole `columns`
+array it is still holding, because that is what a `TablePatch` is.
+
+So the last consequence above is not a note about presentation. "The API grew
+two fields and the page renders neither yet" describes a page that can silently
+overwrite a column it never saw, which is the same data loss this record was
+opened for, entered from the other end. **A staleness check on the client is
+part of the data-loss guard, not part of showing it.** ADR 0025 adds it: every
+mutation names the `revision` it was made against and is refused when the
+session has moved on, and the page adopts a change from disk when it is between
+things rather than waiting to be told.
+
+The narrower lesson is about how this was verified rather than about what was
+built. The review that closed it exercised the guard with a `layout` patch,
+which carries no column list, so there was nothing for a stale page to lose. The
+destructive case needs a patch that replaces content, and a narrow verification
+passed where a wider one would not have.
+
+### "The rename half-applies rather than refusing cleanly"
+
+Recorded above as a consequence to be closed later, with the two ways out named.
+The first of them is now taken, and building it showed that the way it was
+described could not have worked: "a client that reads `conflicts` after each
+step and stops" cannot read a conflict that does not exist yet. The refusal comes
+into existence at the flush, and the next step goes out before the flush fires,
+which is the whole reason the rename half-applied. So the client needs a way to
+make the write happen, and `POST /api/flush` is it.
+
+What replaced the per-step `conflicts` check is smaller and says more: **the
+whole rename names one revision, and is abandoned the moment the model is not on
+it.** A clean rename does not move the revision, because a re-read that produces
+what the session already serves changes nothing, which is a property this record
+built for the echo and which turns out to be exactly what makes one number enough
+for a multi-step edit. ADR 0025 has it.
+
+### What still stands
+
+Everything else, including the two things it would be easiest to lose in a
+rewrite. The write-time refusal stays exactly as it is, because it catches the
+case the client check cannot: a hand edit landing inside the debounce, before
+anything has noticed, which no revision on either side has been told about yet.
+And the watcher still only ever says "look again". The three checks answer three
+different questions, and the page is now the third: has the disk moved since the
+session read it, has the session moved since the caller drew its picture, and is
+there anything new to draw.

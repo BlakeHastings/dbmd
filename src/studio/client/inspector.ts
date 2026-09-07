@@ -177,6 +177,16 @@ export class Inspector {
     this.host.replaceChildren(...this.build(table))
   }
 
+  /**
+   * Whether the panel is holding a table that has no file yet.
+   *
+   * The one piece of unsaved state in this studio, and therefore the one thing
+   * a redraw from the disk would destroy. The page asks before it adopts.
+   */
+  get placing(): boolean {
+    return this.placement !== null
+  }
+
   /** Draw the form for a table that does not exist yet, at the point pointed at. */
   place(at: Point): void {
     this.name = null

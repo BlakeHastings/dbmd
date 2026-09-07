@@ -1,5 +1,5 @@
 /**
- * The studio server: `node:http`, four routes and a static directory.
+ * The studio server: `node:http`, five routes and a static directory.
  *
  * No framework, on purpose. ADR 0004 already decided the client has no UI
  * library, and the same argument applies harder to the server: this is a tool
@@ -20,6 +20,12 @@
  *    "simple" ones puts every mutation behind a preflight this server refuses by
  *    saying nothing about CORS at all.
  *
+ * A fourth line is correctness rather than security and reads like plumbing:
+ * **every mutation has to name the revision it was made against**, in
+ * `x-dbmd-revision`, and this file reads it before it reads the body. ADR 0025
+ * has the argument; what belongs here is that the header is read in one place
+ * for all three mutating methods, so a fourth one cannot be added without it.
+ *
  * Everything that decides where a file goes is in `safe-path.ts`, and everything
  * that decides what an edit means is in `edits.ts`. This file's whole job is to
  * turn a request into one of those calls and an `EditRefused` into a status.
@@ -36,7 +42,9 @@ import { resolveWithin } from './safe-path.js'
 import {
   isPatchError,
   parseNewTable,
+  parseRevision,
   parseTablePatch,
+  REVISION_HEADER,
   toWireModel,
   type WireModelResponse,
 } from './wire.js'
@@ -211,8 +219,31 @@ async function route(
     return
   }
 
+  // Landing what is already accepted, and saying where that left things.
+  //
+  // It names no object and carries no edit, which is why it takes no revision:
+  // everything it writes was accepted by a request that named one. It exists
+  // because a `PATCH` is answered when the edit is accepted and the write
+  // happens a few hundred milliseconds later (ADR 0004), so a client composing
+  // several edits out of several requests has no other way to find out that
+  // step two landed before it issues step three. ADR 0025; dbmd-39.
+  if (path.length === 2 && path[1] === 'flush') {
+    if (method !== 'POST') return methodNotAllowed(response, ['POST'])
+    if (!requiresJson(request, response)) return
+    await edits.flush()
+    send(response, 200, edits.status())
+    return
+  }
+
   if (path.length === 2 && path[1] === 'table') {
     if (method !== 'POST') return methodNotAllowed(response, ['POST'])
+    // Content type first, then the revision, then the body. The first is the
+    // one that is security (a form post is refused before anything else is
+    // asked), the second is the one that decides whether this edit is allowed
+    // to exist, and only then is it worth holding somebody's table in memory.
+    if (!requiresJson(request, response)) return
+    const base = revisionOf(request, response)
+    if (base === undefined) return
     const body = await readJsonBody(request, response)
     if (body === undefined) return
     const parsed = parseNewTable(body)
@@ -220,7 +251,7 @@ async function route(
       send(response, 400, { error: parsed.error, code: 'bad-request' })
       return
     }
-    const table = await edits.addTable(parsed.value.name, parsed.value.patch)
+    const table = await edits.addTable(parsed.value.name, parsed.value.patch, base)
     send(response, 201, { table, ...edits.status() })
     return
   }
@@ -228,6 +259,9 @@ async function route(
   if (path.length === 3 && path[1] === 'table') {
     const name = path[2] ?? ''
     if (method === 'PATCH') {
+      if (!requiresJson(request, response)) return
+      const base = revisionOf(request, response)
+      if (base === undefined) return
       const body = await readJsonBody(request, response)
       if (body === undefined) return
       const parsed = parseTablePatch(body)
@@ -235,12 +269,14 @@ async function route(
         send(response, 400, { error: parsed.error, code: 'bad-request' })
         return
       }
-      const table = edits.patchTable(name, parsed.value)
+      const table = edits.patchTable(name, parsed.value, base)
       send(response, 200, { table, ...edits.status() })
       return
     }
     if (method === 'DELETE') {
-      await edits.removeTable(name)
+      const base = revisionOf(request, response)
+      if (base === undefined) return
+      await edits.removeTable(name, base)
       send(response, 200, { removed: name, ...edits.status() })
       return
     }
@@ -345,25 +381,52 @@ function isLoopbackHost(host: string | undefined): boolean {
 }
 
 /**
- * The parsed JSON body, or `undefined` when this function has already answered.
+ * The revision the request was made against, or `undefined` when this function
+ * has already answered.
+ *
+ * Read before the body on purpose: a request that cannot say what model it was
+ * made against is refused without this server having to hold its edit in memory
+ * first. ADR 0025 has why absent is a refusal rather than a default.
+ */
+function revisionOf(request: IncomingMessage, response: ServerResponse): number | undefined {
+  const header = request.headers[REVISION_HEADER]
+  const parsed = parseRevision(Array.isArray(header) ? header[0] : header)
+  if (isPatchError(parsed)) {
+    send(response, 400, { error: parsed.error, code: 'no-revision' })
+    return undefined
+  }
+  return parsed.value
+}
+
+/**
+ * Whether the request said it was JSON, answering it itself when it did not.
  *
  * The content type is required rather than sniffed. It is what makes a mutation
  * a preflighted cross-origin request, which is what a page on another origin
  * cannot get past a server that never sends an `access-control-allow-origin`.
+ * So it is asked even of a mutation with nothing in its body to parse.
+ */
+function requiresJson(request: IncomingMessage, response: ServerResponse): boolean {
+  const type = (request.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase()
+  if (type === 'application/json') return true
+  send(response, 415, {
+    error: 'this endpoint takes `content-type: application/json`',
+    code: 'unsupported-media-type',
+  })
+  return false
+}
+
+/**
+ * The parsed JSON body, or `undefined` when this function has already answered.
+ *
+ * The caller has already asked `requiresJson`, which is why that is a separate
+ * function: the two questions are asked in a deliberate order and one route has
+ * the first and no body to read at all.
  */
 async function readJsonBody(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<unknown | undefined> {
-  const type = (request.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase()
-  if (type !== 'application/json') {
-    send(response, 415, {
-      error: 'this endpoint takes `content-type: application/json`',
-      code: 'unsupported-media-type',
-    })
-    return undefined
-  }
-
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of request) {
