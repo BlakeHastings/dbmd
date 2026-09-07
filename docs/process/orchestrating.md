@@ -382,3 +382,33 @@ later, and they have less context to recover with.
 The same applies to quoting an id in a pull request comment. Both of today's
 were caught by chance rather than by anything checking, and nothing checks:
 `check:commands` reads backticked commands, not item ids.
+
+## A force flag exists to get past something, and the something was holding something
+
+Twice on 2026-09-07 I reached for a flag whose whole job is to override an
+objection, and both times the objection was the last thing standing between me
+and a piece of work that existed nowhere else.
+
+**`git worktree remove --force`.** An agent's only file was untracked. I took a
+patch with `git diff HEAD`, which does not see untracked files, so the patch came
+out zero bytes. I did not look at it, and the removal was the last copy. Recorded
+as b-fac #182.
+
+**`git reset --hard origin/main`.** A checkout had just refused because
+`.beads/issues.jsonl` was dirty, and the dirt was an item I had filed twenty
+minutes earlier and not yet committed. The reset threw it away. It was
+recoverable only because beads keeps a database behind the export and I could
+re-run `bd export`, which is a property of that tool rather than anything I did.
+
+The shape is the same both times and it is not carelessness about the flag. It
+is that **the refusal was the notification.** Git had already told me something
+was there; the flag's purpose is to stop it telling me, and I used the flag
+because the refusal read as an obstacle to the thing I was doing rather than as
+information about the thing I was about to lose.
+
+So: **when a git command refuses and a `--force` or `--hard` would clear it, read
+what it named before you clear it.** Both refusals printed the path. One line of
+`git status --porcelain`, or one `cat` of the patch you claim to have taken, is
+the whole cost. And prefer the flagless route where one exists: `git stash` and
+`git worktree remove` without `--force` both fail loudly instead of quietly, and
+failing loudly is the behaviour being overridden.
