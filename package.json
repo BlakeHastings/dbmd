@@ -1,6 +1,6 @@
 {
   "name": "dbmd",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Model your database in markdown, edit it in a local web view, commit the result.",
   "keywords": [
     "database",
@@ -22,7 +22,6 @@
     "url": "https://github.com/BlakeHastings/dbmd/issues"
   },
   "type": "module",
-  "private": true,
   "bin": {
     "dbmd": "dist/cli.js"
   },

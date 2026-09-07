@@ -12,8 +12,9 @@ nothing.
 
 ## How you run it
 
-**This package is not published to npm.** `npx dbmd` does not work for anybody
-yet. Run it from a checkout:
+**Run it from a checkout rather than from an install.** The model you are editing
+lives in a repository and the tool that reads it should be the one in front of
+you, not whichever version somebody published:
 
 ```bash
 npm ci
@@ -22,8 +23,9 @@ node dist/cli.js check path/to/db-model
 ```
 
 Everything below writes `dbmd <command>`. Read that as `node dist/cli.js
-<command>` from the checkout, and check `package.json` for `"private": true`
-before you believe an install line anywhere else.
+<command>` from the checkout. `npx dbmd` is the other way to run it, it resolves
+whatever is on the registry, and `npm view dbmd versions` is what says which
+releases exist: do not take a version number from a page, including this one.
 
 Seven commands: `dbmd init`, `dbmd query`, `dbmd import`, `dbmd check`,
 `dbmd refs`, `dbmd studio`, `dbmd export`. Every one of them puts data on stdout, narration

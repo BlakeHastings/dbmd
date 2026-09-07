@@ -1,0 +1,106 @@
+# The only thing in this repository that publishes to npm, and it runs when a
+# person pushes a tag.
+#
+# WHY A TAG AND NOT A PUSH TO `main`
+# A publish cannot be taken back. `npm unpublish` is refused outright after
+# 72 hours and it is a rude thing to do inside them, so the wrong bytes on the
+# registry are permanent in the way a bad merge is not. Publishing on every
+# green `main` would make that consequence a side effect of an ordinary merge,
+# and an agent working an issue would then be one squash away from it. A tag is
+# a separate act by a person who meant it, and pushing tags is the one step of
+# this that no agent in this repository is allowed to take.
+#
+# It also means the token has one caller. `NPM_TOKEN` is a repository secret
+# only the owner can add, and nothing on a pull request can reach it: secrets
+# are not exposed to workflows triggered by a fork, and this workflow does not
+# run on `pull_request` at all.
+#
+# WHY THE TAG AND `package.json` ARE COMPARED
+# The tag names the release and `package.json` names what gets uploaded, and
+# nothing makes those two agree on its own. Push `v0.2.0` at a tree that still
+# says `0.1.0` and npm happily publishes `0.1.0` a second time, or refuses it
+# as a duplicate, and either way the tag on GitHub is a lie about what is on the
+# registry. So they are compared before anything is uploaded, and a mismatch
+# fails here rather than being discovered by somebody reading `npm view`.
+#
+# WHY THE TAG MUST BE ON `main`
+# A tag can be pushed at any commit, including one on a branch nobody reviewed.
+# `check.yml` is the merge gate for `main` and it is the reason anything on
+# `main` has been read; a tag off to the side would publish code that gate never
+# saw. This asks git whether the tagged commit is an ancestor of `origin/main`,
+# which is exactly that question.
+#
+# WHY THERE IS NO SEPARATE TEST STEP
+# `npm publish` runs `prepublishOnly`, which is `npm run check`: the typecheck,
+# the format check, the guards, the tests, the build, and `check:pack`, which
+# packs a tarball, installs it elsewhere and drives the installed binary. The
+# tarball is only uploaded if all of that is green on the tagged commit. Adding
+# a step that ran the same thing first would double the time and prove nothing
+# extra, and skipping the lifecycle scripts to save it would remove the only
+# check that looks at what a stranger downloads.
+#
+# THIS IS NOT THE MERGE GATE. `check.yml` is, and the job named `check` in it is
+# the only required status check. Do not rename anything here into `check`.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+# Read-only. This job uploads to npm and writes nothing back to the repository.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # All history and every branch, because the ancestry check below needs
+          # `origin/main` to exist locally and a tag checkout is shallow.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          # One version, and the Active LTS, because this publishes rather than
+          # tests. The matrix that proves 22 and 24 both work is `check.yml`,
+          # and `prepublishOnly` runs the whole of it again on this one. ADR 0032.
+          node-version: 24
+          cache: npm
+          # What writes the `.npmrc` that `NODE_AUTH_TOKEN` is read through.
+          # Without it the token is set and ignored, and the publish fails as
+          # unauthenticated with the secret sitting right there.
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: the tag names the version being published
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} says ${tag}, package.json says ${version}"
+            echo "Nothing was published. Delete the tag, make the two agree, and tag again."
+            exit 1
+          fi
+          echo "${GITHUB_REF_NAME} and package.json both say ${version}."
+
+      - name: the tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::${GITHUB_SHA} is not an ancestor of origin/main"
+            echo "Nothing was published. A release is cut from a commit that went"
+            echo "through the check gate on a pull request; tag one on main instead."
+            exit 1
+          fi
+          echo "${GITHUB_SHA} is on main."
+
+      - name: publish
+        # `--access public` is already the default for a package with no scope.
+        # It is written out because the default is a thing that can change and
+        # the intent cannot: this package is public.
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

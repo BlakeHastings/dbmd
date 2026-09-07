@@ -160,9 +160,16 @@ same edit made again lands normally.
 
 ## Running it
 
-**`dbmd` is not published to npm.** `package.json` says `"private": true`, on
-purpose, so `npx dbmd` resolves nothing today, for anybody. What works is a
-checkout:
+Two ways, and the second one is also how you work on it.
+
+**From npm, when there is a release on the registry.** No clone and no install:
+`npx --yes dbmd@0.1.0 studio db-model` fetches the package, runs it and leaves
+nothing behind. `npm view dbmd versions` says what has been published, which is
+the one answer to that question a file in this repository cannot get wrong;
+`0.1.0` is the number chosen for the first release, and releases are cut by
+pushing a tag.
+
+**From a checkout**, which always works:
 
 ```bash
 git clone https://github.com/BlakeHastings/dbmd.git
@@ -470,8 +477,8 @@ db-model/README.md is already up to date: 2 tables, 1 relationship.
 
 `--stdout` prints the document instead of writing it, which is what a CI job
 wants. [`docs/ci.md`](docs/ci.md) is `check` and `export` as a GitHub Actions
-workflow, with a reason for every line that is not obvious and a note on which
-of its lines cannot run until there is a package to install.
+workflow, with a reason for every line that is not obvious, including the pinned
+version and why pinning it is a decision rather than a formality.
 
 ## What it does not do
 

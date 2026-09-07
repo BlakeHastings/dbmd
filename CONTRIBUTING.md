@@ -223,6 +223,22 @@ and the change is one line.
 prohibited commands, and `scripts/guard-merge.mjs` refuses several of them
 before they run.
 
+## Releasing
+
+Releases are cut by the owner and by nobody else. `npm publish` is not run by
+hand, and it does not happen on a merge:
+[`.github/workflows/release.yml`](.github/workflows/release.yml) publishes when a
+tag matching `v*` is pushed, and the npm token it uses is a repository secret
+that nothing on a pull request can read. The job refuses a tag whose version
+disagrees with `package.json`, and a tag on a commit that is not on `main`, so
+the sequence is the ordinary one: land the version bump through a pull request
+like any other change, then tag the commit it landed as.
+
+**If you are an agent working an issue, you do not push tags and you do not
+publish**, for the same reason you do not merge.
+[ADR 0051](docs/architecture/decisions/0051-the-first-release-is-a-tag-a-person-pushes.md)
+is the argument, and it is also where the version number was chosen.
+
 ## Windows, macOS and Linux
 
 This is developed on Windows and most contributors will not be. Everything above
