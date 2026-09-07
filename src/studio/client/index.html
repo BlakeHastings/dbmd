@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dbmd studio</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem 2rem 4rem;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 0.25rem;
+      }
+      .subtitle {
+        margin: 0 0 1.5rem;
+        opacity: 0.7;
+        font-size: 0.9rem;
+      }
+      table {
+        border-collapse: collapse;
+        font-size: 0.85rem;
+        margin: 0 0 1.5rem;
+        min-width: 22rem;
+      }
+      caption {
+        text-align: left;
+        font-weight: 600;
+        padding: 0 0 0.25rem;
+      }
+      td {
+        border-top: 1px solid rgba(128, 128, 128, 0.35);
+        padding: 0.15rem 1rem 0.15rem 0;
+        vertical-align: top;
+      }
+      td.type,
+      .diagnostic code {
+        font-family: ui-monospace, monospace;
+        opacity: 0.8;
+      }
+      .diagnostic {
+        margin: 0 0 0.4rem;
+        font-size: 0.85rem;
+      }
+      .diagnostic.error {
+        color: #b3261e;
+      }
+      #status {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0.4rem 2rem;
+        font-size: 0.8rem;
+        background: Canvas;
+        border-top: 1px solid rgba(128, 128, 128, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <main id="model">Loading the model.</main>
+    <footer id="status"></footer>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,351 @@
+/**
+ * What goes over the wire, in both directions.
+ *
+ * Two jobs, and they are here together because they are the same contract seen
+ * from its two ends: turning a `Model` into JSON the page can hold, and turning
+ * JSON the page sent into an edit this server is willing to apply.
+ *
+ * **Outward, the only translation is the maps.** `referencesTo` and
+ * `groupMembers` are `ReadonlyMap`s, and `JSON.stringify` renders a Map as `{}`,
+ * silently, which would give the client an empty edge list and no error. They
+ * become arrays rather than objects so their order is the model's order and a
+ * group called `constructor` is a string rather than a surprise. Everything
+ * else, tables included, is already JSON-shaped and is passed through as it is:
+ * a second copy of the table's fields here would be a second place to edit when
+ * the format changes.
+ *
+ * **Inward, an unknown key is a refusal rather than a shrug.** ADR 0008 has the
+ * reader diagnosing rather than guessing, and the same argument is sharper here,
+ * because a patch this server half-understood is a file it is about to overwrite
+ * with less than the caller meant. A misspelled key that was quietly dropped
+ * would show up as an edit that did not stick, and the client would have no way
+ * to tell that from a slow disk.
+ */
+
+import type {
+  Column,
+  Diagnostic,
+  Group,
+  Index,
+  Layout,
+  Model,
+  Note,
+  RefEdge,
+  Table,
+} from '../model/types.js'
+
+// --------------------------------------------------------------------------
+// Outward.
+// --------------------------------------------------------------------------
+
+/** When the last write to disk landed, and what it touched. */
+export interface WireWrite {
+  /** ISO 8601, UTC. The client shows it; nothing here compares two of them. */
+  readonly at: string
+  /** Slash-separated and relative to the model directory, as diagnostics are. */
+  readonly paths: readonly string[]
+}
+
+/** On every response, so the client can say where the model stands (ADR 0004). */
+export interface WireStatus {
+  readonly lastWrite: WireWrite | null
+  /** An edit is in memory and its debounced write has not fired yet. */
+  readonly pendingWrite: boolean
+  /** The message from the last write that threw, cleared by the next that did not. */
+  readonly writeError: string | null
+}
+
+export interface WireModel {
+  readonly name?: string
+  readonly engine?: string
+  readonly body: string
+  readonly complete: boolean
+  readonly tables: readonly Table[]
+  readonly notes: readonly Note[]
+  readonly groups: readonly Group[]
+  readonly referencesTo: readonly { readonly table: string; readonly edges: readonly RefEdge[] }[]
+  readonly groupMembers: readonly { readonly group: string; readonly tables: readonly string[] }[]
+}
+
+export function toWireModel(model: Model): WireModel {
+  return {
+    ...(model.name === undefined ? {} : { name: model.name }),
+    ...(model.engine === undefined ? {} : { engine: model.engine }),
+    body: model.body,
+    complete: model.complete,
+    tables: model.tables,
+    notes: model.notes,
+    groups: model.groups,
+    referencesTo: [...model.referencesTo].map(([table, edges]) => ({ table, edges })),
+    groupMembers: [...model.groupMembers].map(([group, tables]) => ({ group, tables })),
+  }
+}
+
+export interface WireModelResponse extends WireStatus {
+  readonly model: WireModel
+  readonly diagnostics: readonly Diagnostic[]
+}
+
+// --------------------------------------------------------------------------
+// Inward.
+// --------------------------------------------------------------------------
+
+/**
+ * An edit to a table, as a partial table document.
+ *
+ * Every key is the whole of that part of the table rather than a delta into it:
+ * `columns` replaces the column list, and changing one column's type means
+ * sending the list with that type changed. The studio holds the model already
+ * (ADR 0004 says the disk does, and the page holds a copy of it), so it has the
+ * list to send, and a delta language over an ordered list would need to name
+ * positions, which is the thing that goes wrong when two edits race.
+ *
+ * `null` on `layout` or `group` removes the key. `undefined`, meaning the key
+ * was absent, leaves that part of the table alone.
+ */
+export interface TablePatch {
+  readonly columns?: readonly Column[]
+  readonly indexes?: readonly Index[]
+  readonly layout?: Layout | null
+  readonly group?: string | null
+  readonly body?: string
+}
+
+/** A refusal, in the words the caller will see. */
+export interface PatchError {
+  readonly error: string
+}
+
+export type Parsed<T> = { readonly value: T } | PatchError
+
+function bad(message: string): PatchError {
+  return { error: message }
+}
+
+export function isPatchError<T>(parsed: Parsed<T>): parsed is PatchError {
+  return 'error' in parsed
+}
+
+const PATCH_KEYS = ['columns', 'indexes', 'layout', 'group', 'body'] as const
+
+export function parseTablePatch(input: unknown): Parsed<TablePatch> {
+  const map = asMap(input, 'the request body')
+  if (isPatchError(map)) return map
+  const object = map.value
+
+  for (const key of Object.keys(object)) {
+    if (!(PATCH_KEYS as readonly string[]).includes(key)) {
+      return bad(`unknown key \`${key}\`; a table patch takes ${PATCH_KEYS.join(', ')}`)
+    }
+  }
+
+  const patch: {
+    columns?: readonly Column[]
+    indexes?: readonly Index[]
+    layout?: Layout | null
+    group?: string | null
+    body?: string
+  } = {}
+
+  if (object['columns'] !== undefined) {
+    const columns = parseList(object['columns'], 'columns', parseColumn)
+    if (isPatchError(columns)) return columns
+    patch.columns = columns.value
+  }
+  if (object['indexes'] !== undefined) {
+    const indexes = parseList(object['indexes'], 'indexes', parseIndex)
+    if (isPatchError(indexes)) return indexes
+    patch.indexes = indexes.value
+  }
+  if (object['layout'] !== undefined) {
+    if (object['layout'] === null) patch.layout = null
+    else {
+      const layout = parseLayout(object['layout'], 'layout')
+      if (isPatchError(layout)) return layout
+      patch.layout = layout.value
+    }
+  }
+  if (object['group'] !== undefined) {
+    if (object['group'] === null) patch.group = null
+    else {
+      const group = asString(object['group'], 'group')
+      if (isPatchError(group)) return group
+      patch.group = group.value
+    }
+  }
+  if (object['body'] !== undefined) {
+    const body = asString(object['body'], 'body')
+    if (isPatchError(body)) return body
+    patch.body = body.value
+  }
+
+  return { value: patch }
+}
+
+/** A new table: the same patch, plus the name the file will be called. */
+export function parseNewTable(input: unknown): Parsed<{ name: string; patch: TablePatch }> {
+  const map = asMap(input, 'the request body')
+  if (isPatchError(map)) return map
+  const { name: rawName, ...rest } = map.value
+  if (rawName === undefined) return bad('a new table needs a `name`')
+  const name = asString(rawName, 'name')
+  if (isPatchError(name)) return name
+  const patch = parseTablePatch(rest)
+  if (isPatchError(patch)) return patch
+  return { value: { name: name.value, patch: patch.value } }
+}
+
+/**
+ * The one place that knows what keys a column has.
+ *
+ * The format is still moving, so when a key is renamed or added this is the
+ * function that changes, and the type checker points at it rather than at six
+ * scattered literals.
+ */
+const COLUMN_KEYS = ['name', 'type', 'pk', 'nullable', 'default', 'ref'] as const
+
+function parseColumn(input: unknown, where: string): Parsed<Column> {
+  const map = asMap(input, where)
+  if (isPatchError(map)) return map
+  const object = map.value
+  const unknown = Object.keys(object).find(
+    (key) => !(COLUMN_KEYS as readonly string[]).includes(key),
+  )
+  if (unknown !== undefined) {
+    return bad(`unknown key \`${unknown}\` on ${where}; a column takes ${COLUMN_KEYS.join(', ')}`)
+  }
+
+  const name = asString(object['name'], `${where}.name`)
+  if (isPatchError(name)) return name
+  const type = asString(object['type'], `${where}.type`)
+  if (isPatchError(type)) return type
+
+  const column: {
+    name: string
+    type: string
+    pk?: boolean
+    nullable?: boolean
+    default?: string
+    ref?: { table: string; column: string }
+  } = { name: name.value, type: type.value }
+
+  if (object['pk'] !== undefined) {
+    const pk = asBoolean(object['pk'], `${where}.pk`)
+    if (isPatchError(pk)) return pk
+    column.pk = pk.value
+  }
+  if (object['nullable'] !== undefined) {
+    const nullable = asBoolean(object['nullable'], `${where}.nullable`)
+    if (isPatchError(nullable)) return nullable
+    column.nullable = nullable.value
+  }
+  if (object['default'] !== undefined) {
+    const value = asString(object['default'], `${where}.default`)
+    if (isPatchError(value)) return value
+    column.default = value.value
+  }
+  if (object['ref'] !== undefined) {
+    const ref = asMap(object['ref'], `${where}.ref`)
+    if (isPatchError(ref)) return ref
+    const table = asString(ref.value['table'], `${where}.ref.table`)
+    if (isPatchError(table)) return table
+    const target = asString(ref.value['column'], `${where}.ref.column`)
+    if (isPatchError(target)) return target
+    column.ref = { table: table.value, column: target.value }
+  }
+
+  return { value: column }
+}
+
+/** The one place that knows what keys an index has, for the same reason. */
+const INDEX_KEYS = ['name', 'columns', 'unique'] as const
+
+function parseIndex(input: unknown, where: string): Parsed<Index> {
+  const map = asMap(input, where)
+  if (isPatchError(map)) return map
+  const unknown = Object.keys(map.value).find(
+    (key) => !(INDEX_KEYS as readonly string[]).includes(key),
+  )
+  if (unknown !== undefined) {
+    return bad(`unknown key \`${unknown}\` on ${where}; an index takes ${INDEX_KEYS.join(', ')}`)
+  }
+  const name = asString(map.value['name'], `${where}.name`)
+  if (isPatchError(name)) return name
+  const columns = parseList(map.value['columns'], `${where}.columns`, asString)
+  if (isPatchError(columns)) return columns
+  const index: { name: string; columns: readonly string[]; unique?: boolean } = {
+    name: name.value,
+    columns: columns.value,
+  }
+  if (map.value['unique'] !== undefined) {
+    // Uniqueness is an index's property and never a column's. A patch that
+    // replaces the index list has to be able to carry it, or editing a table's
+    // indexes would quietly drop the constraint that made one of them matter.
+    const unique = asBoolean(map.value['unique'], `${where}.unique`)
+    if (isPatchError(unique)) return unique
+    index.unique = unique.value
+  }
+  return { value: index }
+}
+
+function parseLayout(input: unknown, where: string): Parsed<Layout> {
+  const map = asMap(input, where)
+  if (isPatchError(map)) return map
+  const x = asFiniteNumber(map.value['x'], `${where}.x`)
+  if (isPatchError(x)) return x
+  const y = asFiniteNumber(map.value['y'], `${where}.y`)
+  if (isPatchError(y)) return y
+  const layout: { x: number; y: number; w?: number; h?: number } = { x: x.value, y: y.value }
+  if (map.value['w'] !== undefined) {
+    const w = asFiniteNumber(map.value['w'], `${where}.w`)
+    if (isPatchError(w)) return w
+    layout.w = w.value
+  }
+  if (map.value['h'] !== undefined) {
+    const h = asFiniteNumber(map.value['h'], `${where}.h`)
+    if (isPatchError(h)) return h
+    layout.h = h.value
+  }
+  return { value: layout }
+}
+
+function parseList<T>(
+  input: unknown,
+  where: string,
+  parseOne: (item: unknown, where: string) => Parsed<T>,
+): Parsed<readonly T[]> {
+  if (!Array.isArray(input)) return bad(`${where} must be a list`)
+  const items: T[] = []
+  for (const [position, item] of input.entries()) {
+    const parsed = parseOne(item, `${where}[${position}]`)
+    if (isPatchError(parsed)) return parsed
+    items.push(parsed.value)
+  }
+  return { value: items }
+}
+
+function asMap(input: unknown, where: string): Parsed<Record<string, unknown>> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return bad(`${where} must be an object`)
+  }
+  return { value: input as Record<string, unknown> }
+}
+
+function asString(input: unknown, where: string): Parsed<string> {
+  if (typeof input !== 'string') return bad(`${where} must be a string`)
+  return { value: input }
+}
+
+function asBoolean(input: unknown, where: string): Parsed<boolean> {
+  if (typeof input !== 'boolean') return bad(`${where} must be true or false`)
+  return { value: input }
+}
+
+function asFiniteNumber(input: unknown, where: string): Parsed<number> {
+  // A layout carries coordinates that get written into a file and read back, so
+  // an infinity or a NaN here becomes `.inf` in somebody's frontmatter.
+  if (typeof input !== 'number' || !Number.isFinite(input)) {
+    return bad(`${where} must be a finite number`)
+  }
+  return { value: input }
+}
