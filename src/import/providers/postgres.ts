@@ -49,7 +49,50 @@ const INTROSPECTION_QUERY = `-- dbmd introspection query for PostgreSQL 12 or la
 --
 -- One statement and no psql meta-commands, so it pastes whole into pgAdmin,
 -- DBeaver, a JDBC console or \`docker exec ... psql\` alike. It returns one row
--- of one column: the JSON \`dbmd import\` reads. Save that value to a file.
+-- of one column, dbmd_introspection, holding the JSON \`dbmd import\` reads. Run
+-- it against the database you want to model: it describes the one you are
+-- connected to.
+--
+--
+-- BEFORE YOU SAVE THE RESULT, READ THIS PARAGRAPH.
+--
+-- The file \`dbmd import\` reads holds that one value and nothing else: one line
+-- that begins \`{\` and ends \`}\`, with no column header above it, no rule of
+-- dashes, no row count under it and no padding round it. Check your file against
+-- that shape before you suspect the query. Every client here writes something of
+-- its own round the value by default, and when one does, the JSON in the middle
+-- is byte-for-byte correct and the file still will not parse.
+--
+--   * psql: three flags, and each one is doing something.
+--
+--       psql -X -t -A -d yourdb -f query.sql -o model.json
+--
+--     Without -t you get a column header, a rule of dashes and a "(1 row)"
+--     footer, and \`dbmd import\` fails on the header before it has reached any
+--     JSON at all. Without -A psql pads the value into a column; that padding
+--     is spaces, so the file happens to parse, and it stops parsing the moment
+--     the output format is wrapped, because psql then breaks the value across
+--     lines and writes a continuation dot into every break. Without -X psql
+--     reads ~/.psqlrc after these flags rather than before, so one
+--     \\pset format wrapped in that file quietly undoes -A while the command you
+--     typed still looks right. All three were measured on PostgreSQL 16.15, and
+--     -X -t -A is the combination that imported first try.
+--
+--     They are flags rather than a line at the top of this file because they
+--     belong to psql and not to this query. A \\pset here would make the file
+--     psql-only, and it is meant to paste into a JDBC console too.
+--   * pgAdmin, DBeaver and the other grids each have their own way of saving a
+--     cell rather than copying it, and none of them was measured for this file,
+--     so it names no command for them. Save the value however your client saves
+--     a value, then check the file against the shape above. A grid showing the
+--     cell cut short is showing you its own display cap and not your schema.
+--
+-- If \`dbmd import\` says the file is not JSON, read what it names. A first token
+-- like dbmd_introspection, or a run of dashes, is your client's header and the
+-- JSON is further down the file. A position past the end of your schema is your
+-- client's footer. A position inside the schema is either a copy that stopped
+-- early or a client that wrapped the value across lines. In none of the three is
+-- the query's own output wrong.
 --
 -- Identifiers come out exactly as the catalog holds them. Postgres folds an
 -- unquoted name to lower case, so a table created as "Orders" and one created as
