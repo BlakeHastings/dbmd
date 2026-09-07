@@ -62,7 +62,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process'
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -84,12 +84,26 @@ afterEach(async () => {
   }
 })
 
-/** A scratch directory holding one of the guard scripts under its own `scripts/`. */
-async function scratchWith(script: string): Promise<string> {
+/**
+ * A scratch directory holding one of the guard scripts under its own `scripts/`.
+ *
+ * `nodeModules` links the repository's own, for a script that imports a
+ * devDependency: `check-scene-classes.mjs` parses the two scene files with the
+ * TypeScript compiler, and a bare specifier resolved from a temporary directory
+ * has nothing above it to resolve against. A junction on Windows and a symbolic
+ * link everywhere else, and `rm` unlinks either rather than descending into it,
+ * so the cleanup above cannot reach the real one. That was checked rather than
+ * assumed, because the alternative is deleting the checkout's `node_modules`
+ * from a test run.
+ */
+async function scratchWith(script: string, { nodeModules = false } = {}): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'dbmd-guard-'))
   temporaries.push(root)
   await mkdir(join(root, 'scripts'), { recursive: true })
   await cp(join(SCRIPTS, script), join(root, 'scripts', script))
+  if (nodeModules) {
+    await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'junction')
+  }
   return root
 }
 
@@ -636,14 +650,16 @@ describe('check:scenes, broken on purpose', () => {
    * collision, side by side, which the real 800-line page cannot.
    *
    * No git repository. Unlike the two checks above, this one reads three named
-   * paths rather than `git ls-files`, so a file on disk is all it needs.
+   * paths rather than `git ls-files`, so a file on disk is all it needs. It
+   * does need `node_modules`, because it parses the two scene files with the
+   * TypeScript compiler rather than reading them as lines.
    */
   async function studio(files: {
     rules: string[]
     canvas?: string[]
     inspector?: string[]
   }): Promise<string> {
-    const root = await scratchWith('check-scene-classes.mjs')
+    const root = await scratchWith('check-scene-classes.mjs', { nodeModules: true })
     await mkdir(join(root, 'src', 'studio', 'client'), { recursive: true })
     const write = (name: string, lines: string[]) =>
       writeFile(join(root, 'src', 'studio', 'client', name), `${lines.join('\n')}\n`)
@@ -881,6 +897,129 @@ describe('check:scenes, broken on purpose', () => {
     expect(ran.err).toContain('see fewer classes than there are')
     // And not a finding, which is the point: an exit code of 1 for the wrong
     // reason is what this assertion separates from the real one.
+    expect(ran.err).not.toContain('1 rule on a class name')
+  })
+
+  /** The `el` and `textField` the check is told about, as the fixtures declare them. */
+  const HELPERS = [
+    'function el(tag: string, className = ""): HTMLElement {',
+    '  return make(tag, className)',
+    '}',
+    'function textField(parent: HTMLElement, key: string): HTMLInputElement {',
+    "  return el('input', key)",
+    '}',
+  ]
+
+  test('a helper call wrapped over four lines is read, because a class name does not live on a line', async () => {
+    // dbmd-86c, and the reason this check now parses the two files. It read a
+    // line at a time, and the inspector writes its `ref` field through a
+    // `textField(...)` call a formatter wraps, so the class and the call were
+    // never on one line and the name was not seen written at all. `ref` was
+    // then a name only the canvas used, which made it an anchor, and this bare
+    // rule passed. Nothing in the source decided that except where the
+    // newlines fall, which is a guard one Prettier setting away from silence.
+    const rules = ['      .ref {', '        grid-column: 1 / -1;', '      }']
+    const canvas = ["cell.className = 'ref'"]
+    const wrapped = await studio({
+      rules,
+      canvas,
+      inspector: [...HELPERS, 'const reference = textField(', '  item,', "  'ref',", ')'],
+    })
+
+    const ran = await runScript(wrapped, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('`.ref`')
+    // The line of the literal, not of the open bracket two lines above it.
+    expect(ran.err).toContain('canvas.ts:1 and inspector.ts:9')
+
+    // The same call on one line is the same finding, which is the property
+    // rather than the fix: the check's answer no longer depends on the shape of
+    // the call that writes the class.
+    const collapsed = await studio({
+      rules,
+      canvas,
+      inspector: [...HELPERS, "const reference = textField(item, 'ref')"],
+    })
+
+    const again = await runScript(collapsed, 'check-scene-classes.mjs')
+
+    expect(again.code).toBe(1)
+    expect(again.err).toContain('`.ref`')
+    expect(again.err).toContain('canvas.ts:1 and inspector.ts:7')
+  })
+
+  test('a wrapped `classList` call and a wrapped `className` assignment are read too', async () => {
+    // The hazard is general and it is not hypothetical on the canvas side
+    // either: `this.edgePaths[index]?.classList.toggle(` is already wrapped over
+    // four lines, and every one of these sites gets wrapped the moment it gains
+    // an argument.
+    const rules = ['      .related {', '        stroke: red;', '      }']
+    const inspector = [...HELPERS, "const mark = el('span', 'related')"]
+
+    const byClassList = await studio({
+      rules,
+      canvas: ['path.classList.toggle(', "  'related',", '  from === table,', ')'],
+      inspector,
+    })
+
+    const first = await runScript(byClassList, 'check-scene-classes.mjs')
+
+    expect(first.code).toBe(1)
+    expect(first.err).toContain('`.related`')
+    expect(first.err).toContain('canvas.ts:2 and inspector.ts:7')
+
+    const byAssignment = await studio({
+      rules,
+      canvas: ['path.className =', "  from === table ? 'related' : 'related dim'"],
+      inspector,
+    })
+
+    const second = await runScript(byAssignment, 'check-scene-classes.mjs')
+
+    expect(second.code).toBe(1)
+    expect(second.err).toContain('`.related`')
+    expect(second.err).toContain('canvas.ts:2 and inspector.ts:7')
+  })
+
+  test('a class name written in a comment is not a class, which reading a tree gets for free', async () => {
+    // The other direction, and the reason the fix was not a wider regular
+    // expression. Both scene files describe the two collisions in prose, in the
+    // words that would be findings if prose were code. If this comment were
+    // read, `notes` would be shared and the bare rule below would fail.
+    const root = await studio({
+      rules: ['      .notes {', '        position: absolute;', '      }'],
+      canvas: ["layer.className = 'notes'"],
+      inspector: [
+        ...HELPERS,
+        "// The canvas layer is `notes` as well, so el('p', 'notes') here would",
+        '// put every validation paragraph behind the toolbar. dbmd-49.',
+        "const said = el('p', 'said')",
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('share no class name')
+  })
+
+  test('a scene file that did not parse is said out loud rather than read as having no classes', async () => {
+    // The same failure mode as the renamed helper, one layer down. A file the
+    // parser could not finish yields a partial tree, a partial tree yields
+    // fewer class names than there are, and fewer class names yields a passing
+    // run. `npm run typecheck` would have caught this first, which is not a
+    // reason for the guard to be quiet when it is run on its own.
+    const root = await studio({
+      rules: ['      .notes {', '        position: absolute;', '      }'],
+      inspector: [...HELPERS, "const said = el('p', 'notes'"],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('did not parse')
+    expect(ran.err).toContain('see fewer classes than there are')
     expect(ran.err).not.toContain('1 rule on a class name')
   })
 })
