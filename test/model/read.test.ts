@@ -274,6 +274,170 @@ describe('a kind directory reached through a link', () => {
   })
 })
 
+/**
+ * A model whose `tables/` is real and holds whatever `make` puts in it.
+ *
+ * Built by hand rather than through `withModel` for the same reason
+ * `withLinkedTables` is: what is under test is what an entry *is*, and
+ * `withModel` can only write file contents. `elsewhere/` is a directory beside
+ * the model for a link to point at.
+ */
+interface ModelPaths {
+  /** The model root, for a test that needs a kind directory other than `tables`. */
+  readonly model: string
+  readonly tables: string
+  /** A directory beside the model, for a link to point at. */
+  readonly elsewhere: string
+  /** The temporary root, whose children are the two above. */
+  readonly root: string
+}
+
+async function withTables(make: (paths: ModelPaths) => Promise<void>): Promise<ReadResult> {
+  const root = await mkdtemp(join(tmpdir(), 'dbmd-object-'))
+  try {
+    const model = join(root, 'model')
+    const tables = join(model, 'tables')
+    const elsewhere = join(root, 'elsewhere')
+    await mkdir(tables, { recursive: true })
+    await mkdir(elsewhere)
+    await writeFile(join(model, '_model.md'), '---\nkind: model\nname: test\n---\n')
+    await make({ model, tables, elsewhere, root })
+    return await readModel(model)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+const TABLE_FILE = '---\nkind: table\ntable: orders\ncolumns: []\n---\n'
+
+/**
+ * Whether this machine can make a symlink to a *file*.
+ *
+ * A junction is the privilege-free link on Windows and it links directories
+ * only: `symlink(aFile, link, 'junction')` is accepted and produces a link that
+ * resolves to nothing, so it cannot stand in for this. `symlink(aFile, link,
+ * 'file')` needs `SeCreateSymbolicLink`, which an ordinary Windows account does
+ * not have and Developer Mode grants, so it fails with `EPERM` on the machine
+ * this was written on and succeeds on the Linux runner and on POSIX generally.
+ *
+ * Measured rather than derived from `process.platform`, because the answer is
+ * about the account and not about the operating system.
+ *
+ * The one test below that needs it is therefore skipped here and runs in CI,
+ * which is not good enough on its own: `linked-file.test.ts` pins the same
+ * decision everywhere, with the `Dirent` a POSIX symlink produces measured and
+ * then supplied.
+ */
+async function canSymlinkFiles(): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), 'dbmd-symlink-probe-'))
+  try {
+    await writeFile(join(dir, 'target'), 'x')
+    await symlink(join(dir, 'target'), join(dir, 'link'), 'file')
+    return true
+  } catch {
+    return false
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+const fileSymlinks = await canSymlinkFiles()
+
+describe('an object file reached through a link', () => {
+  test.runIf(fileSymlinks)('a symlinked table file is read', async () => {
+    // The defect dbmd-95n names. `markdownFiles` filtered on `entry.isFile()`,
+    // which is false for a symlink whatever it points at, so this model came
+    // back with no tables and no diagnostics at all.
+    const { model, diagnostics } = await withTables(async ({ tables, elsewhere }) => {
+      await writeFile(join(elsewhere, 'orders.md'), TABLE_FILE)
+      await symlink(join(elsewhere, 'orders.md'), join(tables, 'orders.md'), 'file')
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables.map((table) => table.name)).toEqual(['orders'])
+  })
+
+  test('a link that resolves to a directory is an error, not silence', async () => {
+    // The question ADR 0038 left open and ADR 0040 answers. A junction is the
+    // link this machine can make without a privilege, and it links directories
+    // only, so this is the case that is reproducible everywhere: `tables` holds
+    // a name that claims to be the table `orders` and can never be one.
+    const { model, diagnostics } = await withTables(async ({ tables, elsewhere }) => {
+      await symlink(elsewhere, join(tables, 'orders.md'), 'junction')
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md error object-not-a-file: `orders.md` is a directory rather than a file, so there is no table `orders`; a link that resolves to a directory looks exactly like this',
+    ])
+    expect(model.tables).toEqual([])
+  })
+
+  test('a plain directory of that name gets the same sentence as a link to one', async () => {
+    // Deliberately identical, and this is the assertion that says so. A rule
+    // that answered differently depending on whether a directory was reached
+    // through a link would be ADR 0038's mistake in a new place: it would be
+    // asking what the entry is rather than what opening it does.
+    const linked = await withTables(async ({ tables, elsewhere }) => {
+      await symlink(elsewhere, join(tables, 'orders.md'), 'junction')
+    })
+    const plain = await withTables(async ({ tables }) => {
+      await mkdir(join(tables, 'orders.md'))
+    })
+
+    expect(lines(plain.diagnostics)).toEqual(lines(linked.diagnostics))
+  })
+
+  test('the message names the kind the directory was in', async () => {
+    const { diagnostics } = await withTables(async ({ model, elsewhere }) => {
+      await mkdir(join(model, 'notes'))
+      await symlink(elsewhere, join(model, 'notes', 'why.md'), 'junction')
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'notes/why.md error object-not-a-file: `why.md` is a directory rather than a file, so there is no note `why`; a link that resolves to a directory looks exactly like this',
+    ])
+  })
+
+  test('a link that points at nothing is a read failure, not a shape decision', async () => {
+    // `file-unreadable`, the same boundary ADR 0038 drew one level up: the
+    // entry was listed and then would not open, which is what that code has
+    // always meant. Nothing was decided about what the name is.
+    const { diagnostics } = await withTables(async ({ tables, root }) => {
+      await symlink(join(root, 'nowhere'), join(tables, 'orders.md'), 'junction')
+    })
+
+    expect(diagnostics.map((d) => d.code)).toEqual(['file-unreadable'])
+    expect(diagnostics[0]?.message).toContain('ENOENT')
+  })
+
+  test("a directory whose name is not `.md` is still nobody's business", async () => {
+    // The smaller silence, left alone on purpose. `archive` claims to be no
+    // object, so neither a real one nor a junctioned one is worth a sentence,
+    // exactly as a junctioned `sketches/` at the model root is not.
+    const { model, diagnostics } = await withTables(async ({ tables, elsewhere }) => {
+      await writeFile(join(tables, 'orders.md'), TABLE_FILE)
+      await symlink(elsewhere, join(tables, 'archive'), 'junction')
+      await mkdir(join(tables, 'drafts'))
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables.map((table) => table.name)).toEqual(['orders'])
+  })
+
+  test('an ordinary model is unchanged, dotfiles and all', async () => {
+    // The legal cases, asserted beside the new error rather than trusted: a
+    // plain file is read, a dotfile is skipped, and neither costs a diagnostic.
+    const { model, diagnostics } = await withTables(async ({ tables }) => {
+      await writeFile(join(tables, 'orders.md'), TABLE_FILE)
+      await writeFile(join(tables, '.orders.md.swp'), 'x')
+      await writeFile(join(tables, 'notes.txt'), 'x')
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables.map((table) => table.name)).toEqual(['orders'])
+  })
+})
+
 describe('the file name is the identity', () => {
   test('a table key that disagrees with the file name is a diagnostic', async () => {
     const { model, diagnostics } = await withModel({

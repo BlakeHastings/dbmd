@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Seventy-nine pull requests have merged, all through `merge-pr.mjs`, and the
+Eighty-six pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -95,13 +95,10 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-80**, a skill that teaches an agent to drive dbmd. It became
-  dispatchable only because a day of using the tool answered three of the four
-  questions its refinement was waiting on.
-- **dbmd-95n**, a symlinked model file inside a kind directory, which is the
-  `Dirent` problem one level down.
-- **dbmd-4cp**, the sqlcmd recipe the SQL Server query prints, which does not
-  work.
+- **dbmd-81**, a command that answers what points at a table. The model already
+  holds the answer and nothing on the command line exposes it.
+- **dbmd-pqd**, the Postgres query telling nobody how to save its result, when
+  the obvious command produces a file the importer refuses.
 
 ## What proved out, and is easy to lose
 
@@ -187,6 +184,17 @@ move and will file a defect. It is the note. Move it and the drag works.
   query has no such command, so it cannot be wrong in this way and gives less
   help; whether that asymmetry is right is part of the item.
 
+- **A recipe the tool prints is code, and nothing was running it.** The `sqlcmd`
+  command `dbmd query --engine sqlserver` shipped produced a file ending
+  `(1 rows affected)`, so the JSON was the first 2315 of 2333 bytes and the
+  import failed **with a message saying the file was probably truncated**. It was
+  too long. Then the same question asked of Postgres: its query gives no
+  invocation at all, and the obvious `psql -f q.sql -o out.json` writes a header,
+  a padded column and a `(1 row)` footer, which fails one position earlier with a
+  worse message. **So the asymmetry was never "Postgres is safe", it was
+  "Postgres is silent".** Both found by following the instructions rather than by
+  running the tool, which is a different test and nothing had been doing it.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
@@ -225,6 +233,19 @@ rather than by reading.
   got it as prose while the table without one got the prompt line instead. The
   studio then drew both with the arrow on `orders.account_id` pointing at
   `accounts.id` rather than at the box.
+
+- **The dbmd skill works when somebody other than its author follows it.** I ran
+  its canonicalise recipe verbatim: a column added in flow style with the wrong
+  key order passed `dbmd check` with **zero diagnostics**, the nine-line script
+  rewrote exactly that one file, a second run reported `unchanged`, and nothing
+  else in the model moved. Then its rename recipe, all five steps: the query in
+  step one printed exactly what the skill shows, moving the file without fixing
+  the refs produced the two `ref-table-unknown` errors and the `name-mismatch`
+  it promises as a safety net, and the finished rename checked green. **The
+  prose hazard is real and table-specific**: `_model.md` names `subscriptions`
+  in backticks, so renaming that table leaves the sentence false with a green
+  check, and renaming `addresses` leaves nothing behind. That is why the skill
+  ends the recipe with a sweep rather than a rule.
 
 
 ## What is waiting on the owner

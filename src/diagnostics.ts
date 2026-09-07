@@ -63,6 +63,17 @@ export type ModelDiagnosticCode =
    * the sort of thing that holds files.
    */
   | 'kind-not-a-directory'
+  /**
+   * A name ending in `.md` inside `tables/`, `notes/` or `groups/` that is a
+   * directory rather than a file, so the object it names was never read. Its
+   * link-shaped form is why it exists: a junction or a symlink resolving to a
+   * directory. ADR 0040.
+   *
+   * The mirror of `kind-not-a-directory` one level down, and distinct from
+   * `file-unreadable` for the same reason: nothing failed. The entry was listed
+   * and then followed, successfully, to a directory.
+   */
+  | 'object-not-a-file'
   /** The file does not begin with a `---` line. */
   | 'frontmatter-absent'
   /** `---` on the first line and no closing `---` anywhere after it. */

@@ -74,12 +74,28 @@ const INTROSPECTION_QUERY = `-- dbmd introspection query for SQL Server 2016 or 
 --
 --   * SSMS: Query > Results To > Results to File, or right-click the cell and
 --     Save Results As.
---   * sqlcmd: \`sqlcmd -S server -d yourdb -y 0 -Y 0 -i query.sql -o model.json\`.
---     Without -y 0 sqlcmd truncates at 256 characters.
+--   * sqlcmd: two input files, and the second one is this file, unedited.
+--
+--       sqlcmd -S server -d yourdb -y 0 -Y 0 -i nocount.sql -i query.sql -o model.json
+--
+--     nocount.sql is one line, SET NOCOUNT ON;, and it is not optional. Without
+--     it sqlcmd writes its own "(1 rows affected)" line into the file after the
+--     JSON, and the file will not parse even though every byte of the JSON in
+--     front of it is correct. Without -y 0 sqlcmd truncates the value at 256
+--     characters instead. -h -1 would also silence the row count, and sqlcmd
+--     refuses -h together with -y 0, so it is not a way round the extra file.
+--
+--     SET NOCOUNT ON belongs to sqlcmd rather than to this query, which is why
+--     it is a file of its own and not the first line of this one. Putting it
+--     here would make this two statements, and a client that runs the statement
+--     under the cursor would then run the SET and show you nothing.
 --   * Azure Data Studio: "Save as JSON" on the result grid.
 --
--- If dbmd tells you the file is not valid JSON, or that it stops part way
--- through, it is this: the copy was cut short, not the query.
+-- If dbmd tells you the file is not valid JSON, read the position it names. A
+-- position short of the end of your schema is a copy that stopped early. A
+-- position at the very end, with something after it, is the client writing its
+-- own footer into the file: a row count, a column header, a table frame. Either
+-- way it is the client and not the query.
 --
 --
 -- FOR JSON arrived in SQL Server 2016. On 2014 or earlier the parser has never

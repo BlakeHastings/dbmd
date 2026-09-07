@@ -191,14 +191,14 @@ const rows = [...page.matchAll(/^\| `([a-z][a-z-]*)` \| (?:error|warning) \|/gm)
 
 describe('docs/format.md keeps up with the reader', () => {
   test('the union read is the model half, and all of it', () => {
-    // Thirty-one: twenty-two the reader raises, nine the validator does. The exact
+    // Thirty-two: twenty-three the reader raises, nine the validator does. The exact
     // count, not a floor, so that a slice which stopped early or ran long says
     // so. The floor this replaces was `toBeGreaterThan(10)`, which passed
     // happily on the twenty-eight a blank line near the end of the declaration
     // used to leave behind: a control that only fires on the case nobody hits
     // is the reason nobody looks again. Adding a code means changing this
     // number, which is the point.
-    expect(codes.length).toBe(31)
+    expect(codes.length).toBe(32)
     // `ImportDiagnosticCode` is the next declaration in that file, so a slice
     // that ran past the end of this one would pick it up.
     expect(union).not.toContain('ImportDiagnosticCode')
