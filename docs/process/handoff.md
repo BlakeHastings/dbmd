@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with three agents in flight and no pull request open.**
+**As of 2026-09-07, with two agents in flight and no pull request open.**
 
 ## Where the work is
 
-Sixty pull requests have merged, all through `merge-pr.mjs`, and the
+Sixty-four pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -97,8 +97,6 @@ move and will file a defect. It is the note. Move it and the drag works.
 - **dbmd-49**, four small studio wrongnesses, the worst of which is a
   confirmation dialog that states something untrue at the moment the user
   decides.
-- **dbmd-56**, the file-name rule spelled in two places, with the studio's limit
-  now looser than the writer's.
 - **dbmd-3xq**, the last four sleeps in the watcher tests, and whether the three
   behaviours they guard can fail at all.
 
@@ -127,7 +125,15 @@ move and will file a defect. It is the note. Move it and the drag works.
   first blank line, so a blank line put in to space out a doc comment drops
   codes from the check. There is a length guard, and it catches a blank line
   near the top of the list and not one near the bottom. That is why nobody
-  looked again for months. Reproduced, filed as dbmd-8ms, in flight.
+  looked again for months. Fixed by dbmd-8ms, which also found that the check
+  matched a bare mention anywhere on the page rather than a table row.
+- **A boundary looser than the writer reports success for a write that never
+  happens.** The studio's name check refused four characters and the writer
+  refuses nine, so `POST /api/table` with `a<b` answered **201 Created**, wrote
+  nothing, and the very next read of the model did not contain it. The page is
+  told the table exists and the disk never hears of it. Found by asserting the
+  two rules against one list, which is the only way it was ever going to
+  surface: each half was correct about itself.
 
 ## Audited on 2026-09-07, so a successor need not redo it
 
