@@ -4,7 +4,7 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with three agents stopped mid-work, no pull request open, and every
+**As of 2026-09-07, with nothing running, three agents cancelled, and every
 epic closed.**
 
 ## Where the work is
@@ -68,29 +68,33 @@ it is the safe move either way.
 
 ## In flight, and what is actually left
 
-**Three agents were stopped by the owner mid-work on 2026-09-07.** Nothing was
-lost and nothing was pushed. What each left, in the repository's own object
-store, on local branches that survive their worktrees being removed:
+**Nothing is running, and the three stopped agents are cancelled rather than
+paused.** The harness refuses to resume an agent the owner stopped, and says to
+treat its work as cancelled and to launch a fresh one only if the owner asks.
+So **re-dispatching those three is the owner's call, not mine.**
 
-- **`tooling/what-a-merge-costs-and-what-nobody-breaks`** carries a **finished
-  commit**, `2f69db1`: `merge-pr.mjs` printing which branches a merge is about
-  to make stale, `check-main-provenance.mjs` and the guard suite, and a new
-  decision record. Roughly 1,150 lines added. It was never pushed, so it has had
-  no CI run and no review. **Treat it as unverified**: an agent that stops has
-  not said its work is done, and this loop merges on the report rather than on a
-  diff looking finished.
-- **`docs/records-that-describe-a-future-that-happened`** has seven modified
-  files uncommitted in its worktree: `README.md`, four decision records, ADR
-  0056 and `test/docs/readme.test.ts`. Mid-work.
-- The flaky-watcher-test agent had barely started: one modified file, no commit.
+What survives, and where:
 
-**None of this should be finished by the orchestrator.** When an agent stops
-mid-task the choice is to resume it or discard it, and quietly completing it
-makes the reviewer the author. The three worktrees are under
-`.claude/worktrees/` and the two branches are listed by `git branch`.
+- **`tooling/what-a-merge-costs-and-what-nobody-breaks`** still has commit
+  `2f69db1` on it: `merge-pr.mjs` printing which branches a merge is about to
+  make stale, `check-main-provenance.mjs`, the guard suite and a decision record.
+  Never pushed, so no CI and no review. **Unverified.**
+- **`docs/records-that-describe-a-future-that-happened`** kept its branch, and
+  its uncommitted work is a 526-line patch in the session scratchpad under
+  `cancelled-work/`.
+- The flaky-watcher agent's only file was untracked and **was lost**, because
+  `git diff HEAD` does not capture untracked files and its patch came out empty.
+  Small in itself: that agent had barely started and the item carries the full
+  recipe. Recorded as b-fac #182, because the mistake is not small.
 
-**The items are all still open and accurate**: dbmd-nm5, dbmd-76x, dbmd-7b6,
-dbmd-5pj, dbmd-joa, dbmd-dil, and the flaky gate test.
+**The worktrees are cleared: 3.0 GB down to 172 KB**, which was a real share of
+the disk pressure that caused the stop. Branch refs and the patches survive.
+
+**Read the machine before dispatching anything.** The factory gained
+`assets/machine-load.mjs` today and shipped it as 0.51.0. On this machine the
+largest consumer is six `claude` sessions at 2.7 GB, and a sibling project's
+session runs sixteen processes beside this one. Counting your own agents
+undercounts.
 
 ## What is waiting on the owner
 
