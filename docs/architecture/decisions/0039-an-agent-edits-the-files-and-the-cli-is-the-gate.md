@@ -197,3 +197,56 @@ for one.
 - **An agent is measured churning a diff anyway.** That would mean rule 3 is
   being skipped in practice, and the answer is a command rather than a firmer
   sentence.
+
+## Two revisit entries have fired, and the skill has already moved
+
+Appended rather than edited, because the decision holds unchanged: an agent
+still edits the files, still hands each one to the canonical writer, and still
+uses `dbmd check --json` as the gate. Nothing measured above has been
+re-measured and found different. What has moved is two of the conditions under
+**Revisit when**, both of which now describe work that has happened.
+
+**"Somebody publishes the package" has half fired, and the half that matters to
+this record is done.** The owner decided to publish on 2026-09-07
+([ADR 0051](0051-the-first-release-is-a-tag-a-person-pushes.md)) and #118
+rewrote the skill's opening the same day. It no longer says `npx dbmd` does not
+work. It says to run from a checkout because the tool should be the one in front
+of you rather than whichever version somebody published, then says `npx dbmd`
+resolves whatever is on the registry and that `npm view dbmd versions` is what
+says which releases exist. That is written to be true on both sides of a first
+release rather than around one not having happened, which is what this entry
+was asking for.
+
+The consequence above, "an agent following this needs a checkout, not an
+install", keeps its conclusion and loses one of its two reasons. `private: true`
+is out of `package.json`, so that is no longer why. The canonicalise step still
+imports `dist/index.js` from a checkout, which is still why, and it stops being
+why on the day a `dbmd fmt` exists.
+
+**The condition itself has still not fired.** Nothing is on the registry and
+nobody has pushed a `v*` tag. So the entry stays where it is, and what is left
+for that day is the version question the skill now answers by refusing to name a
+version at all.
+
+**"dbmd-81 lands" has fired outright.** It landed in #88 as `dbmd refs`, and
+[ADR 0042](0042-a-question-answers-a-model-a-diagram-refuses.md) is the record,
+with [ADR 0049](0049-the-answer-before-a-delete-says-what-the-delete-does.md)
+adding the answer a delete gives first. So the section above headed "What the
+agent asks for that this does not give it" is history rather than a description.
+The skill teaches `dbmd refs <table>` and not the `dbmd export | grep` recipe
+written here, and the caveat attached to that recipe, that `dbmd export` refuses
+a model with an error in it and that is exactly the state a rename leaves you
+in, is the first thing ADR 0042 fixed: `dbmd refs` counts the errors, says them
+out loud, and answers anyway.
+
+**Why this correction is later than the one on 0024.** The publishing entry
+fired on the same decision as ADR 0024's, which was appended to that day. This
+record and 0028 were left alone because the brief for that work said they "are
+not edited", which was right about editing and wrong about appending.
+
+**The rest of the list was read at the same time and none of it has fired.**
+There is no `dbmd fmt`, so rule 3 is still nine lines of Node and still the
+step this record says nothing will catch you skipping. The studio API has not
+grown a version or a reference page; `wire.ts` still carries the comment saying
+the format is moving, and nothing outside `src/studio/` is written against it.
+No agent has been measured churning a diff.

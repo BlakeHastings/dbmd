@@ -137,3 +137,62 @@ because the model in the repository is somebody's.
 - **The recipe grows a third job.** Two is the number that fits the two
   questions. A third is evidence that a command grew a use this page has not
   thought about, and it is worth asking what it is before adding it.
+
+## The first revisit entry's instructions were carried out on 2026-09-07
+
+Appended rather than edited, because nothing above is wrong. `docs/ci.md` did
+say those two lines could not be run, `0.1.0` was a placeholder, and the
+argument for writing a real version rather than `<version>` is unchanged. What
+has moved is that the first entry under **Revisit when** now gives instructions
+for work that has already been done, so a reader following it on release day
+would go looking for a section that is not there and conclude this record is
+describing a different repository.
+
+The decision to publish was taken on 2026-09-07 and is
+[ADR 0051](0051-the-first-release-is-a-tag-a-person-pushes.md). Both halves of
+that entry's instruction were carried out the same day, in #118:
+
+- **The "not on npm" section of `docs/ci.md` is gone.** What stands in its place
+  is "The version in that recipe", which says `0.1.0` is the number chosen for
+  the first release rather than a placeholder, and sends the reader to
+  `npm view dbmd versions` for what exists rather than to a number on a page.
+- **`0.1.0` stopped being a placeholder.** ADR 0051 chose it. The consequence
+  above about a version number appearing in the tree before anybody chose one is
+  spent with it, and the sentence telling whoever publishes to make that edit
+  rather than feel bound by it was acted on by the person it was addressed to.
+
+**The third instruction on that entry has not been carried out, and should not
+be.** It says the workflow in this repository is to be reconsidered rather than
+converted, because running the published package here would test npm instead of
+the code in the pull request. `.github/workflows/model.yml` still builds the
+checkout. That was right before a release and it stays right after one.
+
+**The condition itself has not fired.** Nothing is on the registry. The decision
+to publish fired; a publish did not, and under ADR 0051 a release is a `v*` tag
+a person pushes, which nobody has. So the entry stays, and what is left for the
+day of a real release is the last consequence above: nothing here tests the
+`npx` form, the first publish is still the first time anybody runs that line,
+and it is still worth running deliberately that day rather than hearing about it
+from a user.
+
+**Why this correction is later than the one on 0024.** ADR 0024's first entry
+fired on the same decision and was appended to the same day. These two were left
+alone because the brief for that work said this record and 0039 "are not
+edited", which was right about editing and wrong about appending. The rule that
+a superseded record stays as it was written is about the argument, not about the
+instructions attached to it.
+
+**The rest of the list was read at the same time and none of it has fired.** It
+has not been decided that the package will not be published; the decision on
+2026-09-07 forecloses that entry rather than triggering it. Nobody has asked for
+the diagram to be committed by CI. Nobody has asked for the check job's
+diagnostics as a pull request comment. `model.yml` still has the two jobs the
+recipe has, `check` and `diagram`, and no third.
+
+**One general note, since this is the record about what the checks catch.**
+`check:adr` reads numbering and `check:commands` reads whether a backticked
+command exists. Neither reads a record against the tree it describes, and a
+revisit entry is the part of a record most likely to rot, because it is written
+about a future that then happens. Grepping all of them for the words of a change
+that just landed takes a couple of minutes and is worth doing after any decision
+the records anticipated.
