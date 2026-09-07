@@ -23,6 +23,12 @@
   },
   "type": "module",
   "private": true,
+  "bin": {
+    "dbmd": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -32,6 +38,7 @@
     "format": "prettier --write .",
     "test": "vitest run --passWithNoTests",
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run test && npm run build",
     "check:adr": "node scripts/check-adr-numbers.mjs",
     "backlog": "bd export -o .beads/issues.jsonl"
