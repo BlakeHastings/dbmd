@@ -50,8 +50,18 @@
  * whatever the answer. Its deny rules are a different thing and are covered
  * below.
  *
- * `scripts/merge-pr.mjs` is absent too, and that one is a gap rather than a
- * decision. See ADR 0034.
+ * `scripts/merge-pr.mjs` and `scripts/check-main-provenance.mjs` were both
+ * absent until 2026-09-07, and the second one was not even listed here. There
+ * are two network-dependent guards and this section named one, which is the
+ * failure this repository keeps paying for: a list that presents itself as
+ * exhaustive and is not. The provenance audit is the detection half of the
+ * merge gate, the layer that answers "was one of the preventive ones bypassed",
+ * and nothing had ever proved it detects. Both are covered below now. ADR 0058.
+ *
+ * What is still not covered in either is the shell around the decision: the
+ * `gh` invocations, the argument parsing and the exit codes. Reaching those
+ * needs the network and a pull request in a particular state, which is the wall
+ * ADR 0034 described. It now stands in front of a great deal less.
  *
  * ONE THING THIS DIRECTORY IS EXEMPT FROM
  * `scripts/check-commands.mjs` does not scan `test/guards/`, and this file is
@@ -65,7 +75,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, test } from 'vitest'
 import { exampleModel } from '../../src/cli/example.js'
 import type { Column, Model } from '../../src/model/types.js'
@@ -1181,5 +1191,541 @@ describe('the merge guard, asked to judge', () => {
       'gh pr create --body-file - <<BODY\nDo not run gh pr merge on this.\nBODY\n',
     )
     expect(heredoc).toEqual({ denied: false, reason: '' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// merge-pr.mjs: the four refusals, and the cost the merge did not name
+// ---------------------------------------------------------------------------
+
+/**
+ * A guard script, imported rather than spawned.
+ *
+ * The two scripts below hold their decisions in exported functions and their
+ * `gh` calls in a `main()` that runs only when the file is the entry point
+ * (ADR 0058), so a test reaches the real rules by importing the real file. That
+ * is why these two sections copy nothing into a scratch directory: there is no
+ * mutation to isolate, because the fabricated facts are the mutation and they
+ * are values in memory.
+ *
+ * A file URL rather than a path, because `import()` of a bare Windows path is
+ * not a specifier Node accepts. The specifier is a variable, so TypeScript
+ * cannot resolve the `.mjs` and hands back `any`; the cast is what puts the
+ * shape back, and a cast that disagrees with the script fails here at run time
+ * rather than silently in a merge.
+ */
+async function guardModule<T>(script: string): Promise<T> {
+  return (await import(pathToFileURL(join(SCRIPTS, script)).href)) as T
+}
+
+interface RollupEntry {
+  readonly name: string
+  readonly conclusion?: string
+  readonly state?: string
+}
+
+interface PullRequestFacts {
+  readonly number: number
+  readonly title: string
+  readonly state: string
+  readonly isDraft: boolean
+  readonly mergeable: string
+  readonly mergeStateStatus: string
+  readonly reviewDecision: string | null
+  readonly baseRefName: string
+  readonly headRefName: string
+  readonly statusCheckRollup: readonly RollupEntry[]
+}
+
+interface MergeDecision {
+  readonly merge: boolean
+  readonly why: string | null
+  readonly notes: readonly string[]
+  readonly warnings: readonly string[]
+}
+
+interface OpenPull {
+  readonly number: number
+  readonly headRefName: string
+  readonly baseRefName: string
+}
+
+const mergePr = await guardModule<{
+  decideMerge: (input: {
+    pr: PullRequestFacts
+    behind: number | null
+    required?: readonly string[]
+    refuseWhenBehind?: boolean
+    waitedSeconds?: number
+  }) => MergeDecision
+  stalenessNotice: (input: {
+    pr: { number: number; baseRefName: string }
+    others: readonly OpenPull[] | null
+  }) => string | null
+}>('merge-pr.mjs')
+
+describe('merge-pr.mjs, broken on purpose', () => {
+  /** An open pull request with one green required check, level with its base. */
+  function pullRequest(overrides: Partial<PullRequestFacts> = {}): PullRequestFacts {
+    return {
+      number: 128,
+      title: 'A change that is ready',
+      state: 'OPEN',
+      isDraft: false,
+      mergeable: 'MERGEABLE',
+      mergeStateStatus: 'CLEAN',
+      reviewDecision: null,
+      baseRefName: 'main',
+      headRefName: 'tooling/a-branch',
+      statusCheckRollup: [{ name: 'check', conclusion: 'SUCCESS' }],
+      ...overrides,
+    }
+  }
+
+  test('the pull request this script exists to let through is let through', () => {
+    // The control. Every case below differs from this one in a single fact, so
+    // a refusal reported there is that fact and not the fixture.
+    const decision = mergePr.decideMerge({ pr: pullRequest(), behind: 0 })
+
+    expect(decision.merge).toBe(true)
+    expect(decision.why).toBe(null)
+    expect(decision.warnings).toEqual([])
+  })
+
+  test('a pull request that is not open is refused, and the state is named', () => {
+    const decision = mergePr.decideMerge({ pr: pullRequest({ state: 'CLOSED' }), behind: 0 })
+
+    expect(decision.merge).toBe(false)
+    // The state itself, because "not OPEN" covers closed, merged and a number
+    // that belongs to an issue, and the reader needs to know which.
+    expect(decision.why).toContain('state is CLOSED, not OPEN')
+  })
+
+  test('a draft is refused', () => {
+    const decision = mergePr.decideMerge({ pr: pullRequest({ isDraft: true }), behind: 0 })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('it is a draft')
+  })
+
+  test('a conflicting pull request is refused and sent back rather than resolved here', () => {
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }),
+      behind: 2,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('it conflicts with main')
+    // Who does the rebase is the load-bearing half: resolving somebody's
+    // conflict makes you the author of a change you are about to review.
+    expect(decision.why).toContain('Send it back to rebase and re-verify')
+  })
+
+  test('a red required check is refused, and merging around it is named as the wrong fix', () => {
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({ statusCheckRollup: [{ name: 'check', conclusion: 'FAILURE' }] }),
+      behind: 0,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('check: FAILURE')
+    expect(decision.why).toContain('Fix the run, do not merge around it')
+  })
+
+  test('a required check that never ran reads as never ran, not as green', () => {
+    // The safe direction, and the one a typo in REQUIRED lands on. A rollup
+    // full of green checks that are not the required one is this case.
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({ statusCheckRollup: [{ name: 'lint', conclusion: 'SUCCESS' }] }),
+      behind: 0,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('check: never ran')
+  })
+
+  test('a rerun is judged on its latest conclusion rather than its first', () => {
+    // A red run followed by a green rerun arrives as two entries under one
+    // name. Judging the first would refuse every branch that ever went red.
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({
+        statusCheckRollup: [
+          { name: 'check', conclusion: 'FAILURE' },
+          { name: 'check', conclusion: 'SUCCESS' },
+        ],
+      }),
+      behind: 0,
+    })
+
+    expect(decision.merge).toBe(true)
+  })
+
+  test('a green that is stale is refused, which is the refusal that costs the most', () => {
+    const decision = mergePr.decideMerge({ pr: pullRequest(), behind: 3 })
+
+    expect(decision.merge).toBe(false)
+    // The count, because "behind" without a number reads as an opinion.
+    expect(decision.why).toContain('behind\n  main by 3 commit(s), so that green is stale')
+    expect(decision.why).toContain('It was produced against the')
+    expect(decision.why).toContain('Send it back')
+    expect(decision.why).toContain('you\n  do not rebase it for them')
+  })
+
+  test('BEHIND is refused even when the branch could not be compared', () => {
+    // A fork's head branch is not in this repository, so the compare is a 404
+    // and `behind` is null. GitHub's own answer is still enough to refuse, and
+    // the sentence degrades to one without a number rather than to "by null".
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({ mergeStateStatus: 'BEHIND' }),
+      behind: null,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('the branch is behind\n  main, so that green is stale')
+    expect(decision.why).not.toContain('null')
+  })
+
+  test('the stale refusal is a setting, so turning it off lets the same branch through', () => {
+    // REFUSE_WHEN_BEHIND is documented as a choice with a cost. If this passed
+    // whatever the flag said, the flag would be decoration.
+    const decision = mergePr.decideMerge({
+      pr: pullRequest(),
+      behind: 3,
+      refuseWhenBehind: false,
+    })
+
+    expect(decision.merge).toBe(true)
+  })
+
+  test('BLOCKED says what it can rule out and that it is not BEHIND', () => {
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({ mergeStateStatus: 'BLOCKED', reviewDecision: 'REVIEW_REQUIRED' }),
+      behind: 0,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('reviewDecision is REVIEW_REQUIRED')
+    // The clue that saves a wasted rebase: staleness is ruled out by name.
+    expect(decision.why).toContain('It is not behind main, so staleness is not the cause')
+    // And the sentence that stops "BLOCKED" being read as "rebase it".
+    expect(decision.why).toContain('BLOCKED is not BEHIND')
+  })
+
+  test('UNSTABLE proceeds, and says which contract it is honouring', () => {
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({
+        mergeStateStatus: 'UNSTABLE',
+        statusCheckRollup: [
+          { name: 'check', conclusion: 'SUCCESS' },
+          { name: 'optional', conclusion: 'FAILURE' },
+        ],
+      }),
+      behind: 0,
+    })
+
+    expect(decision.merge).toBe(true)
+    expect(decision.notes.join('\n')).toContain('Merge state is UNSTABLE')
+  })
+
+  test('UNKNOWN proceeds and names what it did not verify', () => {
+    // Refusing on "GitHub has not answered yet" would refuse at random, and a
+    // wrapper that refuses at random gets worked around. Saying so is the whole
+    // of what this case does, so the words are the behaviour.
+    const decision = mergePr.decideMerge({
+      pr: pullRequest({ mergeStateStatus: 'UNKNOWN' }),
+      behind: 0,
+      waitedSeconds: 15,
+    })
+
+    expect(decision.merge).toBe(true)
+    const said = decision.warnings.join('\n')
+    expect(said).toContain('still UNKNOWN after 15s')
+    expect(said).toContain('Unverified: whether main has moved under this branch')
+    expect(said).toContain('Proceeding on the check rollup alone')
+  })
+})
+
+describe('the cost a merge did not name, broken on purpose', () => {
+  const merging = { number: 128, baseRefName: 'main' }
+
+  test('every other open branch into the same base is named, with what it now owes', () => {
+    const notice = mergePr.stalenessNotice({
+      pr: merging,
+      others: [
+        { number: 128, headRefName: 'tooling/the-one-being-merged', baseRefName: 'main' },
+        { number: 129, headRefName: 'tooling/86c-a-check-that-reads-lines', baseRefName: 'main' },
+        { number: 130, headRefName: 'docs/wie-a-number-that-was-never-run', baseRefName: 'main' },
+      ],
+    })
+
+    // The whole point is that the cost is legible before it is paid, so the
+    // count, both branch names and the sentence naming what each one owes are
+    // behaviour rather than formatting.
+    expect(notice).toBe(
+      [
+        'Merging #128 will make 2 other branches stale:',
+        '  #129  tooling/86c-a-check-that-reads-lines',
+        '  #130  docs/wie-a-number-that-was-never-run',
+        'Each needs a rebase and a re-verify before it can land.',
+      ].join('\n'),
+    )
+  })
+
+  test('the pull request being merged is not one of its own casualties', () => {
+    // It is in the open list it comes back in, and counting it would make every
+    // merge cost one more rebase than it does. Off by one here reads as right.
+    const notice = mergePr.stalenessNotice({
+      pr: merging,
+      others: [{ number: 128, headRefName: 'tooling/the-one-being-merged', baseRefName: 'main' }],
+    })
+
+    expect(notice).toContain('No other pull request is open against main')
+  })
+
+  test('a pull request aimed at another base is not made stale by this merge', () => {
+    // A branch stacked on another branch does not go behind main when main
+    // moves under a different base, and telling its agent to rebase would be
+    // sending them to do work that fixes nothing.
+    const notice = mergePr.stalenessNotice({
+      pr: merging,
+      others: [
+        { number: 129, headRefName: 'tooling/stacked-on-130', baseRefName: 'docs/some-branch' },
+        { number: 131, headRefName: 'tooling/into-main', baseRefName: 'main' },
+      ],
+    })
+
+    expect(notice).toContain('will make 1 other branch stale')
+    expect(notice).toContain('#131  tooling/into-main')
+    expect(notice).not.toContain('stacked-on-130')
+    // One branch is not "each".
+    expect(notice).toContain('It needs a rebase and a re-verify')
+  })
+
+  test('nothing else open is a sentence, because a reader cannot hear silence', () => {
+    const notice = mergePr.stalenessNotice({ pr: merging, others: [] })
+
+    expect(notice).toBe(
+      'No other pull request is open against main, so this merge makes nothing stale.',
+    )
+  })
+
+  test('a listing that failed says nothing, and nothing is what the merge waits on', () => {
+    // The second API call is information, not a gate. `null` is what the
+    // wrapper's catch hands over, and the only correct answer to it is silence:
+    // inventing "no other branches" out of a question that was never answered
+    // would be worse than the gap this closes.
+    expect(mergePr.stalenessNotice({ pr: merging, others: null })).toBe(null)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// check-main-provenance.mjs: a commit on main with no pull request behind it
+// ---------------------------------------------------------------------------
+
+interface AssociatedPull {
+  readonly number: number
+  readonly state: string
+  readonly merged_at: string | null
+  readonly base: { readonly ref: string }
+}
+
+interface Violation {
+  readonly sha: string
+  readonly subject: string
+  readonly author: string
+  readonly date: string
+  readonly near: string
+}
+
+interface AuditResult {
+  readonly accounted: readonly string[]
+  readonly violations: readonly Violation[]
+  readonly exempt: number
+  readonly checked: number
+}
+
+const provenance = await guardModule<{
+  landedPulls: (pulls: readonly AssociatedPull[], defaultBranch?: string) => AssociatedPull[]
+  auditCommits: (
+    shas: readonly string[],
+    io: {
+      pullsFor: (sha: string) => Promise<readonly AssociatedPull[]>
+      describe: (sha: string) => { subject: string; author: string; date: string }
+      predatesBaseline: (sha: string) => boolean
+      attemptsFor?: (sha: string) => number
+      wait?: () => Promise<void>
+      defaultBranch?: string
+    },
+  ) => Promise<AuditResult>
+  violationReport: (result: AuditResult, defaultBranch?: string) => string
+  accountedReport: (result: AuditResult, defaultBranch?: string) => string
+}>('check-main-provenance.mjs')
+
+describe('the provenance audit, broken on purpose', () => {
+  const sha = (prefix: string) => prefix.padEnd(40, '0')
+
+  const LANDED = sha('aa11bb22')
+  const PUSHED = sha('cc33dd44')
+  const ANCIENT = sha('ee55ff66')
+
+  const mergedIntoMain: AssociatedPull = {
+    number: 11,
+    state: 'MERGED',
+    merged_at: '2026-09-07T09:00:00Z',
+    base: { ref: 'main' },
+  }
+
+  /**
+   * The git and the API, as values.
+   *
+   * `answers` maps a commit to what the API says on each successive attempt, so
+   * a lagging association is an array of answers rather than a wait. `wait`
+   * resolves immediately: the retry is being exercised, the thirty seconds are
+   * not.
+   */
+  function io(
+    answers: Record<string, readonly (readonly AssociatedPull[])[]>,
+    { exempt = [] as readonly string[], attempts = 1 } = {},
+  ) {
+    const asked = new Map<string, number>()
+    return {
+      pullsFor: async (commit: string) => {
+        const script = answers[commit] ?? [[]]
+        const seen = asked.get(commit) ?? 0
+        asked.set(commit, seen + 1)
+        return script[Math.min(seen, script.length - 1)] ?? []
+      },
+      describe: (commit: string) => ({
+        subject: `whatever ${commit.slice(0, 8)} changed`,
+        author: 'Somebody <somebody@example.com>',
+        date: '2026-09-07T10:11:12+00:00',
+      }),
+      predatesBaseline: (commit: string) => exempt.includes(commit),
+      attemptsFor: () => attempts,
+      wait: async () => {},
+      asked,
+    }
+  }
+
+  test('a commit with no pull request behind it is a violation, named and dated', async () => {
+    const result = await provenance.auditCommits(
+      [LANDED, PUSHED],
+      io({ [LANDED]: [[mergedIntoMain]] }),
+    )
+
+    expect(result.violations).toHaveLength(1)
+    expect(result.violations[0]?.sha).toBe(PUSHED)
+
+    const said = provenance.violationReport(result)
+    // The count and the denominator, because "a commit reached main" without
+    // them reads as a broken build rather than as an audit finding.
+    expect(said).toContain('A commit reached main outside the pull request flow (1 of 2):')
+    expect(said).toContain(PUSHED)
+    expect(said).toContain('whatever cc33dd44 changed')
+    // Attributable and dated, which is what makes this an audit rather than a
+    // rumour. Both are in the record so somebody can go and ask.
+    expect(said).toContain('Somebody <somebody@example.com>  2026-09-07T10:11:12+00:00')
+    expect(said).toContain('No associated pull request.')
+    // The sentence that stops the obvious wrong fix, and the reason this script
+    // says not to move BASELINE forward.
+    expect(said).toContain('Do not silence this by moving the baseline in this script forward')
+    // And not the commit that was fine: a check that reported every commit
+    // would also have found this one.
+    expect(said).not.toContain(LANDED)
+  })
+
+  test('the same commits, both accounted for, pass — so the failure was the missing PR', async () => {
+    const result = await provenance.auditCommits(
+      [LANDED, PUSHED],
+      io({ [LANDED]: [[mergedIntoMain]], [PUSHED]: [[{ ...mergedIntoMain, number: 12 }]] }),
+    )
+
+    expect(result.violations).toEqual([])
+    const said = provenance.accountedReport(result)
+    expect(said).toContain('Every new commit on main came through a pull request (2 checked)')
+    expect(said).toContain('aa11bb22  #11  whatever aa11bb22 changed')
+  })
+
+  test('an open pull request associates a commit without landing it, so it is still a violation', async () => {
+    // The narrowing is the rule. A commit can be associated with a PR that is
+    // open, or one aimed at another branch, and neither explains how it got
+    // onto main. Dropping either filter turns this check green for the exact
+    // case it exists to catch.
+    const openIntoMain: AssociatedPull = {
+      number: 21,
+      state: 'OPEN',
+      merged_at: null,
+      base: { ref: 'main' },
+    }
+    const mergedElsewhere: AssociatedPull = {
+      number: 22,
+      state: 'MERGED',
+      merged_at: '2026-09-07T09:30:00Z',
+      base: { ref: 'release/1.x' },
+    }
+
+    const result = await provenance.auditCommits(
+      [PUSHED],
+      io({ [PUSHED]: [[openIntoMain, mergedElsewhere]] }),
+    )
+
+    expect(result.violations).toHaveLength(1)
+    const said = provenance.violationReport(result)
+    // Both near misses are named, because "no associated pull request" would be
+    // a lie here and would send the reader looking for one that exists.
+    expect(said).toContain('Associated pull requests, none of them merged into main:')
+    expect(said).toContain('#21 (OPEN, into main)')
+    expect(said).toContain('#22 (MERGED, into release/1.x)')
+    expect(said).not.toContain('No associated pull request.')
+  })
+
+  test('the rule itself: merged, and into the default branch, is the whole of it', () => {
+    const pulls: readonly AssociatedPull[] = [
+      { number: 21, state: 'OPEN', merged_at: null, base: { ref: 'main' } },
+      { number: 22, state: 'MERGED', merged_at: '2026-09-07T09:00:00Z', base: { ref: 'other' } },
+      mergedIntoMain,
+    ]
+
+    expect(provenance.landedPulls(pulls, 'main').map((pull) => pull.number)).toEqual([11])
+    // And it is the default branch that is asked about, not the word "main".
+    expect(provenance.landedPulls(pulls, 'other').map((pull) => pull.number)).toEqual([22])
+  })
+
+  test('an association that arrives late is waited for rather than reported', async () => {
+    // The API lists the pull request a moment after the merge, not always
+    // during it. A check that cried wolf once a month would stop being read, so
+    // the retry is behaviour, and without this the loop could be deleted with
+    // every other case still green.
+    const facts = io({ [LANDED]: [[], [], [mergedIntoMain]] }, { attempts: 5 })
+    const result = await provenance.auditCommits([LANDED], facts)
+
+    expect(result.violations).toEqual([])
+    expect(facts.asked.get(LANDED)).toBe(3)
+  })
+
+  test('a young commit that never gets an association is a violation after the waiting', async () => {
+    const facts = io({}, { attempts: 5 })
+    const result = await provenance.auditCommits([PUSHED], facts)
+
+    expect(result.violations).toHaveLength(1)
+    // Every attempt spent, so the failure is the answer rather than impatience.
+    expect(facts.asked.get(PUSHED)).toBe(5)
+  })
+
+  test('a commit below the baseline is not judged, and is counted rather than hidden', async () => {
+    // Eleven commits predate the rule. Judging them would make this check's
+    // output mostly noise, and a check whose output is mostly noise gets muted.
+    const result = await provenance.auditCommits(
+      [ANCIENT, LANDED],
+      io({ [LANDED]: [[mergedIntoMain]] }, { exempt: [ANCIENT] }),
+    )
+
+    expect(result.violations).toEqual([])
+    expect(result.exempt).toBe(1)
+    const said = provenance.accountedReport(result)
+    expect(said).toContain('(1 checked, 1 predating the baseline)')
+    // Exempt is not the same as asked about and cleared, so it is not listed
+    // among the commits this run stands behind.
+    expect(said).not.toContain(ANCIENT)
   })
 })
