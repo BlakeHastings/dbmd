@@ -8,8 +8,9 @@
  * computes `referencesTo` for exactly this, the studio's inspector reads it,
  * and until now nothing on the command line did.
  *
- * What this file owns is the four things ADR 0042 argues, and none of them is
- * walking the model, which is `src/model/read.ts`'s job and stays there:
+ * What this file owns is the four things ADR 0042 argues plus the one ADR 0049
+ * adds, and none of them is walking the model, which is `src/model/read.ts`'s
+ * job and stays there:
  *
  * 1. **It answers a model that does not validate.** `dbmd export` refuses one,
  *    which is right for a diagram and wrong for a question: half way through a
@@ -27,6 +28,11 @@
  *    point here" does not say what to edit. The column does, and the file it is
  *    written in is carried beside it, so a caller does not have to know how the
  *    directory is laid out to go and fix it.
+ * 5. **What the file says happens to that row.** This question is asked
+ *    immediately before a delete, so "three tables point here" and "three tables
+ *    point here and one of them empties" are different answers. The clause is
+ *    printed as the file writes it and nothing is printed where the file wrote
+ *    nothing, because absent is not `no action`. ADR 0049.
  */
 
 import { parseArgs } from 'node:util'
@@ -45,7 +51,8 @@ export const refsCommand: Command = {
   help: `Usage: dbmd refs <table> [directory] [options]
 
 Say which columns in the model carry a "ref:" at the named table, which file
-each one is written in, and whether that ref can simply be emptied.
+each one is written in, whether that ref can simply be emptied, and what the
+file says the engine does to that row when this one goes.
 
   table       the table to ask about
   directory   the model directory, defaulting to ${DEFAULT_DIRECTORY}
@@ -78,14 +85,27 @@ reported above the answer, because a file that did not load is missing from the
 model and may hold a ref this could not count. That is the state a rename is in
 half way through, and it is when this is most worth asking.
 
+An "on delete:" or "on update:" beside a row is that ref's own clause, quoted
+from the file. A row without one is a ref the file said nothing about, which is
+not the same fact as "no action" and is not printed as one.
+
 --json puts the answer on stdout under the usual envelope, with both directions
-in it whichever flags were given, the file each ref is written in, and the
-model's error and warning counts.
+in it whichever flags were given, the file each ref is written in, each ref's
+referential actions where the file wrote them, and the model's error and warning
+counts.
 `,
   run: runRefs,
 }
 
-/** One ref, as this command reports it: the edge, plus what somebody has to go and edit. */
+/**
+ * One ref, as this command reports it: the edge, plus what somebody has to go
+ * and edit.
+ *
+ * The referential actions are not copied out here. `RefEdge.to` is the column's
+ * own `Ref` verbatim in both directions, and `Ref` has held `onDelete` and
+ * `onUpdate` since ADR 0046, so reading them off the edge means there is one
+ * copy of the fact rather than two that can disagree.
+ */
 interface Reference {
   readonly edge: RefEdge
   /** The file the `ref:` is written in, slash-separated and relative to the model directory. */
@@ -224,11 +244,20 @@ function byText(a: string, b: string): number {
 /**
  * One reference, in the `--json` form.
  *
- * `from` and `to` are `RefEdge` verbatim, so a caller that already knows the
- * model's own type recognises them. `inPrimaryKey` and `nullable` are omitted
- * rather than written false, for the reason the format omits them on disk: a
- * key the file did not set is a key that is not there, and `nullable` has three
- * states of which only two are facts (ADR 0008).
+ * `from` and `to` are the two endpoints and nothing else, so a caller reading
+ * them recognises the model's own `Ref`. `inPrimaryKey` and `nullable` are
+ * omitted rather than written false, for the reason the format omits them on
+ * disk: a key the file did not set is a key that is not there, and `nullable`
+ * has three states of which only two are facts (ADR 0008).
+ *
+ * `onDelete` and `onUpdate` sit beside them rather than inside `to`, because
+ * they are facts about this constraint and not about the table it points at,
+ * and they are values from a closed vocabulary rather than flags: a caller
+ * switches on the word rather than testing a boolean. They are spelled as the
+ * file spells them, which is as SQL spells them, and they are omitted when the
+ * file said nothing. That omission is the fact ADR 0046 insists on: absent and
+ * `no action` are different, so a consumer reading `onDelete === undefined` is
+ * reading a file that did not say rather than one that said the default.
  */
 function asJson(reference: Reference): JsonValue {
   return {
@@ -237,6 +266,8 @@ function asJson(reference: Reference): JsonValue {
     path: reference.path,
     ...(reference.inPrimaryKey ? { inPrimaryKey: true } : {}),
     ...(reference.nullable === undefined ? {} : { nullable: reference.nullable }),
+    ...(reference.edge.to.onDelete === undefined ? {} : { onDelete: reference.edge.to.onDelete }),
+    ...(reference.edge.to.onUpdate === undefined ? {} : { onUpdate: reference.edge.to.onUpdate }),
   }
 }
 
@@ -329,14 +360,17 @@ function rows(references: readonly Reference[], withPath: boolean, style: Palett
   const used = new Set<string>()
   const lines = references.map((reference, index) => {
     const marks = annotations(reference)
-    for (const mark of marks) used.add(mark)
+    for (const mark of marks) used.add(legendKey(mark))
     const edge = `${(from[index] ?? '').padEnd(fromWidth)} -> ${(to[index] ?? '').padEnd(toWidth)}`
     // Padded before styling: an escape code is characters that take no width
     // and `padEnd` cannot know that. A row with no mark after it keeps no
     // trailing run of spaces, because nothing has to line up after nothing.
     const file = withPath ? `  ${style.faint(reference.path)}` : ''
     const pad = withPath ? ' '.repeat(pathWidth - reference.path.length) : ''
-    const tail = marks.length === 0 ? '' : `${pad}  ${marks.join(' ')}`
+    // Two spaces between marks rather than one, because a mark is no longer
+    // always one word: "key on delete: cascade" reads as a phrase and
+    // "key  on delete: cascade" reads as two facts, which is what it is.
+    const tail = marks.length === 0 ? '' : `${pad}  ${marks.join('  ')}`
     return `  ${edge}${file}${tail}`
   })
 
@@ -361,14 +395,52 @@ function legend(used: ReadonlySet<string>): string {
   if (used.has('required')) {
     said.push(`"required": the file says nullable: false, so the ref cannot be emptied.`)
   }
+  if (used.has('action')) {
+    // One sentence for both clauses, and worded from the arrow rather than from
+    // a direction, so it is the same sentence in the incoming section and in
+    // the outgoing one. The left of the arrow is always the referring row.
+    said.push(
+      `"on delete", "on update": the clause the file writes beside that ref, saying what the ` +
+        `engine does to the row on the left\nwhen the row on the right is deleted or its key ` +
+        `changes. A row without one is a ref the file said nothing about.`,
+    )
+  }
   return said.length === 0 ? '' : `\n${said.join('\n')}\n`
 }
 
-/** What a caller wants beyond the two names: whether this ref can be let go of. */
+/**
+ * Which legend line a mark asks for.
+ *
+ * The two flags are their own text. Every action mark asks for one sentence
+ * between them, because printing the same paragraph twice under a list that
+ * used both clauses would be most of the answer.
+ */
+function legendKey(mark: string): string {
+  return mark.startsWith('on ') ? 'action' : mark
+}
+
+/**
+ * What a caller wants beyond the two names: whether this ref can be let go of,
+ * and what happens to its row if it is not.
+ *
+ * The flags come first because they are one word each, and because they are
+ * facts about the column while the clauses are facts about the constraint.
+ *
+ * An action is printed whenever the file wrote one, `no action` included, and
+ * nothing is printed when the file wrote nothing. That is one rule rather than
+ * two, and the reason it is not "print only the interesting ones" is ADR 0046:
+ * it names the wall of `no action` an import writes as a real cost and names
+ * the answer as an option on the import, not a reader that decides some of the
+ * catalogue's answers are too boring to repeat. ADR 0049.
+ */
 function annotations(reference: Reference): readonly string[] {
   const marks: string[] = []
   if (reference.inPrimaryKey) marks.push('key')
   if (reference.nullable === false) marks.push('required')
+  if (reference.edge.to.onDelete !== undefined)
+    marks.push(`on delete: ${reference.edge.to.onDelete}`)
+  if (reference.edge.to.onUpdate !== undefined)
+    marks.push(`on update: ${reference.edge.to.onUpdate}`)
   return marks
 }
 
