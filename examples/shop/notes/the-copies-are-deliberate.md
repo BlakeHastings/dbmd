@@ -1,6 +1,6 @@
 ---
 kind: note
-layout: { x: 900, y: 380, w: 380, h: 260 }
+layout: { x: 900, y: 320, w: 380, h: 260 }
 color: amber
 ---
 
