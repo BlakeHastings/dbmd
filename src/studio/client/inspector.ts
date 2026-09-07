@@ -92,6 +92,32 @@ import { agreeing, referrersTo, referrerText, renamePlan } from './model.js'
 import { PALETTE, unknownColorNote } from './palette.js'
 import { clashFor, NEW_TABLE_SHAPE, suggestName, suggestTableName } from './tables.js'
 
+/**
+ * What the panel says about a body nobody has written, one line per kind.
+ *
+ * ADR 0052: an object created in the studio gets no prose written into its
+ * file, and this is where the tool says so instead. `dbmd import` writes a line
+ * into every table because it is a command that exits and its reader arrives
+ * later; a create here ends with this panel open and the box on screen, so the
+ * box can ask for the paragraph and the file can hold nothing the developer did
+ * not type.
+ *
+ * Each asks for the content rather than reporting the absence, because it is
+ * standing next to the box that takes it. One per kind rather than one shared
+ * line, because the three files are for different things and a sentence
+ * covering all of them would say nothing, which is the prose this format exists
+ * to keep out.
+ */
+const TABLE_UNWRITTEN =
+  'No prose yet. What this table is for, and the fact about the business that explains its ' +
+  'shape, is the part the frontmatter above cannot say.'
+const NOTE_UNWRITTEN =
+  'No prose yet. A note is its body, so this box is the whole of it: the thing somebody would ' +
+  'otherwise have to ask about.'
+const GROUP_UNWRITTEN =
+  'No prose yet. What these tables have in common, beyond being drawn in one box, is what this ' +
+  'file is for.'
+
 export interface InspectorHandlers {
   /** The page's copy of the model. Read on demand so there is one copy, not two. */
   readonly model: () => WireModel
@@ -1134,7 +1160,7 @@ export class Inspector {
    * to avoid.
    */
   private bodySection(table: Table): HTMLElement {
-    return this.proseSection(table.body, 'Prose', (body) => {
+    return this.proseSection(table.body, 'Prose', TABLE_UNWRITTEN, (body) => {
       const name = this.tableName()
       const current = name === null ? undefined : this.tableOf(name)
       if (name === null || current === undefined) return
@@ -1157,8 +1183,20 @@ export class Inspector {
    * as the characters that are in the file. That is deliberate: what reaches
    * disk is the text, and an editor that showed bold as bold would be a second
    * opinion about what the author wrote.
+   *
+   * `placeholder` is where the studio says an object nobody has written about
+   * is an object nobody has written about, and ADR 0052 is the argument for
+   * saying it here rather than writing a line into the file the way `dbmd
+   * import` does. It asks for the content rather than reporting the absence,
+   * because it is standing next to the box that takes it, and it costs nothing:
+   * it is gone on the first keystroke and can never be committed.
    */
-  private proseSection(body: string, title: string, write: (body: string) => void): HTMLElement {
+  private proseSection(
+    body: string,
+    title: string,
+    unwritten: string,
+    write: (body: string) => void,
+  ): HTMLElement {
     const section = sectionOf(title)
     this.eol = endingOf(body)
     this.body = el('textarea')
@@ -1167,9 +1205,31 @@ export class Inspector {
     this.body.rows = 12
     this.body.dataset['field'] = 'body'
     this.body.setAttribute('aria-label', 'Prose body')
-    this.body.addEventListener('input', () => write(this.bodyText()))
-
     section.append(this.body)
+
+    // Where the studio says nobody has written this yet, instead of writing a
+    // line into the file the way `dbmd import` does (ADR 0052).
+    //
+    // Not the textarea's own `placeholder`, which is the obvious way to do it
+    // and does not work: `blankObject` gives a created object `body: '\n'`, so
+    // the box holds a newline, is not empty by the browser's definition, and a
+    // placeholder would never show on the one object it is for. Found by
+    // driving it, which is the only way it would have been found.
+    //
+    // Toggled on input rather than left as drawn, because the panel is
+    // deliberately not rebuilt on a keystroke (rule 2 at the top of this file),
+    // so a line saying nothing is written would still be saying it two
+    // paragraphs in.
+    const asking = note(unwritten)
+    asking.hidden = body.trim() !== ''
+    section.append(asking)
+
+    this.body.addEventListener('input', () => {
+      const text = this.bodyText()
+      asking.hidden = text.trim() !== ''
+      write(text)
+    })
+
     // A body that is neither all-LF nor all-CRLF cannot survive a textarea,
     // which has one normalisation and no memory of what it replaced. Saying so
     // is better than either refusing the edit or quietly flattening the file.
@@ -1301,7 +1361,7 @@ export class Inspector {
     parts.push(colour)
 
     parts.push(
-      this.proseSection(sticky.body, 'The note', (body) =>
+      this.proseSection(sticky.body, 'The note', NOTE_UNWRITTEN, (body) =>
         this.handlers.onPatchNote(sticky.name, { body }, { ...sticky, body }),
       ),
     )
@@ -1397,7 +1457,7 @@ export class Inspector {
     parts.push(memberSection)
 
     parts.push(
-      this.proseSection(group.body, 'Prose', (body) =>
+      this.proseSection(group.body, 'Prose', GROUP_UNWRITTEN, (body) =>
         this.handlers.onPatchGroup(group.name, { body }, { ...group, body }),
       ),
     )

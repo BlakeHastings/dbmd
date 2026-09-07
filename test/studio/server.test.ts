@@ -575,6 +575,29 @@ describe('POST and DELETE /api/table', () => {
     })
   })
 
+  // ADR 0052. `dbmd import` writes one line into every table saying nobody has
+  // documented it, because a command that exits has no other way to reach a
+  // reader who arrives later. A create here does have one: the panel is open on
+  // the new table with the prose box in it, and the box asks. So the file holds
+  // the frontmatter and nothing the developer did not type.
+  //
+  // `body` back through the reader rather than the file text, because that is
+  // also the round trip: the body is everything after the closing `---`, so a
+  // writer that padded would read back as `\n\n` here.
+  it('writes no prose into a created table, because the panel asks for it', async () => {
+    await withStudio(async ({ studio, dir }) => {
+      const response = await call(studio, '/api/table', {
+        method: 'POST',
+        ...json({ name: 'roast_days', layout: { x: 40, y: 40 } }),
+      })
+      expect(response.status).toBe(201)
+
+      const reread = await readModel(dir)
+      const created = reread.model.tables.find((table) => table.name === 'roast_days')
+      expect(created?.body).toBe('\n')
+    })
+  })
+
   it('refuses to create over a table that is already there', async () => {
     await withStudio(async ({ studio }) => {
       const response = await call(studio, '/api/table', {

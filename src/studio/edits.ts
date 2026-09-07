@@ -708,8 +708,16 @@ function blankObject(kind: ObjectKind, name: string): CanvasObject {
   const shared = {
     name,
     path: fileOf(kind, name),
-    // The blank line the format conventionally puts after the closing `---`
-    // belongs to the body, and `writeModel` concatenates rather than pads.
+    // No prose, and ADR 0052 is why rather than nobody having thought about it.
+    // `dbmd import` writes one line saying nobody has documented the table,
+    // because a command that exits has no other way to say it to a reader who
+    // arrives later. A create here does have one: the panel is already open on
+    // the new object with the prose box in it, so the box asks and the file
+    // holds nothing the developer did not type.
+    //
+    // `'\n'` rather than `''` because the blank line the format conventionally
+    // puts after the closing `---` belongs to the body, and `writeModel`
+    // concatenates rather than pads.
     body: '\n',
     complete: true as const,
   }
