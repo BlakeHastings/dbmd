@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Seventy-two pull requests have merged, all through `merge-pr.mjs`, and the
+Seventy-four pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -94,10 +94,14 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-d6u**, a check that fails the build when documentation names a command,
-  script or npm task that does not exist. The detection layer for dbmd-7nb.
-- **dbmd-c8p**, whether the watcher's filename filter can be pinned on Windows
-  at all. P4, and the likeliest right answer is a comment rather than a change.
+- **dbmd-3ip**, a check that fails the build when a class used by both the canvas
+  and the inspector has an unscoped rule. That collision broke the page twice in
+  one day.
+- **dbmd-wxh**, whether a kind name that is a file rather than a directory
+  deserves a diagnostic. Genuinely open, and the symlink case may settle it.
+
+**After these two the queue is empty of anything that is not an epic or waiting
+on the owner.**
 
 ## What proved out, and is easy to lose
 
@@ -153,6 +157,15 @@ move and will file a defect. It is the note. Move it and the drag works.
   test that fixes it is the shape worth copying: **read the same input from two
   different directories and demand the same bytes**, which fails for a path no
   test names.
+
+- **An item written from somebody else's observation can have its premise
+  backwards.** dbmd-c8p said the watcher's filename filter reliably ignored a
+  `.tmp` on Windows. Measured over twelve rounds, the same file in a **freshly
+  copied** directory woke it 0 times and in a **long-lived** one 11 times. The
+  quiet was an artifact of the test harness handing every case a directory the
+  watcher had only just attached to, which is never the shape a running studio
+  is in. The right outcome was a corrected comment and a renamed test, and
+  nothing in the watcher moved.
 
 ## Audited on 2026-09-07, so a successor need not redo it
 
