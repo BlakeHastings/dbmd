@@ -34,14 +34,33 @@
 //
 //   node scripts/smoke-pack.mjs
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const WINDOWS = process.platform === 'win32'
+
+/**
+ * The one shipped file allowed to point at a source map that did not ship.
+ *
+ * `dist/studio/client/main.js` is esbuild's bundle. Its map works and is worth
+ * having locally, because the client is the one part of this codebase that
+ * cannot be run from `src/` at all, and it is also 431 kB against a 235 kB
+ * tarball. ADR 0024 took that trade and named this file when it did; ADR 0062
+ * is why it is the only name on this list.
+ */
+const MAY_POINT_AT_A_MISSING_MAP = ['dist/studio/client/main.js']
 
 /** Long enough for `npm install` on a cold cache, short enough that CI fails rather than hangs. */
 const INSTALL_TIMEOUT_MS = 180_000
@@ -109,6 +128,14 @@ async function smoke() {
   checkTheEntryPoint(install)
   checkItCanBePublished(install)
   console.log('Read the packaged manifest for "private" and "bin".')
+  // The action taken, not the verdict on it, which is what every other line in
+  // this list says and is the only wording that survives a failing run. The
+  // verdict is three lines further down, in the refusal, and a step list that
+  // claims success above its own refusal reads as a contradiction rather than
+  // as a report. This repository has found that shape more than once in `dbmd
+  // check`, which said `no problems` about models that had them.
+  const read = checkTheSourceMapReferences(install)
+  console.log(`Read the ${read} shipped .js files for source-map references.`)
   const commands = await checkTheCommands(install, manifest.version)
   console.log(`Ran the installed binary: ${commands.join(', ')}.`)
   await checkTheStudio(install)
@@ -235,6 +262,60 @@ function checkItCanBePublished(install) {
       'the packaged package.json declares no "bin".dbmd, so an install links no command ' +
         'and npx dbmd has nothing to run',
     )
+  }
+}
+
+/**
+ * Every shipped `.js`, asked whether the map it points at shipped too.
+ *
+ * A `sourceMappingURL` comment is a promise about a file beside it, and it is
+ * the kind of promise nothing here would otherwise notice breaking: the package
+ * installs, the binary runs, the studio serves its page, and the only place the
+ * broken half shows up is in somebody else's tool. Under devtools it is a
+ * warning nobody asked for. Under a bundler it is a warning per file, and this
+ * package has a library surface, so a consumer's build reports one for every
+ * module it pulls in.
+ *
+ * ADR 0024 wrote that cost down as one file and it was 37, which is the whole
+ * reason this reads the artefact rather than trusting `tsconfig.build.json`.
+ * `"sourceMap": true` coming back is a one-word edit that packs, installs and
+ * runs exactly like the real thing.
+ *
+ * The reference is resolved against the installed tree rather than pattern
+ * matched, so a map that does ship passes and the assertion stays about the
+ * dangling half. An inline `data:` map carries its own sources and dangles by
+ * definition never, so it is skipped rather than resolved.
+ */
+function checkTheSourceMapReferences(install) {
+  const root = join(install, 'node_modules', 'dbmd')
+  const files = [...javascriptUnder(join(root, 'dist'))]
+  const dangling = []
+
+  for (const file of files) {
+    const url = /\/\/# sourceMappingURL=(\S+)[\s]*$/.exec(readFileSync(file, 'utf8'))?.[1]
+    if (url === undefined || url.startsWith('data:')) continue
+    if (existsSync(join(dirname(file), url))) continue
+    dangling.push(relative(root, file).split('\\').join('/'))
+  }
+
+  const unexpected = dangling.filter((path) => !MAY_POINT_AT_A_MISSING_MAP.includes(path))
+  if (unexpected.length > 0) {
+    failures.push(
+      `${unexpected.length} of the ${files.length} shipped .js files point at a source map the ` +
+        `tarball does not carry, so every bundler that reads one warns about it: ` +
+        `${unexpected.slice(0, 3).join(', ')}${unexpected.length > 3 ? ', ...' : ''}. ` +
+        'Check "sourceMap" in tsconfig.build.json. ADR 0062.',
+    )
+  }
+  return files.length
+}
+
+/** Every `.js` under a directory, depth first. */
+function* javascriptUnder(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) yield* javascriptUnder(path)
+    else if (entry.name.endsWith('.js')) yield path
   }
 }
 
