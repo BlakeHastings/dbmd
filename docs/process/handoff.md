@@ -237,6 +237,21 @@ rather than by reading.
   check, and renaming `addresses` leaves nothing behind. That is why the skill
   ends the recipe with a sweep rather than a rule.
 
+- **`dbmd refs` honours the output contract the others do**, checked because it
+  is the newest public surface: `schema: 1`, valid JSON on stdout alone, and
+  byte-identical output from two different directories for the same relative
+  input, because `directory` echoes what you typed rather than resolving it.
+  Its incoming list is sorted and its outgoing list is in **column order**,
+  which is ADR 0006 read correctly rather than ignored: sort where the order is
+  arbitrary, keep it where it means something.
+- **The studio is safe to open on a model that does not fully parse**, which is
+  the case a person is in when they reach for it. With one file carrying a tab
+  in its frontmatter: the page serves, the eight tables that parsed are served,
+  the one diagnostic is reported, and editing a **different** table wrote only
+  that table's file and left the broken one byte-identical. That last part is
+  the data-loss path staying closed, since a whole-model write would have
+  replaced the unparseable file with a model that does not contain it.
+
 
 ## What is waiting on the owner
 
