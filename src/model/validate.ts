@@ -22,6 +22,14 @@
  * whose conclusion is "these two both exist" does not, because dropping
  * something cannot invent a duplicate.
  *
+ * **A rule about a ref reads every ref of the table it is written in.** A
+ * composite foreign key is one constraint the format spells as one `ref:` per
+ * column, so asking whether one of those columns identifies a row is asking the
+ * wrong question about it. `ref-target-not-unique` therefore judges a ref
+ * against the whole key it lands in, having first gathered what else this table
+ * refs into that same target. ADR 0033. It stays per target table: refs at two
+ * tables are two facts and never pool.
+ *
  * **It reads declarations and never the reader's derived indexes.**
  * `referencesTo` and `groupMembers` are computed from the same `ref:` and
  * `group:` keys this file walks, so validating against them would be checking a
@@ -162,6 +170,13 @@ function primaryKey(table: Table, out: Diagnostic[]): void {
 }
 
 function refs(table: Table, tables: ReadonlyMap<string, Table>, out: Diagnostic[]): void {
+  // Every target column this table refs, gathered per target table before any
+  // one ref is judged, because a composite foreign key is a set and its members
+  // are declared on separate lines. Per target table, and never pooled across
+  // targets: two refs at two tables are two facts about two relationships, and
+  // treating them as one set would approve a pair that constrains nothing.
+  const referenced = referencedColumns(table)
+
   for (const column of table.columns) {
     const ref = column.ref
     if (ref === undefined) continue
@@ -198,44 +213,129 @@ function refs(table: Table, tables: ReadonlyMap<string, Table>, out: Diagnostic[
       )
       continue
     }
-    if (identifiesOneRow(target).has(ref.column)) continue
+    const holding = keysOf(target).filter((key) => key.columns.includes(ref.column))
+    if (holding.length === 0) {
+      push(
+        out,
+        'ref-target-not-unique',
+        'warning',
+        table.path,
+        `${about} points at a column that is neither \`${target.name}\`'s whole primary key nor covered by a single-column unique index, so it does not identify one row`,
+      )
+      continue
+    }
+
+    const here = referenced.get(ref.table) ?? new Set<string>()
+    const shortfalls: Shortfall[] = holding.map((key) => ({
+      key,
+      missing: key.columns.filter((name) => !here.has(name)),
+    }))
+    // A key this table refs every column of. `ref.column` is one of them by
+    // construction, so a single-column key is always covered and this is the
+    // old rule unchanged; a composite key is covered only when every other
+    // column of it is refd from this same table too.
+    if (shortfalls.some((shortfall) => shortfall.missing.length === 0)) continue
+
+    // The nearest miss, which is the key the author is most plausibly part-way
+    // through declaring. Ties go to the earlier key, and `keysOf` returns the
+    // primary key before the indexes and the indexes in declaration order, so
+    // the choice is a property of the target's file rather than of a Map.
+    const nearest = shortfalls.reduce((best, shortfall) =>
+      shortfall.missing.length < best.missing.length ? shortfall : best,
+    )
     push(
       out,
       'ref-target-not-unique',
       'warning',
       table.path,
-      `${about} points at a column that is neither \`${target.name}\`'s whole primary key nor covered by a single-column unique index, so it does not identify one row`,
+      `${about} points at one column of ${describe(target.name, nearest.key)}, and nothing in \`${table.name}\` refs ${orList(nearest.missing)}, so the set does not identify one row`,
     )
   }
 }
 
+/** A key of the target and the columns of it this table does not ref. */
+interface Shortfall {
+  readonly key: Key
+  readonly missing: readonly string[]
+}
+
 /**
- * The columns of `table` that identify at most one row on their own.
+ * One thing the target declares unique: its whole primary key, or one whole
+ * `unique: true` index.
  *
- * Both halves are deliberately narrow, and the narrowness is the rule. One
- * column of a composite primary key identifies a set of rows and not a row, and
- * `unique` on `(a, b)` says nothing whatever about `a`. Widening either would
- * turn a warning that catches a typo into one that fires on nothing.
- *
- * The second half was unwritable before dbmd-14, because until `unique: true`
- * was sayable on an index there was no way for a model to declare a non-key
- * column unique, and a rule that warned about every such ref would have been
- * noise on every correct model that had one.
+ * `index` is the index's name, and its absence is what says "primary key",
+ * because a primary key has no name in this format and nowhere to put one.
  */
-function identifiesOneRow(table: Table): ReadonlySet<string> {
-  const keys = new Set<string>()
-  const primary = table.columns.filter((column) => column.pk === true)
-  const only = primary[0]
-  if (primary.length === 1 && only !== undefined) keys.add(only.name)
+interface Key {
+  readonly columns: readonly string[]
+  readonly index?: string
+}
+
+/**
+ * Everything `table` declares that identifies one row, whole.
+ *
+ * Whole is the load-bearing word and it is why this returns key sets rather
+ * than the column set the rule used to ask for. One column of a composite
+ * primary key identifies a set of rows and not a row, and `unique` on `(a, b)`
+ * says nothing whatever about `a`. What changed in dbmd-nxb is not that claim
+ * but who it is made about: a *ref* is judged against the whole key it lands
+ * in, and the refs of one table into one target are read together.
+ *
+ * A unique index with an expression key is dropped entire rather than reduced
+ * to its column keys. `unique (tenant_id, lower(code))` constrains the pair, so
+ * `tenant_id` alone is not unique and neither is any set of columns a model can
+ * name: dbmd does not read SQL (ADR 0022), so there is no ref anybody could
+ * write that would cover it, and a key nothing can cover is not a key this rule
+ * can use. Reducing it to `[tenant_id]` would silently approve exactly the typo
+ * the rule exists for.
+ *
+ * The index half was unwritable before dbmd-14, because until `unique: true`
+ * was sayable there was no way for a model to declare a non-key column unique,
+ * and a rule that warned about every such ref would have been noise on every
+ * correct model that had one.
+ */
+function keysOf(table: Table): readonly Key[] {
+  const keys: Key[] = []
+  const primary = table.columns.filter((column) => column.pk === true).map((column) => column.name)
+  if (primary.length > 0) keys.push({ columns: primary })
   for (const index of table.indexes) {
-    const key = index.columns[0]
-    // An expression key is not a column, so a unique index over one makes no
-    // column of this table unique: `unique (lower(email))` constrains the
-    // lower-cased value and leaves `email` free to repeat in other cases.
-    if (index.unique !== true || index.columns.length !== 1 || typeof key !== 'string') continue
-    keys.add(key)
+    if (index.unique !== true || index.columns.length === 0) continue
+    const columns: string[] = []
+    for (const key of index.columns) {
+      if (typeof key !== 'string') break
+      columns.push(key)
+    }
+    if (columns.length !== index.columns.length) continue
+    keys.push({ columns, index: index.name })
   }
   return keys
+}
+
+/** The target columns `table` refs, grouped by the table they are in. */
+function referencedColumns(table: Table): ReadonlyMap<string, ReadonlySet<string>> {
+  const byTable = new Map<string, Set<string>>()
+  for (const column of table.columns) {
+    const ref = column.ref
+    if (ref === undefined) continue
+    const columns = byTable.get(ref.table)
+    if (columns === undefined) byTable.set(ref.table, new Set([ref.column]))
+    else columns.add(ref.column)
+  }
+  return byTable
+}
+
+/** `` `orders`'s composite primary key `` or `` `orders`'s unique index `x` ``. */
+function describe(target: string, key: Key): string {
+  return key.index === undefined
+    ? `\`${target}\`'s composite primary key`
+    : `\`${target}\`'s unique index \`${key.index}\``
+}
+
+/** `` `a` ``, `` `a` or `b` ``, `` `a`, `b` or `c` ``. */
+function orList(names: readonly string[]): string {
+  const quoted = names.map((name) => `\`${name}\``)
+  const last = quoted.pop() ?? ''
+  return quoted.length === 0 ? last : `${quoted.join(', ')} or ${last}`
 }
 
 /**
