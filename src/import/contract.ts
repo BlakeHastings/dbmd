@@ -15,8 +15,8 @@
 // SQL Server are marked in `docs/import-format.md` so the next provider author
 // can tell design from accident.
 
-import type { Diagnostic, DiagnosticCode, Result } from './diagnostics.js'
-import { compareCodeUnits, hasErrors } from './diagnostics.js'
+import type { Diagnostic, ImportDiagnosticCode, Result } from './diagnostics.js'
+import { compareCodeUnits, hasErrors, inDocument } from './diagnostics.js'
 
 /** The version this build reads. Bumping it is how an old pasted file gets a clear message. */
 export const INTROSPECTION_VERSION = 1
@@ -756,11 +756,11 @@ function present(value: unknown): unknown {
 
 function error(
   diagnostics: Diagnostic[],
-  code: DiagnosticCode,
+  code: ImportDiagnosticCode,
   path: string,
   message: string,
 ): void {
-  diagnostics.push({ code, severity: 'error', path, message })
+  diagnostics.push({ code, severity: 'error', at: inDocument(path), message })
 }
 
 function asObject(
@@ -995,7 +995,7 @@ function unknownFields(
     diagnostics.push({
       code: 'import/unknown-field',
       severity: 'warning',
-      path: `${path}.${key}`,
+      at: inDocument(`${path}.${key}`),
       message: `nothing in introspection version ${INTROSPECTION_VERSION} reads \`${key}\`, so it was dropped`,
     })
   }

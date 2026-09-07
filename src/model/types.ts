@@ -9,6 +9,8 @@
  * dbmd-12's job, not this module's.
  */
 
+import type { Diagnostic } from '../diagnostics.js'
+
 /** The kinds of object a model directory holds. The directory name decides. */
 export type ObjectKind = 'table' | 'note' | 'group'
 
@@ -169,84 +171,20 @@ export interface Model {
 }
 
 /**
- * `error` means the file did not load as it was declared and something is
- * missing from the model. `warning` means it loaded and something is likely
- * wrong anyway.
- */
-export type Severity = 'error' | 'warning'
-
-/**
- * The machine-readable half of a diagnostic. `dbmd check --json` will put these
- * on stdout, which makes them a contract under ADR 0006: adding a code is fine,
- * renaming one is a breaking change. The `message` is the half that is free to
- * be reworded, and a caller that switches on prose instead of `code` is holding
- * it wrong.
- */
-export type DiagnosticCode =
-  /** `readModel` was pointed at something that is not a readable directory. */
-  | 'model-directory-unreadable'
-  /** A file under the model directory could not be read at all. */
-  | 'file-unreadable'
-  /** There is no `_model.md`, so the model has no name and no engine. */
-  | 'model-file-missing'
-  /** A directory under the model root that is not a known kind. */
-  | 'unknown-kind-directory'
-  /** The file does not begin with a `---` line. */
-  | 'frontmatter-absent'
-  /** `---` on the first line and no closing `---` anywhere after it. */
-  | 'frontmatter-unterminated'
-  /** The delimiters are there with nothing but whitespace between them. */
-  | 'frontmatter-empty'
-  /** The YAML parser rejected the frontmatter. */
-  | 'frontmatter-invalid'
-  /** The frontmatter parsed, but to a scalar or a list rather than to keys. */
-  | 'frontmatter-not-a-map'
-  /** Two keys in one mapping resolve to the same name. */
-  | 'duplicate-key'
-  /** A `kind:` that disagrees with the directory the file is in. */
-  | 'kind-mismatch'
-  /** No `kind:` key at all. */
-  | 'kind-missing'
-  /** A `table:` that disagrees with the file's own name. */
-  | 'name-mismatch'
-  /** A table file with no `table:` key. */
-  | 'name-missing'
-  /** A required key is absent. */
-  | 'field-missing'
-  /** A key holds the wrong sort of value: a boolean where a string was wanted. */
-  | 'field-wrong-type'
-  /** A key that means nothing to this kind of file. */
-  | 'unknown-key'
-  /**
-   * A key dbmd recognises but does not accept, because the format spells that
-   * fact under another name or in another place. The message says which.
-   *
-   * It is an error rather than a warning, and that is the whole point of having
-   * it: the fact the author wrote is a real one, and a warning would leave the
-   * object complete, so the next save would write the file back without it.
-   */
-  | 'superseded-key'
-  /** A `ref:` that is not `table.column`. */
-  | 'ref-malformed'
-  /** A `group:` naming a group file that does not exist. */
-  | 'group-unknown'
-
-/**
- * One problem with one file. `path` is relative to the model directory and
- * slash-separated, and there are no absolute paths and no timestamps anywhere
- * in here, so the same bytes on two machines produce the same diagnostics.
+ * The diagnostic contract lives in `src/diagnostics.ts`: one type for the model
+ * reader and the import contract both, because they become one thing the moment
+ * `dbmd check --json` prints them into one array. ADR 0014.
  *
- * `line` is 1-based and counts lines of the file, not of the frontmatter. It is
- * present only where it is honestly derivable: a problem with the file as a
- * whole, such as absent frontmatter, does not get one.
+ * Re-exported here so that a caller holding a `Model` does not have to know
+ * where the type moved to, and so the shape has exactly one definition.
  */
-export interface Diagnostic {
-  readonly code: DiagnosticCode
-  readonly severity: Severity
-  readonly path: string
-  readonly line?: number
-  readonly message: string
-}
+export type {
+  Diagnostic,
+  DiagnosticCode,
+  DiagnosticLocation,
+  ModelDiagnosticCode,
+  Severity,
+} from '../diagnostics.js'
 
 export interface ReadResult {
   readonly model: Model

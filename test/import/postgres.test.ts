@@ -22,7 +22,17 @@ import type { IntrospectionDocument, Table } from '../../src/import/contract.js'
 import { INTROSPECTION_VERSION } from '../../src/import/contract.js'
 import { registry } from '../../src/import/providers/index.js'
 import { postgresProvider } from '../../src/import/providers/postgres.js'
+import type { Diagnostic } from '../../src/import/diagnostics.js'
 import { readIntrospection } from '../../src/import/read.js'
+
+/**
+ * Where an import diagnostic points, asserted rather than assumed: every
+ * diagnostic this module raises points into the document, never at a file.
+ */
+function jsonPath(diagnostic: Diagnostic | undefined): string {
+  if (diagnostic?.at.in !== 'document') throw new Error('not a document location')
+  return diagnostic.at.jsonPath
+}
 
 function fixture(name: string): unknown {
   return JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'))
@@ -360,14 +370,14 @@ describe('parse, when the file is not what the query prints', () => {
     const result = postgresProvider.parse('dbmd_introspection\n-------------------\n {"tables":[]}')
     expect(result.ok).toBe(false)
     expect(result.diagnostics.map((d) => d.code)).toEqual(['import/not-an-object'])
-    expect(result.diagnostics[0]?.path).toBe('$')
+    expect(jsonPath(result.diagnostics[0])).toBe('$')
   })
 
   it('rejects a tables that is not a list, with the path to it', () => {
     const result = postgresProvider.parse({ tables: 'orders, order_line' })
     expect(result.ok).toBe(false)
     expect(result.diagnostics[0]?.code).toBe('import/wrong-type')
-    expect(result.diagnostics[0]?.path).toBe('$.tables')
+    expect(jsonPath(result.diagnostics[0])).toBe('$.tables')
   })
 
   it('leaves the rest to the contract validator, which has the paths', () => {
@@ -379,6 +389,6 @@ describe('parse, when the file is not what the query prints', () => {
       tables: [{ table_name: 'orders', columns: [] }],
     })
     expect(result.ok).toBe(false)
-    expect(result.diagnostics.map((d) => d.path)).toContain('$.tables[0].schema')
+    expect(result.diagnostics.map(jsonPath)).toContain('$.tables[0].schema')
   })
 })

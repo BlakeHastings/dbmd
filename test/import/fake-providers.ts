@@ -25,6 +25,7 @@ import type {
   SourceInfo,
   Table,
 } from '../../src/import/contract.js'
+import { inDocument } from '../../src/import/diagnostics.js'
 import type { EngineProvider, ParseResult } from '../../src/import/provider.js'
 
 // ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ export const fakePostgresProvider: EngineProvider = {
           {
             code: 'import/not-an-object',
             severity: 'error',
-            path: '$',
+            at: inDocument('$'),
             message: 'the Postgres query returns one JSON object and this file is not one',
           },
         ],
@@ -335,7 +336,7 @@ export const fakeSqlServerProvider: EngineProvider = {
           {
             code: 'import/not-an-object',
             severity: 'error',
-            path: '$',
+            at: inDocument('$'),
             message:
               'this is not one JSON object; SSMS splits FOR JSON output across rows at about 2000 characters, and a partial copy out of the grid looks like this',
           },

@@ -9,7 +9,7 @@
 import type { IntrospectionDocument } from './contract.js'
 import { readEnvelope, validateIntrospectionDocument } from './contract.js'
 import type { Diagnostic, Result } from './diagnostics.js'
-import { hasErrors } from './diagnostics.js'
+import { hasErrors, inDocument } from './diagnostics.js'
 import type { ProviderRegistry } from './providers/index.js'
 import { registry as defaultRegistry, resolveProvider } from './providers/index.js'
 
@@ -40,7 +40,7 @@ export function readIntrospection(
     diagnostics.push({
       code: 'import/engine-overridden',
       severity: 'warning',
-      path: '$.engine',
+      at: inDocument('$.engine'),
       message: `this file says it came from '${envelope.value.engine}' and --engine says '${options.engine}', so it is being read as '${options.engine}'`,
     })
     wanted = { ...envelope.value, engine: options.engine }

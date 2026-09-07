@@ -32,11 +32,17 @@ interface Table {
   complete: boolean
 }
 
+/**
+ * The wire shape of `Diagnostic` from `src/diagnostics.ts`, restated because
+ * this bundle is compiled on its own and shares no module graph with the server.
+ * `at.in` is the discriminant: a file location can be opened at a line and a
+ * document location is a JSONPath into an introspection file that has no lines.
+ * ADR 0014.
+ */
 interface Diagnostic {
   code: string
   severity: 'error' | 'warning'
-  path: string
-  line?: number
+  at: { in: 'file'; path: string; line?: number } | { in: 'document'; jsonPath: string }
   message: string
 }
 
@@ -87,8 +93,7 @@ function render(response: ModelResponse): Node[] {
     const line = document.createElement('p')
     line.className = `diagnostic ${diagnostic.severity}`
     const where = document.createElement('code')
-    where.textContent =
-      diagnostic.line === undefined ? diagnostic.path : `${diagnostic.path}:${diagnostic.line}`
+    where.textContent = locationText(diagnostic)
     line.append(where, ` ${diagnostic.message}`)
     nodes.push(line)
   }
@@ -97,6 +102,17 @@ function render(response: ModelResponse): Node[] {
     nodes.push(renderTable(table))
   }
   return nodes
+}
+
+/**
+ * Where the problem is, as one string. The page only prints it, so the branch
+ * is here and once; a page that offered "open this file at that line" would ask
+ * `at.in` itself, which is what the discriminant is for.
+ */
+function locationText(diagnostic: Diagnostic): string {
+  const at = diagnostic.at
+  if (at.in === 'document') return at.jsonPath
+  return at.line === undefined ? at.path : `${at.path}:${at.line}`
 }
 
 function renderTable(table: Table): Node {

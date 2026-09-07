@@ -8,7 +8,7 @@
 import { postgresProvider } from './postgres.js'
 import type { EngineProvider } from '../provider.js'
 import type { Diagnostic, Result } from '../diagnostics.js'
-import { compareCodeUnits } from '../diagnostics.js'
+import { compareCodeUnits, inDocument } from '../diagnostics.js'
 import type { Envelope } from '../contract.js'
 
 /**
@@ -76,7 +76,7 @@ export function resolveProvider(
   const diagnostic: Diagnostic = {
     code: 'import/unknown-engine',
     severity: 'error',
-    path: '$.engine',
+    at: inDocument('$.engine'),
     message: `no provider claims the engine '${envelope.engine}', and ${known}`,
   }
   return { ok: false, diagnostics: [diagnostic] }

@@ -2,16 +2,23 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { compareDiagnostics, readModel } from '../../src/model/read.js'
+import { compareDiagnostics, locationText } from '../../src/diagnostics.js'
+import { readModel } from '../../src/model/read.js'
 import type { Diagnostic } from '../../src/model/types.js'
 import { fixtureModel, withModel } from './helpers.js'
 
+/**
+ * The file location, asserted rather than assumed: every diagnostic the model
+ * reader raises points at a file, and `at.in` is what says so.
+ */
+function location(diagnostic: Diagnostic | undefined): { path: string; line?: number } {
+  if (diagnostic?.at.in !== 'file') throw new Error('not a file location')
+  return diagnostic.at
+}
+
 /** Diagnostics as one line each, which is how a reviewer reads them. */
 function lines(diagnostics: readonly Diagnostic[]): string[] {
-  return diagnostics.map(
-    (d) =>
-      `${d.path}${d.line === undefined ? '' : `:${d.line}`} ${d.severity} ${d.code}: ${d.message}`,
-  )
+  return diagnostics.map((d) => `${locationText(d.at)} ${d.severity} ${d.code}: ${d.message}`)
 }
 
 describe('the body is one opaque string', () => {
@@ -161,7 +168,7 @@ describe('the file name is the identity', () => {
     })
 
     expect(diagnostics[0]?.code).toBe('name-mismatch')
-    expect(diagnostics[0]?.line).toBe(3)
+    expect(location(diagnostics[0]).line).toBe(3)
     expect(model.tables[0]?.name).toBe('orders')
   })
 
@@ -388,7 +395,7 @@ describe('never throwing, and always in the same order', () => {
 
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]?.code).toBe('model-directory-unreadable')
-    expect(diagnostics[0]?.path).toBe('.')
+    expect(location(diagnostics[0]).path).toBe('.')
     // ADR 0006 forbids absolute paths in output, so the message carries the
     // errno and not the path the caller already knows.
     expect(diagnostics[0]?.message).toBe('cannot read the model directory: ENOENT')
@@ -421,9 +428,9 @@ describe('never throwing, and always in the same order', () => {
     expect(lines(diagnostics)).toEqual([
       'notes/misfiled.md:2 error kind-mismatch: `kind: table` in a directory of notes; the directory decides, so this file is not loaded',
       'tables/broken-yaml.md:6 error frontmatter-invalid: Sequence item without - indicator',
-      'tables/coerced.md:8 error field-wrong-type: `name` must be a string, but YAML read `null` as null. Quote it.',
-      'tables/coerced.md:11 error field-wrong-type: `type` must be a string, but YAML read `true` as a boolean. Quote it.',
-      'tables/coerced.md:14 error field-wrong-type: `default` must be a string, but YAML read `0` as a number. A SQL default must be a string so that it survives as SQL text. Quote it, and quote it twice if it is a SQL string literal: `default: "\'pending\'"`.',
+      'tables/coerced.md:8 error field-wrong-type: `name` must be a string, but YAML read `null` as null; quote it',
+      'tables/coerced.md:11 error field-wrong-type: `type` must be a string, but YAML read `true` as a boolean; quote it',
+      'tables/coerced.md:14 error field-wrong-type: `default` must be a string, but YAML read `0` as a number; quote it so that it survives as SQL text, and quote it twice if it is a SQL string literal: `default: "\'pending\'"`',
       'tables/coerced.md:15 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, pk, ref, type',
       'tables/empty-frontmatter.md error frontmatter-empty: the frontmatter is empty, so the file declares nothing',
       'tables/no-frontmatter.md error frontmatter-absent: no frontmatter: the file does not start with a `---` line',

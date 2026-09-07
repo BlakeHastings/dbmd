@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
+import { locationText } from '../../src/diagnostics.js'
 import { readModel } from '../../src/model/read.js'
 import type { Diagnostic, ReadResult } from '../../src/model/types.js'
 
@@ -28,7 +29,7 @@ const shop: Promise<ReadResult> = readModel(shopDirectory)
 function lines(diagnostics: readonly Diagnostic[]): string[] {
   return diagnostics.map(
     (d) =>
-      `${d.path}${d.line === undefined ? '' : `:${d.line}`} ${d.severity} ${d.code}: ${d.message}`,
+      `${locationText(d.at)} ${d.severity} ${d.code}: ${d.message}`,
   )
 }
 
