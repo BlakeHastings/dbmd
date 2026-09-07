@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with two agents in flight and no pull request open.**
+**As of 2026-09-07, with three agents in flight and no pull request open.**
 
 ## Where the work is
 
-Sixty-four pull requests have merged, all through `merge-pr.mjs`, and the
+Sixty-seven pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -94,11 +94,12 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-49**, four small studio wrongnesses, the worst of which is a
-  confirmation dialog that states something untrue at the moment the user
-  decides.
-- **dbmd-3xq**, the last four sleeps in the watcher tests, and whether the three
-  behaviours they guard can fail at all.
+- **dbmd-d6u**, a check that fails the build when documentation names a command,
+  script or npm task that does not exist. The detection layer for dbmd-7nb.
+- **dbmd-f3p**, the one model diagnostic no test has ever seen, which carries a
+  determinism invariant nothing exercises.
+- **dbmd-lof**, the two `import/empty-value` call sites hidden behind generic
+  helpers.
 
 ## What proved out, and is easy to lose
 
@@ -134,6 +135,18 @@ move and will file a defect. It is the note. Move it and the drag works.
   told the table exists and the disk never hears of it. Found by asserting the
   two rules against one list, which is the only way it was ever going to
   surface: each half was correct about itself.
+
+- **One stylesheet for two scenes broke the page twice in a day.** The studio's
+  canvas and its inspector panel share one style block, so a bare class selector
+  matches both. `note` collided with `#inspector .note` and stacked every
+  explanatory sentence in the page corner. Hours later `.notes` collided the same
+  way, and because the unscoped rule was `position: absolute; top: 0; left: 0`
+  and neither inspector rule set `position`, **every red validation paragraph had
+  been rendering behind the toolbar**, including one the create form relies on
+  being read. Singular and plural, one character apart, found by two agents who
+  did not know about each other. Neither was visible in a diff or a test. Both
+  were found by driving the page and noticing something in the wrong place.
+  `.scene >` is the convention now; dbmd-3ip is the check.
 
 ## Audited on 2026-09-07, so a successor need not redo it
 
