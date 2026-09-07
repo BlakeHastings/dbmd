@@ -512,6 +512,271 @@ describe('check:commands, broken on purpose', () => {
 })
 
 // ---------------------------------------------------------------------------
+// check-scene-classes.mjs: a class name both studio scenes use, with a rule
+// that belongs to neither
+// ---------------------------------------------------------------------------
+
+describe('check:scenes, broken on purpose', () => {
+  /**
+   * A scratch studio: a page with a stylesheet, and the two scene files.
+   *
+   * Written rather than copied, because every case here is about a stylesheet
+   * that is wrong on purpose and the real one is not. Three files is the whole
+   * of what the check reads, so a synthetic tree is the same subject and a
+   * readable one: each case shows the rule and the two lines that make it a
+   * collision, side by side, which the real 800-line page cannot.
+   *
+   * No git repository. Unlike the two checks above, this one reads three named
+   * paths rather than `git ls-files`, so a file on disk is all it needs.
+   */
+  async function studio(files: {
+    rules: string[]
+    canvas?: string[]
+    inspector?: string[]
+  }): Promise<string> {
+    const root = await scratchWith('check-scene-classes.mjs')
+    await mkdir(join(root, 'src', 'studio', 'client'), { recursive: true })
+    const write = (name: string, lines: string[]) =>
+      writeFile(join(root, 'src', 'studio', 'client', name), `${lines.join('\n')}\n`)
+
+    // The rules start on line 5 of the page, which is what the line assertions
+    // below are counted from.
+    await write('index.html', [
+      '<!doctype html>',
+      '<html lang="en">',
+      '  <head>',
+      '    <style>',
+      ...files.rules,
+      '    </style>',
+      '  </head>',
+      '</html>',
+    ])
+
+    // The canvas writes its classes with `className`, including the ternary the
+    // real one uses for a table box, because `box` is the class that anchors
+    // half the rules in the real stylesheet and reading only the first literal
+    // of an assignment would miss it.
+    await write(
+      'canvas.ts',
+      files.canvas ?? [
+        "scene.className = 'scene'",
+        "layer.className = 'notes'",
+        "element.className = table.complete ? 'box' : 'box broken'",
+        "type.className = 'type'",
+      ],
+    )
+
+    // The inspector writes almost none of its classes with `className`: they go
+    // through two helpers, and the check is told about both by name. `el` takes
+    // the class as its second argument; `textField` passes its key on to `el`,
+    // which is how an input ends up as `.type`.
+    await write(
+      'inspector.ts',
+      files.inspector ?? [
+        'function el(tag: string, className = ""): HTMLElement {',
+        '  return make(tag, className)',
+        '}',
+        'function textField(parent: HTMLElement, key: string): HTMLInputElement {',
+        "  return el('input', key)",
+        '}',
+        "const said = el('p', 'notes')",
+        "const kind = textField(item, 'type')",
+      ],
+    )
+    return root
+  }
+
+  test('the defect that started this: a bare rule on a shared name fails, with the line', async () => {
+    // dbmd-49, reduced. `.notes` is the canvas note layer and the inspector's
+    // red validation paragraph, and the bare rule positioned every one of the
+    // paragraphs at the corner of the page, behind the toolbar.
+    const root = await studio({
+      rules: [
+        '      .notes {',
+        '        position: absolute;',
+        '        top: 0;',
+        '      }',
+        '      #inspector .notes {',
+        '        color: red;',
+        '      }',
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(1)
+    // The line of the rule, not of the class or of the `<style>` block: this
+    // stylesheet is 800 lines long and half of it is comment.
+    expect(ran.err).toContain('src/studio/client/index.html:5')
+    expect(ran.err).toContain('`.notes`')
+    // Both halves of the collision, because the fix is a choice between them
+    // and neither file is wrong on its own.
+    expect(ran.err).toContain('canvas.ts:2')
+    expect(ran.err).toContain('inspector.ts:7')
+    // The convention, in the failure, so it is learnt where it is broken.
+    expect(ran.err).toContain('.scene > .notes')
+    expect(ran.err).toContain('#inspector .notes')
+    // And it is the only offender: the scoped rule two lines down is fine, and
+    // a check that reported both would also have exited 1 here.
+    expect(ran.err).toContain('1 rule on a class name')
+    expect(ran.err).not.toContain('index.html:9')
+  })
+
+  test('the same stylesheet with the rule scoped passes, so the failure was the scope', async () => {
+    const root = await studio({
+      rules: [
+        '      .scene > .notes {',
+        '        position: absolute;',
+        '        top: 0;',
+        '      }',
+        '      #inspector .notes {',
+        '        color: red;',
+        '      }',
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(0)
+    // The list is the finding whether or not anything is wrong, so the passing
+    // run names what it looked at rather than saying nothing.
+    expect(ran.out).toContain('.notes')
+    expect(ran.out).toContain('.type')
+    expect(ran.out).toContain('every rule naming one is anchored')
+  })
+
+  test('the first collision, one character along, is the same finding', async () => {
+    // dbmd-34. The canvas element was `note` and `#inspector .note` was already
+    // the panel's explanatory paragraph. Singular and plural were found hours
+    // apart by two agents who did not know about each other, which is why the
+    // check is about the shape rather than about either name.
+    const root = await studio({
+      rules: [
+        '      .note {',
+        '        position: absolute;',
+        '      }',
+        '      #inspector .note {',
+        '        color: gray;',
+        '      }',
+      ],
+      canvas: ["card.className = 'note'"],
+      inspector: [
+        'function el(tag: string, className = ""): HTMLElement {',
+        '  return make(tag, className)',
+        '}',
+        'function textField(parent: HTMLElement, key: string): HTMLInputElement {',
+        "  return el('input', key)",
+        '}',
+        "const paragraph = el('p', 'note')",
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('src/studio/client/index.html:5')
+    expect(ran.err).toContain('`.note`')
+    expect(ran.err).toContain('canvas.ts:1 and inspector.ts:7')
+  })
+
+  test('a name only one scene uses needs no scope, which is half of what this guard is', async () => {
+    // The check that failed this would ask for the canvas half of the
+    // stylesheet to be rewritten, and a check that asks for that gets turned
+    // off. `box`, `broken` and `scene` are the canvas's alone and stay bare.
+    const root = await studio({
+      rules: [
+        '      .box {',
+        '        position: absolute;',
+        '      }',
+        '      .box.broken {',
+        '        border-color: red;',
+        '      }',
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('every rule naming one is anchored')
+  })
+
+  test('a class only one scene uses anchors the rule, which is why `.box li .type` stands', async () => {
+    // `type` is shared: the canvas writes it on a column's type cell and the
+    // inspector writes it on the input that edits one. The rule is safe anyway,
+    // because it has already said `.box`, and the two scenes are siblings in
+    // the page. Requiring `.scene` in front of it as well would be a
+    // specificity change to a rule that was never wrong.
+    const root = await studio({
+      rules: ['      .box li .type {', '        color: gray;', '      }'],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('every rule naming one is anchored')
+  })
+
+  test('one part of a selector list is judged on its own', async () => {
+    // `.scene > .notes, .notes` is half the convention and half the defect, and
+    // a check that read the list as one string would see the anchor and pass.
+    const root = await studio({
+      rules: ['      .scene > .notes,', '      .notes {', '        position: absolute;', '      }'],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(1)
+    // The second part, on its own line, which is the one that is wrong.
+    expect(ran.err).toContain('src/studio/client/index.html:6')
+    expect(ran.err).toContain('1 rule on a class name')
+  })
+
+  test('a rule written inside a comment is not a rule', async () => {
+    // The two collisions are each described in a comment beside the fix, in the
+    // words that would fail this check if it read them. Blanking comments is
+    // what lets the stylesheet explain itself.
+    const root = await studio({
+      rules: [
+        '      /* `.notes` was bare here once, and the panel paid for it. */',
+        '      .scene > .notes {',
+        '        position: absolute;',
+        '      }',
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('every rule naming one is anchored')
+  })
+
+  test('a renamed helper throws rather than quietly seeing fewer classes', async () => {
+    // The failure this check itself is most exposed to. It learns the
+    // inspector's class names from two helpers it knows by name, so a rename
+    // would leave it reading an inspector with no classes, finding no shared
+    // names, and passing everything. It says so instead.
+    const root = await studio({
+      rules: ['      .notes {', '        position: absolute;', '      }'],
+      inspector: [
+        'function el(tag: string, className = ""): HTMLElement {',
+        '  return make(tag, className)',
+        '}',
+        "const said = el('p', 'notes')",
+      ],
+    })
+
+    const ran = await runScript(root, 'check-scene-classes.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('no longer declares textField()')
+    expect(ran.err).toContain('see fewer classes than there are')
+    // And not a finding, which is the point: an exit code of 1 for the wrong
+    // reason is what this assertion separates from the real one.
+    expect(ran.err).not.toContain('1 rule on a class name')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The init scaffold's guard: the first thing a new user sees, checked
 // ---------------------------------------------------------------------------
 
