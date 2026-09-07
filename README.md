@@ -115,6 +115,34 @@ files whose boxes moved and never reads as a schema change.
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md)
 argues the format from that requirement and three others.
 
+## Your editor and the canvas, at the same time
+
+The studio watches the directory while it runs, so editing the markdown by hand
+and editing it in the page are the same feature seen from two ends. Add a column
+to a table file in your editor and the open page picks it up, without a reload
+and without losing what you had selected. Edit that table in the panel
+afterwards and the column you typed by hand is still there.
+
+`git checkout` is the undo, and it is safe with a page open. The studio notices
+that the files moved and says so on its status line:
+
+```
+The model changed on disk. This page is still showing what you were working on,
+and will catch up when you are between edits.
+```
+
+An edit you had already composed against the model as it used to be is then
+refused rather than written over the top of what `git` just restored:
+
+```
+this patch names revision 0 and this studio is on revision 1, so it was made
+against a model that is no longer what the files say. Nothing was written. Read
+/api/model again and make the edit on top of what it says now.
+```
+
+Nothing is written and nothing is lost. The page re-reads the model, and the
+same edit made again lands normally.
+
 ## Running it
 
 **`dbmd` is not published to npm.** `package.json` says `"private": true`, on
