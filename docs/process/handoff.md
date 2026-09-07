@@ -144,7 +144,8 @@ move and will file a defect. It is the note. Move it and the drag works.
   being read. Singular and plural, one character apart, found by two agents who
   did not know about each other. Neither was visible in a diff or a test. Both
   were found by driving the page and noticing something in the wrong place.
-  `.scene >` is the convention now; dbmd-3ip is the check.
+  `.scene >` is the convention now and `npm run check:scenes` enforces it: a
+  class name both files write must have every rule anchored to one scene.
 
 - **An invariant with a comment and no test is a comment.** `messageOf` in the
   reader threw the system message away because ADR 0006 forbids an absolute path
@@ -170,18 +171,8 @@ move and will file a defect. It is the note. Move it and the drag works.
   one the tool refused to read and then called healthy. Found by measuring the
   symlink case while answering a much smaller question, and it is the reason
   "leave it alone, it is none of dbmd's business" was the wrong answer. The same
-  shape survives one level down for a linked `.md` file, which is dbmd-95n.
-
-- **Following the instruction the tool prints is a different test from running
-  the tool.** `dbmd query --engine sqlserver` ships a copyable `sqlcmd` command
-  for saving its result. Run it verbatim against a real SQL Server 2022 and
-  `dbmd import` refuses the file: sqlcmd appends its row-count line, so the file
-  is 2333 bytes of which the JSON is the first 2315. **The payload is perfect and
-  the instruction is wrong**, and the parse error a user gets says "the usual
-  cause is a paste that stopped early", which sends them hunting a truncation
-  that did not happen. Filed as dbmd-4cp with a proven one-line fix. The Postgres
-  query has no such command, so it cannot be wrong in this way and gives less
-  help; whether that asymmetry is right is part of the item.
+  shape survived one level down for a linked `.md` file and is fixed too; both
+  now say `a link that resolves to a directory looks exactly like this`.
 
 - **A recipe the tool prints is code, and nothing was running it.** The `sqlcmd`
   command `dbmd query --engine sqlserver` shipped produced a file ending
