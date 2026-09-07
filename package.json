@@ -1,7 +1,7 @@
 {
   "name": "dbmd",
   "version": "0.1.0",
-  "description": "Model your database in markdown, edit it in a local web view, commit the result.",
+  "description": "A personal tool: model your database in markdown, edit it in a local web view, commit the result.",
   "keywords": [
     "database",
     "schema",

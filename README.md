@@ -10,6 +10,13 @@ local web view onto those files: drag a box, edit a column, type a paragraph,
 and the markdown is rewritten underneath you. The diff is a normal diff and the
 review is a normal pull request.
 
+This was 100% vibe coded using [b-fac](https://github.com/BlakeHastings/b-fac),
+an orchestration plugin by the same author.
+
+I built it as a tool for my own use, and it is public in case it is useful to
+somebody else. That sets the expectation: it changes when I need it to change,
+there is no release cadence, and issues and pull requests may sit.
+
 ## One picture and one file, and they are the same thing
 
 ![The dbmd studio: eight tables of the examples/shop model on a canvas with two amber sticky notes and a violet box labelled "Written by the depot handheld" drawn round two of the tables, the shipments table selected and outlined with its relationships highlighted, and an editing panel on the right headed "shipments / tables/shipments.md" showing its name, its group and its columns](docs/media/studio-shipments.png)
