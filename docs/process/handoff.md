@@ -344,6 +344,15 @@ rather than by reading.
   export-only and it is one missed call site rather than a pattern**: every other
   command already prints forward slashes. Filed as a P3.
 
+- **The output contract holds on a model that fails**, which is the case CI
+  depends on. A dangling ref gives exit 1 in both forms; `--json` carries
+  `schema: 1`, `ok: false`, the counts, and a diagnostic with its code, severity
+  and file; and **stderr is empty in `--json` mode**, so a job capturing stdout
+  gets the envelope and nothing leaks past it. No ANSI escapes when piped, with
+  `NO_COLOR`, or with `--no-color`. Colour is not dead code either: `output.ts`
+  detects a TTY per stream and `test/cli/output.test.ts` exists to pin the three
+  inputs to that one decision, which is the part a pty-less session cannot drive.
+
 
 ## What is waiting on the owner
 
