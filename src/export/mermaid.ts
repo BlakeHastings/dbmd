@@ -100,9 +100,12 @@ key.
 Everything else in the model is missing from it, because \`erDiagram\` has
 nowhere to put it: the sticky notes, the grouping boxes, the canvas layout,
 every prose body, the nullability and the default of a column, and every index
-except the single-column unique ones above. Mermaid also has no quoting for a
-column name or a column type, so one it cannot spell is rewritten, and the real
-one is shown beside it in that column's own comment.
+except the single-column unique ones above. Those have to be over a column: a
+\`unique\` index over an expression, such as \`lower(email)\`, marks nothing here,
+because it constrains the expression and says nothing about any one column.
+Mermaid also has no quoting for a column name or a column type, so one it
+cannot spell is rewritten, and the real one is shown beside it in that column's
+own comment.
 
 Mermaid lays this out itself, and past a few dozen tables it draws a wall
 nobody can read. That is what \`dbmd studio\` is for; this is for the pull
@@ -131,12 +134,28 @@ interface Keys {
   readonly unique: ReadonlySet<string>
 }
 
+/**
+ * An expression key marks nothing, and it is skipped rather than rendered.
+ *
+ * An index key is a column name or `{ expression: ... }` (ADR 0022), and only
+ * the first is a column of this table. `unique (lower(email))` constrains the
+ * lower-cased value and leaves `email` free to repeat in another case, so a
+ * `UK` on `email` from that index would be a claim nobody made; and the
+ * expression is not a column of the table at all, so there is nothing else here
+ * for it to mark. `src/model/validate.ts` reaches the same conclusion for the
+ * same reason when it decides whether a `ref` target identifies one row.
+ *
+ * The `typeof` is what keeps an `IndexExpression` out of a `Set<string>`, which
+ * is the `[object Object]` the studio's inspector already had to be guarded
+ * against: in a mermaid row it would have been a column called
+ * `_object_Object_`, silently, in somebody's diagram.
+ */
 function keysOf(table: Table): Keys {
   const pk = new Set(table.columns.filter((column) => column.pk === true).map((c) => c.name))
   const unique = new Set<string>()
   for (const index of table.indexes) {
     const only = index.columns.length === 1 ? index.columns[0] : undefined
-    if (index.unique === true && only !== undefined) unique.add(only)
+    if (index.unique === true && typeof only === 'string') unique.add(only)
   }
   return { pk, unique }
 }

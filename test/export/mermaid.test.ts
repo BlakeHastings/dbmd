@@ -201,6 +201,41 @@ The child.
     )
   })
 
+  test('a unique index over an expression marks nothing and leaves the ref many', async () => {
+    const lines = await diagram({
+      'tables/lines.md': `---
+kind: table
+table: lines
+columns:
+  - name: id
+    type: uuid
+    pk: true
+  - name: order_id
+    type: uuid
+    nullable: false
+    ref: orders.id
+indexes:
+  - name: lines_lower_order_key
+    columns: [{ expression: lower(order_id) }]
+    unique: true
+---
+
+\`unique (lower(order_id))\` constrains the lower-cased value and leaves
+\`order_id\` free to repeat, so it is not the same claim as a unique index over
+the column. ADR 0022.
+`,
+      'tables/orders.md': ORDERS,
+    })
+
+    // No UK, because an expression is not a column of this table, and no key
+    // rendered from the mapping either: `[object Object]` in a mermaid row
+    // would be a column called `_object_Object_`, silently, in a diagram.
+    expect(lines).toContain('    uuid order_id FK')
+    expect(lines.join('\n')).not.toContain('object')
+    // And the cardinality reads the same fact, so the child side stays many.
+    expect(lines).toContain('  "orders" ||..o{ "lines" : "order_id"')
+  })
+
   test('a unique index over the ref column makes the child side zero or one', async () => {
     const lines = await diagram({
       'tables/lines.md': `---
@@ -285,7 +320,15 @@ describe('the section around the diagram', () => {
     const { model } = await readModel(exampleShop)
     const { text } = mermaidSection(model)
 
-    for (const dropped of ['sticky notes', 'grouping boxes', 'canvas layout', 'prose body']) {
+    for (const dropped of [
+      'sticky notes',
+      'grouping boxes',
+      'canvas layout',
+      'prose body',
+      // The one a reader would otherwise read off the diagram wrongly: a
+      // unique index they can see in the model, and no UK where they expect it.
+      'over an expression',
+    ]) {
       expect(text).toContain(dropped)
     }
     expect(text).toContain('<!-- dbmd:diagram -->')

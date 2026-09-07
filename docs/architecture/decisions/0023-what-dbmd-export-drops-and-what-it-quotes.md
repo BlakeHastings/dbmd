@@ -70,6 +70,18 @@ rendered README on GitHub and has no reason to go looking, and a reader who is
 told the notes and the groups are missing stops mistaking the diagram for the
 model. The same paragraph says the model is the source.
 
+**A unique index over an expression marks nothing**, and that is in the
+paragraph too, because it is the one omission a reader would otherwise read off
+the diagram wrongly: they can see `unique: true` in the model and no `UK` on the
+column they expected it on. ADR 0022 made an index key a column name or
+`{ expression: ... }`, and only the first is a column of the table.
+`unique (lower(email))` constrains the lower-cased value and leaves `email` free
+to repeat in another case, so a `UK` there would be a claim nobody made;
+`src/model/validate.ts` reaches the same conclusion, for the same reason, when
+it decides whether a `ref` target identifies one row. There is nowhere in an
+`erDiagram` to draw the expression itself, so it is dropped rather than
+approximated.
+
 **The unreadable-at-scale problem gets a sentence and not a layout algorithm.**
 The work item proposed this and it is the right call: laying out an ER diagram
 better than mermaid does is a project, the studio already exists for the case
