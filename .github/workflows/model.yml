@@ -5,8 +5,8 @@
 #
 # It differs from the published recipe in one line each, deliberately: the
 # recipe installs a pinned `dbmd` from npm and this builds the checkout,
-# because `dbmd` is not published yet. ADR 0028 is the argument for that and
-# for the other two decisions below.
+# because `dbmd` is not published to npm and nothing has decided that it will
+# be. ADR 0028 is the argument for that and for the other decisions below.
 #
 # This is not the merge gate. `check.yml` is, it runs `npm run check`, and it is
 # the only required status check. Red here means the model or the recipe is

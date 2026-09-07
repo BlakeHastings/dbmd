@@ -41,12 +41,19 @@ installing, it happens to skip the question when nothing is on stdin, and a
 recipe whose correctness rests on that is one that hangs for six hours the
 first time it does not hold.
 
-**Until `dbmd` is published, `docs/ci.md` says plainly that those two lines do
-not work yet**, names `0.1.0` as the version they will be pinned to, and gives
-the form that does work today: a checkout of this repository, `npm ci`,
-`npm run build`, and `node dist/cli.js` where the recipe says `npx`. Shipping
-a recipe that cannot be run, without saying so, is the failure this is
-avoiding; shipping no recipe until publishing happens is the other one.
+**`docs/ci.md` says plainly, before the block anybody copies, that those two
+lines do not work yet**, and gives the form that does: a checkout of this
+repository, `npm ci`, `npm run build`, and `node dist/cli.js` where the recipe
+says `npx`. Shipping a recipe that cannot be run, without saying so, is the
+failure this is avoiding; shipping no recipe until publishing happens is the
+other one.
+
+**`0.1.0` is a placeholder and the page says so where it names it.** Nothing
+here decides what the first published version is, or whether there is one; that
+belongs to whoever publishes, and this record has no standing to pre-empt it. A
+specific number is written rather than `<version>` because the whole point of
+the line is that a real version goes there rather than `@latest`, and a recipe
+with an angle bracket in it teaches the habit this decision exists to prevent.
 
 **This repository runs the recipe, on `examples/shop`, in
 `.github/workflows/model.yml`.** It is the same two jobs with that one
@@ -85,10 +92,11 @@ because the model in the repository is somebody's.
 
 ## Consequences
 
-- **`0.1.0` is now a promise about a version number**, written in a doc before
-  the package exists. Publishing as anything else makes this page wrong, and
-  the page is the only place that number is stated, which is where to change
-  it.
+- **A version number now appears in the tree before anybody chose one.** That is
+  a real cost even with the placeholder said out loud, because a number in a
+  document is a number somebody can read as a decision. It is written in exactly
+  one place, `docs/ci.md`, so the fix is one edit, and whoever publishes should
+  make that edit rather than feel bound by it.
 - **`model.yml` is not the merge gate and must not become one.** `check.yml`
   runs `npm run check` and is the only required status check. A model job that
   is required is a job whose failure blocks a merge for a reason unrelated to
@@ -108,10 +116,15 @@ because the model in the repository is somebody's.
 
 ## Revisit when
 
-- **`dbmd` is published.** The honesty paragraph in `docs/ci.md` comes out, the
-  pinned version becomes real, and the workflow in this repository should be
+- **`dbmd` is published, if it ever is.** The "not on npm" section of
+  `docs/ci.md` comes out, the placeholder becomes whatever the real first
+  version turned out to be, and the workflow in this repository should be
   reconsidered rather than converted: running the published package here would
   test npm instead of the code in the pull request, which is backwards.
+- **It is decided that it will not be published.** Then the two `npx` lines are
+  not a recipe waiting on a date, they are a recipe for something that will not
+  exist, and the checkout form stops being the temporary half of that page and
+  becomes the whole of it.
 - **Somebody asks for the diagram to be committed by CI.** That is a bot with
   write access to a branch, and it is a decision about who may write to a
   repository rather than about this tool. `--stdout` plus a human running

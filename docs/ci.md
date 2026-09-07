@@ -18,6 +18,11 @@ schema and never connects to one.
 
 ## Copy this
 
+**It does not run as written.** `dbmd` is not published to npm, so the two `npx`
+lines below cannot resolve a package today. Read [the next
+section](#dbmd-is-not-on-npm) before you copy this, because it is the difference
+between a workflow that fails on its first run and one that works.
+
 ```yaml
 name: db-model
 
@@ -56,13 +61,24 @@ jobs:
 `db-model` is the default directory and the argument is there so that a
 repository which keeps its model somewhere else changes one word twice.
 
-**`dbmd` is not on npm yet.** `package.json` is `"private": true` at version
-`0.0.0`, so the two `npx` lines above are what the recipe *will* be rather than
-something you can run this afternoon: today they would fail to resolve a
-package. `0.1.0` is the version they will be pinned to at first publish. Until
-then, the way to run this against a repository is a checkout of
-`github.com/BlakeHastings/dbmd`, `npm ci && npm run build`, and
-`node dist/cli.js` where the recipe says `npx dbmd@0.1.0`. That is exactly what
+## `dbmd` is not on npm
+
+`package.json` is `"private": true` at version `0.0.0`. Nothing has been
+published, the name is still free, and whether this is ever published is an open
+question rather than a date. So the two `npx` lines above are the **shape** the
+recipe takes once there is a package, and today they would fail to resolve one.
+
+**`0.1.0` is a placeholder, not a chosen number.** Nobody has decided what the
+first published version will be, and this page has no standing to decide it. It
+is written as a specific version rather than as `<version>` only because the
+point of the line is that a real version goes there rather than `@latest`, and a
+recipe with an angle bracket in it teaches the wrong habit. If a first release
+happens under some other number, this page is the thing that is wrong and this
+paragraph is where to fix it.
+
+What works today is a checkout of `github.com/BlakeHastings/dbmd`,
+`npm ci && npm run build`, and `node dist/cli.js` wherever the recipe says
+`npx --yes dbmd@0.1.0`. That is exactly what
 [`.github/workflows/model.yml`](../.github/workflows/model.yml) in this
 repository does, against [`examples/shop`](../examples/shop), on every pull
 request, which is how this page stays true.
