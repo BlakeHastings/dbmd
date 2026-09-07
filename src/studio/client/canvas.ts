@@ -29,9 +29,11 @@
  *    inside the box, so a drag carries it along for free and only a change to
  *    what a box contains asks for it again.
  *
- * What is not here: the inspector (dbmd-32), which attaches to `onSelect`, and
- * notes and groups (dbmd-34), which attach as two more layers inside the scene,
- * behind and in front of the box layer respectively, reusing this drag.
+ * The inspector is not here either. It attaches through `onSelect` and hands
+ * back one edited table at a time to `update`, so this file knows about columns
+ * only in order to draw them. Notes and groups (dbmd-34) attach as two more
+ * layers inside the scene, behind and in front of the box layer respectively,
+ * reusing this drag.
  */
 
 import type { Column, Table } from '../../model/types.js'
@@ -72,14 +74,15 @@ export interface CanvasHandlers {
    * finished drag from going unwritten.
    */
   readonly onMove: (table: string, position: Point) => void
-  /** A table was selected, or the background was clicked. dbmd-32 attaches here. */
+  /** A table was selected, or the background was clicked. The inspector opens here. */
   readonly onSelect: (table: string | null) => void
   /** Pan or zoom changed, so a readout can follow it. */
   readonly onViewport: (viewport: Viewport) => void
 }
 
 interface Box {
-  readonly element: HTMLElement
+  /** Replaced in place by `update` when the table's columns change. */
+  element: HTMLElement
   /** Model coordinates of the top-left corner. */
   position: Point
   /** Measured from the DOM: a table's size is a consequence of its columns. */
@@ -95,7 +98,7 @@ interface Box {
   rows: Map<string, number>
   /** The header's centre, where an edge goes when this box has no such column. */
   header: number
-  readonly draggable: boolean
+  draggable: boolean
 }
 
 type Drag =
@@ -118,6 +121,8 @@ export class Canvas {
   private readonly boxLayer: HTMLElement
 
   private readonly boxes = new Map<string, Box>()
+  /** What is drawn, kept so one table can be redrawn without refetching the rest. */
+  private tables: readonly Table[] = []
   private specs: readonly EdgeSpec[] = []
   private edges: RoutedEdge[] = []
   private edgePaths: SVGPathElement[] = []
@@ -190,6 +195,7 @@ export class Canvas {
     this.rowSizes.disconnect()
     this.boxes.clear()
     this.boxLayer.replaceChildren()
+    this.tables = tables
 
     for (const table of tables) {
       const position = positions.get(table.name) ?? { x: 0, y: 0 }
@@ -215,19 +221,38 @@ export class Canvas {
       this.rowSizes.observe(box.element)
     }
 
-    this.specs = edgeSpecsOf(tables)
-    this.edges = routeEdges(this.specs, this.boxRects())
-    this.edgePaths = this.edges.map(() => {
-      const path = document.createElementNS(SVG, 'path')
-      path.setAttribute('class', 'edge')
-      path.setAttribute('marker-end', 'url(#dbmd-arrowhead)')
-      path.append(document.createElementNS(SVG, 'title'))
-      return path
-    })
-    this.edgeLayer.replaceChildren(...this.edgePaths)
-    this.drawEdges()
-    this.describeEdges()
-    this.markSelection()
+    this.rebuildEdges()
+  }
+
+  /**
+   * Redraw one table, keeping where it is and what the rest of the scene is
+   * doing. The inspector calls this after an edit that changed its columns.
+   *
+   * A whole `show` would do it and is what the watcher will use for a change it
+   * did not make, but it is the wrong shape for an edit the page just made: it
+   * would recreate every box, and every box is measured from the DOM, so one
+   * table gaining a column would re-measure all of them. Here exactly one box is
+   * rebuilt, re-measured and re-observed.
+   *
+   * The `ResizeObserver` is not enough on its own and is not made redundant by
+   * this either. It notices that this box's rows moved and redraws them; what it
+   * cannot know is that the model gained or lost a `ref`, which is a different
+   * path element rather than a different anchor, and that is `rebuildEdges`.
+   */
+  update(next: Table): void {
+    const box = this.boxes.get(next.name)
+    if (box === undefined) return
+    const element = renderTable(next)
+    element.classList.toggle('selected', this.selected === next.name)
+    placeElement(element, box.position)
+    this.rowSizes.unobserve(box.element)
+    box.element.replaceWith(element)
+    box.element = element
+    box.draggable = next.complete
+    measure(box)
+    this.rowSizes.observe(element)
+    this.tables = this.tables.map((table) => (table.name === next.name ? next : table))
+    this.rebuildEdges()
   }
 
   select(table: string | null): void {
@@ -406,6 +431,29 @@ export class Canvas {
       })
     }
     return rects
+  }
+
+  /**
+   * One path element per `ref` in the model, from scratch.
+   *
+   * Rebuilt rather than patched because a column edit can add or remove an edge
+   * as readily as move one, and the path elements are index-aligned with
+   * `this.edges`.
+   */
+  private rebuildEdges(): void {
+    this.specs = edgeSpecsOf(this.tables)
+    this.edges = routeEdges(this.specs, this.boxRects())
+    this.edgePaths = this.edges.map(() => {
+      const path = document.createElementNS(SVG, 'path')
+      path.setAttribute('class', 'edge')
+      path.setAttribute('marker-end', 'url(#dbmd-arrowhead)')
+      path.append(document.createElementNS(SVG, 'title'))
+      return path
+    })
+    this.edgeLayer.replaceChildren(...this.edgePaths)
+    this.drawEdges()
+    this.describeEdges()
+    this.markSelection()
   }
 
   /**
