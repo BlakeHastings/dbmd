@@ -70,6 +70,28 @@ export interface TableBox extends Rect {
   readonly rows: ReadonlyMap<string, number>
   /** Where to point when a column is not one of `rows`: the header's centre. */
   readonly header: number
+  /**
+   * Whether this box draws its columns at all.
+   *
+   * False for a table whose file did not parse: the box shows the reader's
+   * refusal in place of its rows, so `rows` is empty however many columns the
+   * model still holds. Without it, an empty `rows` has two causes and one
+   * answer, and the arrow ends up explained by the wrong one.
+   */
+  readonly drawsRows: boolean
+}
+
+/**
+ * An end that could not be put on a row, and why not.
+ *
+ * The two reasons are different facts and a reader acts differently on each: a
+ * column that is not there is a `ref` to fix, and a table that did not parse is
+ * a file to fix, after which the column is very probably there. ADR 0018 says a
+ * fallback that looks like something else is the original bug in disguise, and
+ * a fallback explained by the wrong cause is the smaller version of that.
+ */
+export interface UnanchoredEnd extends Endpoint {
+  readonly why: 'no-such-column' | 'table-did-not-parse'
 }
 
 export interface RoutedEdge extends EdgeSpec {
@@ -78,14 +100,14 @@ export interface RoutedEdge extends EdgeSpec {
   /** A point on the middle of the path, for a hit target or a label. */
   readonly at: Point
   /**
-   * The ends that named a column their table does not have, as `table.column`.
+   * The ends that could not be put on a row, and why.
    *
    * Empty for an ordinary edge. It is here rather than swallowed because an
    * edge that could not find its row is drawn at the table's header, and a
    * reader who is not told that will read it as an ordinary table-level arrow,
    * which is the thing this file exists to stop.
    */
-  readonly unanchored: readonly string[]
+  readonly unanchored: readonly UnanchoredEnd[]
 }
 
 /** Far enough apart to be two lines at zoom 0.5, close enough to read as a pair. */
@@ -288,11 +310,19 @@ function anchorY(box: TableBox, column: string): number {
   return box.y + Math.min(Math.max(row, BORDER_GAP), Math.max(BORDER_GAP, box.h - BORDER_GAP))
 }
 
-/** The two ends, if any, that could not be put on a row. */
-function unanchoredEnds(spec: EdgeSpec, from: TableBox, to: TableBox): readonly string[] {
-  const ends: string[] = []
-  if (!from.rows.has(spec.from.column)) ends.push(`${spec.from.table}.${spec.from.column}`)
-  if (!to.rows.has(spec.to.column)) ends.push(`${spec.to.table}.${spec.to.column}`)
+/** The two ends, if any, that could not be put on a row, each with its reason. */
+function unanchoredEnds(spec: EdgeSpec, from: TableBox, to: TableBox): readonly UnanchoredEnd[] {
+  const ends: UnanchoredEnd[] = []
+  for (const [box, end] of [
+    [from, spec.from],
+    [to, spec.to],
+  ] as const) {
+    if (box.rows.has(end.column)) continue
+    // The order matters. A box that draws no rows has no row for any column, so
+    // asking whether this one is missing first would answer every end on a
+    // table that did not parse with a column that is still in the model.
+    ends.push({ ...end, why: box.drawsRows ? 'no-such-column' : 'table-did-not-parse' })
+  }
   return ends
 }
 

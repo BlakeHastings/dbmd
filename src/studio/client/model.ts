@@ -1,9 +1,10 @@
 /**
  * The model the page holds, and the questions the inspector asks of it.
  *
- * Three small things live here together because they are the same idea: the
- * page has a copy of the model, and it should be able to answer questions about
- * that copy without a round trip.
+ * These live here together because they are the same idea: the page has a copy
+ * of the model, and it should be able to answer questions about that copy
+ * without a round trip. `renamePlan` is the furthest that idea goes, and is
+ * where the answers become the sentences the panel says.
  *
  * **`fromWireModel` is the inverse of `toWireModel`, and it exists so the page
  * can run the validator.** `src/model/validate.ts` takes a `Model` and nothing
@@ -23,6 +24,7 @@
 
 import type { Column, Model, Table } from '../../model/types.js'
 import type { WireModel } from '../wire.js'
+import { clashFor } from './tables.js'
 
 export function fromWireModel(wire: WireModel): Model {
   return {
@@ -70,6 +72,81 @@ export function referrersTo(
 /** `orders.customer_id, addresses.customer_id`, for a sentence about them. */
 export function referrerText(referrers: readonly Referrer[]): string {
   return referrers.map((referrer) => `${referrer.table}.${referrer.column}`).join(', ')
+}
+
+/**
+ * The word that agrees with `count`: one of them, or more than one.
+ *
+ * For the noun *and* for its verb, which is the whole reason this is a function
+ * rather than a `${n === 1 ? '' : 's'}` at each site. Written that way, the
+ * count pluralises whatever is next to it and nothing else, which is how two
+ * confirmations came to say `1 ref point at it`. Here the two choices sit side
+ * by side in the template, and one cannot be made without the other in view.
+ */
+export function agreeing(count: number, one: string, more: string): string {
+  return count === 1 ? one : more
+}
+
+/** What the panel does about a rename, worked out before it draws anything. */
+export type RenamePlan =
+  /**
+   * There is no confirmation to draw, and this is why.
+   *
+   * A name the model already holds cannot be renamed to, and the server refuses
+   * it as well and has to: a client is not a permission system. What the client
+   * can do is not offer a decision that was never available.
+   */
+  | { readonly kind: 'refused'; readonly said: string }
+  /** The paragraphs of the confirmation, in the order they are read. */
+  | { readonly kind: 'confirm'; readonly lines: readonly string[] }
+
+/**
+ * Everything the rename confirmation says, decided without a DOM.
+ *
+ * Here rather than in the panel for the reason `fields.ts` and `tables.ts` are
+ * (ADR 0016): this is the most carefully worded sentence in the studio, said at
+ * the one moment it can still change somebody's mind, and a sentence that
+ * important should be provable without a browser. The two things it used to get
+ * wrong are both about accuracy at that moment: it offered the decision for a
+ * name that was already taken, and it counted the file it is deleting among the
+ * other files it would edit.
+ */
+export function renamePlan(model: Pick<WireModel, 'tables'>, from: string, to: string): RenamePlan {
+  const others = model.tables.map((table) => table.name).filter((name) => name !== from)
+  const clash = clashFor(to, others)
+  if (clash?.kind === 'same') {
+    return {
+      kind: 'refused',
+      said: `There is already a table called \`${to}\`, so nothing here can be renamed to it. Pick another name, or rename that one first.`,
+    }
+  }
+
+  const referrers = referrersTo(model, from)
+  // A ref from this table to itself is rewritten inside the file being created,
+  // so it is a ref that moves and not a file that is edited. Counting it as one
+  // put `tables/addresses.md` in the list of other files a rename of
+  // `addresses` would edit, which named the file the same sentence had just
+  // said was being deleted.
+  const elsewhere = referrers.filter((referrer) => referrer.table !== from)
+  const files = [...new Set(elsewhere.map((referrer) => referrer.table))]
+  const count = referrers.length
+  return {
+    kind: 'confirm',
+    lines: [
+      `Rename \`${from}\` to \`${to}\`?`,
+      `This writes tables/${to}.md and deletes tables/${from}.md.`,
+      ...(clash?.kind === 'case'
+        ? [
+            `\`${clash.held}\` differs from this only in case, which is two tables on Linux and one file on Windows and macOS, where this rename is refused.`,
+          ]
+        : []),
+      count === 0
+        ? 'Nothing else in the model refs this table, so no other file changes.'
+        : files.length === 0
+          ? `${count} ${agreeing(count, 'ref points', 'refs point')} here, from this table itself, and ${agreeing(count, 'moves', 'move')} into the new file with it, so no other file changes (${referrerText(referrers)}).`
+          : `${count} ${agreeing(count, 'ref points', 'refs point')} here and will be moved with it, which edits ${files.length} other ${agreeing(files.length, 'file', 'files')}: ${files.map((file) => `tables/${file}.md`).join(', ')} (${referrerText(referrers)}).`,
+    ],
+  }
 }
 
 /** The same columns, with every `ref` at `from` moved to `to`. Used by a rename. */

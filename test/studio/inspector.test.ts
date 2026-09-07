@@ -9,7 +9,13 @@ import {
   survivesATextarea,
   toModelBody,
 } from '../../src/studio/client/fields.js'
-import { referrersTo, referrerText, withRefsRetargeted } from '../../src/studio/client/model.js'
+import {
+  referrersTo,
+  referrerText,
+  renamePlan,
+  withRefsRetargeted,
+  type RenamePlan,
+} from '../../src/studio/client/model.js'
 
 /**
  * The inspector without a browser.
@@ -188,3 +194,65 @@ describe('what a rename is about to touch', () => {
     expect(moved[2]?.ref).toEqual({ table: 'delivery_points', column: 'id' })
   })
 })
+
+/**
+ * The sentence the panel says at the one moment it can still change a mind.
+ *
+ * Every case here was a paragraph the studio drew, in full, about files it was
+ * never going to write, and then refused after the button was pressed. Nothing
+ * was ever written and both refusals were correct; what was wrong was the
+ * moment, and the moment is the whole of what a confirmation is.
+ */
+describe('what the rename confirmation says', () => {
+  it('does not offer the decision at all when the name is already taken', () => {
+    const plan = renamePlan(model, 'orders', 'customers')
+    expect(plan.kind).toBe('refused')
+    // The server refuses this too and still has to. The point is that nobody is
+    // asked to agree to `This writes tables/customers.md` first.
+    if (plan.kind === 'refused') expect(plan.said).toContain('already a table called `customers`')
+  })
+
+  it('still offers a rename that only changes case, and says what it costs', () => {
+    const plan = renamePlan(model, 'orders', 'Customers')
+    expect(plan.kind).toBe('confirm')
+    if (plan.kind !== 'confirm') return
+    expect(plan.lines.join(' ')).toContain('differs from this only in case')
+  })
+
+  it('counts the renamed table itself as a ref that moves, not as another file', () => {
+    // `addresses.superseded_by` refs `addresses.id`. It is rewritten inside the
+    // file being created, so it is one of the refs that move; naming
+    // tables/addresses.md as a file that gets edited names the file the line
+    // above has just said is being deleted.
+    const plan = renamePlan(model, 'addresses', 'postal_addresses')
+    expect(plan.kind).toBe('confirm')
+    if (plan.kind !== 'confirm') return
+    const said = plan.lines.join(' ')
+    expect(said).toContain('This writes tables/postal_addresses.md and deletes tables/addresses.md')
+    expect(said).toContain('so no other file changes')
+    expect(said).toContain('addresses.superseded_by')
+    expect(said).not.toContain('other file: tables/addresses.md')
+  })
+
+  it('agrees the verb with the count, which one ref did not', () => {
+    const one = renamePlan(model, 'customers', 'clients')
+    const alone = renamePlan(model, 'addresses', 'postal_addresses')
+    expect(lastLine(one)).toContain('2 refs point here')
+    expect(lastLine(one)).toContain('2 other files')
+    expect(lastLine(alone)).toContain('1 ref points here')
+    // The shape that produced `1 ref point at it`: a plural noun and a bare verb.
+    for (const plan of [one, alone]) expect(lastLine(plan)).not.toMatch(/\b1 refs?\s+point\b/)
+  })
+
+  it('says nothing about other files when nothing refs the table', () => {
+    const plan = renamePlan({ tables: [] }, 'orders', 'purchases')
+    expect(lastLine(plan)).toBe(
+      'Nothing else in the model refs this table, so no other file changes.',
+    )
+  })
+})
+
+function lastLine(plan: RenamePlan): string {
+  if (plan.kind !== 'confirm') throw new Error('the plan refused, so it has no lines')
+  return plan.lines[plan.lines.length - 1] ?? ''
+}
