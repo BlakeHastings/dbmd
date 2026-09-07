@@ -41,7 +41,7 @@ anything prints them, as everything emitted here does. ADR 0006.
 Two keys, at the top of the file, and they are the only part of it that means
 anything before dbmd knows which engine wrote it.
 
-```json
+```json dbmd-import:envelope
 { "dbmdIntrospection": 1, "engine": "postgres", "tables": [] }
 ```
 
@@ -296,7 +296,7 @@ contradicted each other.
 The SQL Server fixture in `test/import/fixtures/sqlserver-raw.json` contains,
 among other things, this column, in the shape `FOR JSON PATH` produces:
 
-```json
+```json dbmd-import:raw-column
 {
   "name": "Code",
   "type": "nvarchar",
@@ -312,7 +312,7 @@ among other things, this column, in the shape `FOR JSON PATH` produces:
 
 and the provider turns it into:
 
-```json
+```json dbmd-import:canonical-column
 {
   "name": "Code",
   "type": { "native": "nvarchar", "normalised": "string", "length": 32 },
@@ -330,7 +330,7 @@ wrote them down. `isIdentity: false` disappeared rather than becoming
 A whole table, with the composite key, the multi-column foreign key across
 schemas, the included column and the filtered index:
 
-```json
+```json dbmd-import:canonical-table
 {
   "schema": "sales",
   "name": "OrderLine",
