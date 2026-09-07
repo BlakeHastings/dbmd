@@ -149,3 +149,49 @@ for `export`, left open rather than closed by guessing at a page for it.
 No new record was taken for any of this. Nothing was decided that ADR 0023 had
 not already decided about the payload, and the one new choice, which page shows
 it, is a correction to this record's own claim and belongs here.
+
+## Amended by dbmd-shg, which closes the finding the amendment above left open
+
+That finding said `refs` and `query` both take `--json`, that neither shape was
+shown anywhere, and that it was left open rather than closed by guessing at a
+page for it. **Both are now shown, on two different pages, and the two were not
+the same case.**
+
+**`dbmd refs --json` is in [`docs/format.md`](../../format.md).** Every key in
+that payload is a fact that page already defines: `path` is a file in the model
+directory, `inPrimaryKey` is `pk: true`, `nullable` is the column key with three
+states, and `onDelete` and `onUpdate` are the five words of the one closed
+vocabulary in the format. Four of a ref's keys are omitted rather than written
+false, and a caller reading an absent `onDelete` as `no action` gets the opposite
+of the truth about somebody's rows. The rule that makes that reading wrong is
+that page's rule, so a program reading this report has that page open already. It
+is the test `docs/ci.md` passed for `export`, applied again: the shape goes where
+its reader is.
+
+**`dbmd query --json` is in [`docs/import-format.md`](../../import-format.md)**,
+beside the journey that page opens with, and it needed an argument rather than
+only a placement. `--json` does not hand a caller the SQL more conveniently. It
+takes the SQL off stdout as a document and puts it inside a report, so
+`dbmd query --engine postgres --json > introspect.sql` writes something no
+database will run. The caller it is for is a program driving the whole journey
+off one stream, for which this is the one step that would otherwise have to read
+prose off stderr to learn which engine it got and whether the run was ok.
+
+`characters` is the field with no caller at all. It is `sql`'s own length, it is
+on the report because the text form prints it, and it is now documented as
+exactly that rather than dressed up as useful. Rule 3 makes the JSON form say
+what the text form says, and the consequence above makes every shape public API
+from the first release, so a field that is merely unused is not a field to
+remove. Writing down that it is unused costs less than leaving the next reader to
+assume it was meaningful.
+
+**Rule 3's second half is now true of all five commands**, which is what makes
+this the last of these amendments rather than the second of many: `check` in
+`README.md`, `import` and `query` in `docs/import-format.md`, `export` in
+`docs/ci.md`, `refs` in `docs/format.md`.
+
+No new record was taken, and a free number was available. This closes a finding
+this record opened, about a rule this record states, by the method the amendment
+above established, and it decides nothing a reader would look for anywhere else.
+A record saying only "the thing the last amendment left undone is done" would be
+a second place to look for one answer.

@@ -592,6 +592,9 @@ A foreign key is declared on the column that holds it, as `table.column`:
 
 There is no relationship list anywhere. The arrow on the diagram is drawn from
 this one line, and the reverse direction is computed when the model is read.
+`dbmd refs` is how you ask for that reverse direction from the command line, and
+[its report](#the-answer-dbmd-refs---json-gives) is the shape a program reads it
+in.
 
 The value is split at the **last** dot, so the table part may itself contain
 dots later. Anything without a usable dot is `ref-malformed`:
@@ -1220,6 +1223,224 @@ eight diagnostics; it is now one, on line 5, and it says
 `Block collections are not allowed within flow collections`.
 ```
 
+## The answer `dbmd refs --json` gives
+
+`dbmd refs <table> [directory]` asks what points at a table, and its report is
+shown on this page because every key in it is a fact this page defines. `path` is
+the file the `ref:` is written in, `inPrimaryKey` is
+[the primary key](#the-primary-key), `nullable` is the column key of that name,
+and `onDelete` and `onUpdate` are
+[the five words](#what-happens-when-the-target-row-goes). A program reading this
+report is reading this format one ref at a time, which is why the shape is here
+rather than beside the `check` shape in [`README.md`](../README.md).
+
+**The table comes first and the directory second.** Every other command takes the
+model directory as its first bare word and this one does not, because the table
+is the question and the directory is only where it is asked.
+
+`--json` puts the report on stdout in place of the list, with the same exit code
+as the text form. **Both directions are in it whichever of `--incoming` and
+`--outgoing` was given**: the flags choose what a person reads, and a caller that
+asked for the report gets the whole answer.
+
+```json
+{
+  "schema": 1,
+  "ok": true,
+  "directory": "examples/shop",
+  "table": "orders",
+  "exists": true,
+  "incoming": [
+    {
+      "from": {
+        "table": "order_items",
+        "column": "order_id"
+      },
+      "to": {
+        "table": "orders",
+        "column": "id"
+      },
+      "path": "tables/order_items.md",
+      "inPrimaryKey": true,
+      "onDelete": "cascade"
+    },
+    {
+      "from": {
+        "table": "shipments",
+        "column": "order_id"
+      },
+      "to": {
+        "table": "orders",
+        "column": "id"
+      },
+      "path": "tables/shipments.md",
+      "nullable": false,
+      "onDelete": "restrict"
+    }
+  ],
+  "outgoing": [
+    {
+      "from": {
+        "table": "orders",
+        "column": "shipping_address_id"
+      },
+      "to": {
+        "table": "addresses",
+        "column": "id"
+      },
+      "path": "tables/orders.md",
+      "nullable": false,
+      "onDelete": "restrict"
+    },
+    {
+      "from": {
+        "table": "orders",
+        "column": "customer_id"
+      },
+      "to": {
+        "table": "customers",
+        "column": "id"
+      },
+      "path": "tables/orders.md",
+      "nullable": false,
+      "onDelete": "restrict"
+    },
+    {
+      "from": {
+        "table": "orders",
+        "column": "subscription_id"
+      },
+      "to": {
+        "table": "subscriptions",
+        "column": "id"
+      },
+      "path": "tables/orders.md",
+      "nullable": true,
+      "onDelete": "restrict"
+    }
+  ],
+  "model": {
+    "errors": 0,
+    "warnings": 0
+  }
+}
+```
+
+**Four keys on a ref are omitted rather than written false**, for the reason this
+format omits them on disk. `inPrimaryKey` is there only when the referring column
+carries `pk: true`. `nullable` is there only when the file said, because
+[it has three states and only two of them are a fact](#a-column). `onDelete` and
+`onUpdate` are there only when the file wrote the clause, and that absence is the
+fact [ADR 0046][adr46] insists on: **absent is not `no action`**, so a caller
+reading a missing `onDelete` is reading a file that said nothing rather than one
+that said the default. Reading an absent key as a false is the one way to get a
+wrong answer out of this report, and it is wrong in the direction that matters,
+because `restrict` and `cascade` are opposite things to do to somebody's rows.
+
+`path` is on each ref rather than on the table it lands on. "Three tables point
+here" does not say what to edit; the column and the file it is written in do. It
+is relative to the model directory and slash-separated on every platform, so two
+machines produce the same bytes.
+
+`model` counts what `dbmd check` would say about the same directory, and it is
+there because **this command answers a model that does not load**. A file that
+did not parse is missing from the model along with every `ref:` written in it, so
+a non-zero `errors` means the two lists may be short. Half way through a rename
+that is exactly the state, and it is when the question is most worth asking:
+
+```json
+{
+  "schema": 1,
+  "ok": true,
+  "directory": "shop",
+  "table": "addresses",
+  "exists": false,
+  "incoming": [
+    {
+      "from": {
+        "table": "orders",
+        "column": "shipping_address_id"
+      },
+      "to": {
+        "table": "addresses",
+        "column": "id"
+      },
+      "path": "tables/orders.md",
+      "nullable": false,
+      "onDelete": "restrict"
+    }
+  ],
+  "outgoing": [],
+  "model": {
+    "errors": 1,
+    "warnings": 0
+  }
+}
+```
+
+That is `examples/shop` with `tables/addresses.md` deleted and nothing else
+touched. `exists: false` with a non-empty `incoming` is the middle of a rename:
+no file carries the name and something still points at it. It is `ok: true` and
+exit code 0, because that is an answer rather than a failure.
+
+Asked of the intact directory the same question reports **two** incoming refs.
+The one missing above is `addresses.superseded_by`, a ref the deleted file was
+carrying, and `model.errors` is the only thing in the report that tells a caller
+the list is short for a reason that is not the model.
+
+**`exists` is how a caller tells the two empty answers apart**, and they are
+opposite instructions. A table that is there with nothing pointing at it comes
+back `exists: true` with an empty `incoming`, `ok: true`, exit code 0, and is
+safe to drop. A name no file carries and no `ref:` mentions is a failure, because
+the answer to a typo must never read as permission:
+
+```json
+{
+  "schema": 1,
+  "ok": false,
+  "directory": "examples/shop",
+  "table": "customerz",
+  "exists": false,
+  "incoming": [],
+  "outgoing": [],
+  "model": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "error": {
+    "code": "no-such-table",
+    "message": "no table called customerz in examples/shop, and no ref names it"
+  }
+}
+```
+
+`ok` is `false` and the exit code is 1, and the report still carries `directory`,
+`table` and the two empty lists, so a caller can log what it asked without
+special-casing the failure. [ADR 0042][adr42] is the argument for those two exit
+codes and [ADR 0049][adr49] is why the actions ride on the rows.
+
+**A directory typed before the table produces that shape rather than a usage
+error**, which is the one to watch for in a script. Ask it the other way round
+and you have asked a well-formed question about a table called `examples/shop` in
+a directory called `orders`, and dbmd cannot tell that from a real one. The text
+form prints a line about the argument order under it whenever a second word was
+given. The report does not, so a caller reads it back off `directory` and
+`table`.
+
+A command line wrong in a way dbmd can see is exit code 2 and carries nothing but
+the envelope and the error, because there was no question to answer:
+
+```json
+{
+  "schema": 1,
+  "ok": false,
+  "error": {
+    "code": "usage",
+    "message": "\"dbmd refs\" asks about one table, so it needs that table's name: dbmd refs <table> [directory]."
+  }
+}
+```
+
 ## What the format does not have
 
 Named here so you stop looking, and because a reference that pretends to be
@@ -1283,6 +1504,9 @@ If this page and the code disagree, the code is right and this page is a bug.
   two modules and one list of codes.
 - `src/model/write.ts` writes one back, and is where
   [the canonical form](#the-canonical-form) is decided.
+- `src/cli/refs.ts` is [the report above](#the-answer-dbmd-refs---json-gives) and
+  nothing else: the walk it reports on is `src/model/read.ts`'s `referencesTo`,
+  and the four omitted keys are decided in one function there called `asJson`.
 - `src/model/paths.ts` is the first half of
   [what a file may be called](#naming-a-file), and `src/studio/safe-path.ts` is
   the stricter half.
@@ -1306,6 +1530,8 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr30]: architecture/decisions/0030-a-group-is-drawn-and-a-colour-is-a-name.md
 [adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
 [adr33]: architecture/decisions/0033-a-composite-foreign-key-is-judged-as-a-set.md
+[adr42]: architecture/decisions/0042-a-question-answers-a-model-a-diagram-refuses.md
 [adr46]: architecture/decisions/0046-a-key-may-say-what-the-engine-does.md
 [adr47]: architecture/decisions/0047-the-studio-carries-an-expression-index-and-does-not-learn-to-write-one.md
+[adr49]: architecture/decisions/0049-the-answer-before-a-delete-says-what-the-delete-does.md
 [prettier]: https://prettier.io
