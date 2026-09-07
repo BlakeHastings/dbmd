@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Seventy-six pull requests have merged, all through `merge-pr.mjs`, and the
+Seventy-nine pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -95,14 +95,9 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-3ip**, a check that fails the build when a class used by both the canvas
-  and the inspector has an unscoped rule. That collision broke the page twice in
-  one day.
-- **dbmd-wxh**, whether a kind name that is a file rather than a directory
-  deserves a diagnostic. Genuinely open, and the symlink case may settle it.
-
-**After these two the queue is empty of anything that is not an epic or waiting
-on the owner.**
+- **dbmd-80**, a skill that teaches an agent to drive dbmd. The last item, and it
+  became dispatchable only because a day of using the tool answered three of the
+  four questions its refinement was waiting on.
 
 ## What proved out, and is easy to lose
 
@@ -167,6 +162,15 @@ on the owner.**
   watcher had only just attached to, which is never the shape a running studio
   is in. The right outcome was a corrected comment and a renamed test, and
   nothing in the watcher moved.
+
+- **A `Dirent` cannot say whether that is a directory.** A junction or a symlink
+  answers `isDirectory() === false` whatever it points at, so a model whose
+  `tables/` was a link had its tables **never read**, and `dbmd check` reported
+  `0 tables, 0 notes, 0 groups, no problems`. Not a malformed model: a correct
+  one the tool refused to read and then called healthy. Found by measuring the
+  symlink case while answering a much smaller question, and it is the reason
+  "leave it alone, it is none of dbmd's business" was the wrong answer. The same
+  shape survives one level down for a linked `.md` file, which is dbmd-95n.
 
 ## Audited on 2026-09-07, so a successor need not redo it
 
