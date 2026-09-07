@@ -38,6 +38,98 @@
         }
       }
 
+      /*
+        The note and group palette, and the whole of it.
+
+        ADR 0005 writes a colour as a name (`color: amber`), so the studio's job
+        is to turn seven names into seven pairs of shades that are legible on a
+        light ground and on a dark one. Every tint declares the same three
+        variables and every component that paints one reads only those, which is
+        the rule the item asked for: pick the palette once, in one place, and do
+        not let each component invent a shade.
+
+        `--tint-fill` is deliberately weak. A sticky note has to be readable
+        prose first and a colour second, so the colour is a wash and a border
+        rather than a block of paint with text on it.
+      */
+      .tint-plain {
+        --tint-fill: var(--surface);
+        --tint-line: var(--line);
+        --tint-ink: var(--ink);
+      }
+      .tint-amber {
+        --tint-fill: #fdf1d6;
+        --tint-line: #d9a83a;
+        --tint-ink: #4a3708;
+      }
+      .tint-rose {
+        --tint-fill: #fbe3e6;
+        --tint-line: #d3717f;
+        --tint-ink: #4d1620;
+      }
+      .tint-violet {
+        --tint-fill: #eee6fb;
+        --tint-line: #9b74d8;
+        --tint-ink: #331a52;
+      }
+      .tint-blue {
+        --tint-fill: #dfeafb;
+        --tint-line: #5b8fd6;
+        --tint-ink: #12294a;
+      }
+      .tint-teal {
+        --tint-fill: #d9f0ee;
+        --tint-line: #3f9d92;
+        --tint-ink: #0d3b36;
+      }
+      .tint-green {
+        --tint-fill: #e2f2da;
+        --tint-line: #62a24a;
+        --tint-ink: #1d3b12;
+      }
+      .tint-slate {
+        --tint-fill: #e6e9ee;
+        --tint-line: #7d8794;
+        --tint-ink: #232a33;
+      }
+      @media (prefers-color-scheme: dark) {
+        .tint-amber {
+          --tint-fill: #3a2f14;
+          --tint-line: #b58f34;
+          --tint-ink: #f4e4bf;
+        }
+        .tint-rose {
+          --tint-fill: #3c2126;
+          --tint-line: #bc6b78;
+          --tint-ink: #f6d9dd;
+        }
+        .tint-violet {
+          --tint-fill: #2c2340;
+          --tint-line: #9a7ad4;
+          --tint-ink: #e6dcf8;
+        }
+        .tint-blue {
+          --tint-fill: #1e2b40;
+          --tint-line: #5f8ed0;
+          --tint-ink: #d8e5f8;
+        }
+        .tint-teal {
+          --tint-fill: #17332f;
+          --tint-line: #479a90;
+          --tint-ink: #d3ece8;
+        }
+        .tint-green {
+          --tint-fill: #22331b;
+          --tint-line: #66a052;
+          --tint-ink: #dcefd3;
+        }
+        .tint-slate {
+          --tint-fill: #262a30;
+          --tint-line: #79828f;
+          --tint-ink: #dfe3e9;
+        }
+      }
+
       html,
       body {
         height: 100%;
@@ -196,6 +288,170 @@
         margin: 0;
         padding: 6px 10px;
         color: var(--bad);
+      }
+
+      /* ------------------------------------------------------------------
+         Notes and groups (ADR 0005). Both are inside `.scene`, so both are
+         positioned in model coordinates and neither knows about the zoom.
+         ------------------------------------------------------------------ */
+      .notes,
+      .groups {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      /* `note-card` and not `note`, because `#inspector .note` was already the
+         panel's explanatory paragraph. Two things called `.note` in one
+         stylesheet is one rule silently applying to the other, which is what
+         happened here: the panel's sentences became absolutely positioned and
+         stacked on top of each other in the corner of the page. Seen while
+         driving it, which is the only way it would have been seen. */
+      .note-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        background: var(--tint-fill);
+        color: var(--tint-ink);
+        border: 1px solid var(--tint-line);
+        border-radius: 4px;
+        box-shadow: 0 2px 6px rgb(0 0 0 / 16%);
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px 10px;
+        cursor: grab;
+      }
+      .note-card.dragging {
+        cursor: grabbing;
+        box-shadow: 0 8px 22px rgb(0 0 0 / 26%);
+      }
+      .note-card.selected {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      .note-card.broken {
+        border-color: var(--bad);
+        cursor: not-allowed;
+      }
+      .note-body {
+        /* The note's own size is a design choice (ADR 0005), so a note with
+           more prose than it has room for scrolls rather than growing: the
+           picture must not change size behind the developer's back. */
+        max-height: 100%;
+        overflow: auto;
+      }
+      .note-body > :first-child {
+        margin-top: 0;
+      }
+      .note-body > :last-child {
+        margin-bottom: 0;
+      }
+      .note-body p,
+      .note-body ul,
+      .note-body pre {
+        margin: 0 0 0.6em;
+      }
+      .note-body h3,
+      .note-body h4,
+      .note-body h5,
+      .note-body h6 {
+        margin: 0 0 0.35em;
+        font-size: 13px;
+      }
+      .note-body ul {
+        padding-left: 1.1em;
+      }
+      .note-body code,
+      .note-body pre {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+      }
+      .note-body pre {
+        white-space: pre-wrap;
+      }
+      .note-placeholder {
+        opacity: 0.7;
+        font-style: italic;
+      }
+      /* The corner that writes `w` and `h`. Only a note has one: a table's size
+         is a consequence of its columns. */
+      .note-grip {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        width: 14px;
+        height: 14px;
+        cursor: nwse-resize;
+        background: linear-gradient(
+          135deg,
+          transparent 0 45%,
+          var(--tint-line) 45% 55%,
+          transparent 55% 70%,
+          var(--tint-line) 70% 80%,
+          transparent 80%
+        );
+      }
+
+      .group {
+        position: absolute;
+        top: 0;
+        left: 0;
+        box-sizing: border-box;
+        /* The box itself must never eat a press: a click inside a group is a
+           click on whatever is in it, or a pan. Only the header is a handle. */
+        pointer-events: none;
+      }
+      .group > header {
+        pointer-events: auto;
+        display: inline-block;
+        max-width: 100%;
+        box-sizing: border-box;
+        height: 26px;
+        line-height: 18px;
+        padding: 3px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        background: var(--tint-fill);
+        color: var(--tint-ink);
+        border: 1px solid var(--tint-line);
+        border-bottom: 0;
+        border-radius: 6px 6px 0 0;
+        cursor: grab;
+      }
+      .group.dragging > header {
+        cursor: grabbing;
+      }
+      .group.selected > header {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+      .group-area {
+        position: absolute;
+        inset: 26px 0 0 0;
+        border: 1px solid var(--tint-line);
+        border-radius: 0 6px 6px 6px;
+        background: color-mix(in srgb, var(--tint-fill) 45%, transparent);
+      }
+      .group.selected .group-area {
+        border-color: var(--accent);
+      }
+      /* An empty group has no members to bound, so it is drawn as a dashed
+         placeholder rather than as nothing: a group whose last member left has
+         not been deleted, and a blank space would say it had. */
+      .group.empty .group-area {
+        border-style: dashed;
+        background: none;
+      }
+      .group-empty {
+        margin: 10px;
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--muted);
       }
 
       .toolbar {
@@ -394,6 +650,36 @@
       #inspector .confirm .row-buttons {
         justify-content: flex-start;
       }
+      /* The colour picker. Swatches rather than a list of words, because the
+         thing being chosen is one of seven shades and a word cannot show a
+         shade. What is written to the file is still the name. */
+      #inspector .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      #inspector button.swatch {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 4px;
+        background: var(--tint-fill);
+        border: 1px solid var(--tint-line);
+      }
+      #inspector button.swatch.none {
+        background: var(--page);
+        border-style: dashed;
+      }
+      #inspector button.swatch[aria-pressed='true'] {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      #inspector ul.members {
+        list-style: none;
+        margin: 0 0 6px;
+        padding: 0;
+        font-family: ui-monospace, monospace;
+      }
 
       footer {
         border-top: 1px solid var(--line);
@@ -461,6 +747,10 @@
         <!-- Pressed while the next click on the canvas is a placement, which is
              a mode, and a mode has to be legible from outside itself. -->
         <button id="add-table" type="button" aria-pressed="false">Add table</button>
+        <button id="add-note" type="button" aria-pressed="false">Add note</button>
+        <!-- Deliberately not a placement and deliberately not pressed: a group
+             has no coordinates to point at, so there is no mode to be in. -->
+        <button id="add-group" type="button">Add group</button>
       </div>
     </main>
     <aside id="inspector" hidden></aside>

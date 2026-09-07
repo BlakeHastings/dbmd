@@ -3,6 +3,7 @@ import { access, readFile, writeFile } from 'node:fs/promises'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { readModel } from '../../src/model/read.js'
+import { validate } from '../../src/model/validate.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
 import { REVISION_HEADER } from '../../src/studio/wire.js'
 import { exampleShop, snapshot, untidyModel, withCopy } from '../model/fixtures.js'
@@ -565,6 +566,262 @@ describe('routing', () => {
       expect(response.status).toBe(404)
       expect(response.body['code']).toBe('unknown-endpoint')
     })
+  })
+})
+
+/**
+ * Notes and groups, which are the same server as tables one directory along.
+ *
+ * ADR 0005 made a kind a directory and a set of keys and nothing else, and
+ * `edits.ts` is one code path for all three, so most of what is proven for a
+ * table above is proven for these by construction. What is here is the part
+ * that is *not* the same: the keys a group refuses, and the write a group drag
+ * makes.
+ */
+describe('notes', () => {
+  it('creates one file and edits no other', async () => {
+    await withStudio(
+      async (running) => {
+        const before = await snapshot(running.dir)
+        const created = await call(running.studio, '/api/note', {
+          method: 'POST',
+          ...json({ name: 'why-it-is-like-this', layout: { x: 40, y: 400 }, color: 'amber' }),
+        })
+        expect(created.status).toBe(201)
+        await flush(running)
+
+        const after = await snapshot(running.dir)
+        expect([...after.keys()].filter((path) => !before.has(path))).toEqual([
+          'notes/why-it-is-like-this.md',
+        ])
+        for (const [path, text] of before) expect(after.get(path)).toBe(text)
+
+        const reread = await readModel(running.dir)
+        expect(reread.diagnostics).toEqual([])
+        const note = reread.model.notes.find((held) => held.name === 'why-it-is-like-this')
+        expect(note?.layout).toEqual({ x: 40, y: 400 })
+        expect(note?.color).toBe('amber')
+      },
+      { fixture: untidyModel },
+    )
+  })
+
+  it('moves, resizes, recolours and rewrites one, and touches nothing else', async () => {
+    await withStudio(
+      async (running) => {
+        const before = await snapshot(running.dir)
+        const patched = await call(running.studio, '/api/note/floating', {
+          method: 'PATCH',
+          ...json({
+            layout: { x: 10, y: 20, w: 400, h: 300 },
+            color: 'teal',
+            body: '\nMoved, resized and repainted.\n',
+          }),
+        })
+        expect(patched.status).toBe(200)
+        await flush(running)
+
+        const after = await snapshot(running.dir)
+        const changed = [...after].filter(([path, text]) => before.get(path) !== text)
+        expect(changed.map(([path]) => path)).toEqual(['notes/floating.md'])
+
+        const note = (await readModel(running.dir)).model.notes[0]
+        expect(note?.layout).toEqual({ x: 10, y: 20, w: 400, h: 300 })
+        expect(note?.color).toBe('teal')
+        expect(note?.body).toBe('\nMoved, resized and repainted.\n')
+      },
+      { fixture: untidyModel },
+    )
+  })
+
+  it('removes the colour when the patch says null, rather than writing an empty one', async () => {
+    await withStudio(
+      async (running) => {
+        await call(running.studio, '/api/note/floating', {
+          method: 'PATCH',
+          ...json({ color: null }),
+        })
+        await flush(running)
+        expect((await readModel(running.dir)).model.notes[0]?.color).toBeUndefined()
+        expect(await readFile(join(running.dir, 'notes', 'floating.md'), 'utf8')).not.toContain(
+          'color',
+        )
+      },
+      { fixture: untidyModel },
+    )
+  })
+
+  it('deletes one, and leaves the rest of the model alone', async () => {
+    await withStudio(
+      async (running) => {
+        const before = await snapshot(running.dir)
+        const response = await call(running.studio, '/api/note/floating', { method: 'DELETE' })
+        expect(response.status).toBe(200)
+        await expect(access(join(running.dir, 'notes', 'floating.md'))).rejects.toThrow()
+
+        const after = await snapshot(running.dir)
+        expect([...before.keys()].filter((path) => !after.has(path))).toEqual(['notes/floating.md'])
+        for (const [path, text] of after) expect(before.get(path)).toBe(text)
+      },
+      { fixture: untidyModel },
+    )
+  })
+
+  it('says which note it does not have, rather than saying nothing', async () => {
+    await withStudio(async ({ studio }) => {
+      const response = await call(studio, '/api/note/nope', { method: 'PATCH', ...json({}) })
+      expect(response.status).toBe(404)
+      expect(response.body['code']).toBe('unknown-note')
+    })
+  })
+})
+
+describe('groups', () => {
+  it('creates one with a label and a colour and no coordinates', async () => {
+    await withStudio(async (running) => {
+      const created = await call(running.studio, '/api/group', {
+        method: 'POST',
+        ...json({ name: 'billing', label: 'Billing', color: 'violet' }),
+      })
+      expect(created.status).toBe(201)
+      await flush(running)
+
+      const text = await readFile(join(running.dir, 'groups', 'billing.md'), 'utf8')
+      expect(text).toContain('label: Billing')
+      expect(text).not.toContain('layout')
+      // Empty, and that is the format: a table joins from its own file. The
+      // validator says so, which is the warning working rather than a fault.
+      const reread = await readModel(running.dir)
+      expect(reread.model.groupMembers.get('billing')).toEqual([])
+    })
+  })
+
+  it('refuses a `layout` on a group, and says why rather than saying `unknown key`', async () => {
+    // The trap this whole item is arranged around. A client that sent a group a
+    // position believed something about this format that is not true, and the
+    // refusal is the only place it will be told.
+    await withStudio(async (running) => {
+      const response = await call(running.studio, '/api/group/warehouse', {
+        method: 'PATCH',
+        ...json({ layout: { x: 0, y: 0 } }),
+      })
+      expect(response.status).toBe(400)
+      expect(String(response.body['error'])).toContain('a group has no coordinates')
+      expect(String(response.body['error'])).toContain('ADR 0005')
+    })
+  })
+
+  it('refuses a members list, and points at the table patch that does it properly', async () => {
+    await withStudio(async (running) => {
+      const response = await call(running.studio, '/api/group/warehouse', {
+        method: 'PATCH',
+        ...json({ members: ['shipments'] }),
+      })
+      expect(response.status).toBe(400)
+      expect(String(response.body['error'])).toContain('PATCH /api/table/')
+    })
+  })
+
+  it('puts a table in a group by writing one line in that table, not in the group', async () => {
+    await withStudio(
+      async (running) => {
+        const before = await snapshot(running.dir)
+        await call(running.studio, '/api/table/customers', {
+          method: 'PATCH',
+          ...json({ group: 'billing' }),
+        })
+        await flush(running)
+
+        const after = await snapshot(running.dir)
+        const changed = [...after].filter(([path, text]) => before.get(path) !== text)
+        expect(changed.map(([path]) => path)).toEqual(['tables/customers.md'])
+        expect(after.get('groups/billing.md')).toBe(before.get('groups/billing.md'))
+        expect(after.get('tables/customers.md')).toContain('group: billing')
+      },
+      { fixture: untidyModel },
+    )
+  })
+
+  it('drags as one write of its members, and nothing at all for the group', async () => {
+    // The whole of dbmd-34's trap, from the request side. The canvas sends one
+    // `PATCH` per member that moved, all inside the server's debounce window,
+    // so what reaches the disk is one `writeModel` whose `only` set is exactly
+    // those members. What must not appear anywhere is `groups/billing.md`.
+    //
+    // `untidy` and not `examples/shop`, for the reason the case above spells
+    // out: every file in `untidy` is non-canonical, so a write that forgot to
+    // narrow itself rewrites the neighbours and this notices. Against a
+    // canonical fixture the assertion cannot fail. dbmd-47.
+    //
+    // The two members come out of the fixture and are deliberately not made
+    // here. Joining one in the test would flush first, and a flush that had
+    // stopped narrowing itself would canonicalise the whole directory before
+    // the drag, so the drag would then find every neighbour already canonical
+    // and change nothing — the same fixture-shaped blindness, arrived at from
+    // the other end. Checked by removing `only` and watching this go green.
+    await withStudio(
+      async (running) => {
+        const before = await snapshot(running.dir)
+        const writesBefore = writes(running).length
+
+        for (const [table, layout] of [
+          ['customers', { x: 220, y: 220 }],
+          ['orders', { x: 580, y: 220 }],
+        ] as const) {
+          const response = await call(running.studio, `/api/table/${table}`, {
+            method: 'PATCH',
+            ...json({ layout }),
+          })
+          expect(response.status).toBe(200)
+        }
+        await flush(running)
+
+        // One write, naming both members and nothing else. Counted from the
+        // narration rather than from the files, because the question is how
+        // many times the writer ran and with what, and two writes of one file
+        // each would leave the same bytes behind as one write of two.
+        expect(writes(running).slice(writesBefore)).toEqual([
+          'wrote tables/customers.md, tables/orders.md',
+        ])
+
+        const after = await snapshot(running.dir)
+        const changed = [...after].filter(([path, text]) => before.get(path) !== text)
+        expect(changed.map(([path]) => path)).toEqual(['tables/customers.md', 'tables/orders.md'])
+        // Named as well as counted. `groups/billing.md` is the one that matters
+        // and the other three are what a whole-model write would have
+        // reformatted on the way past.
+        for (const untouched of ['_model.md', 'groups/billing.md', 'notes/floating.md']) {
+          expect(after.get(untouched)).toBe(before.get(untouched))
+        }
+        expect(after.get('groups/billing.md')).not.toContain('layout')
+
+        const reread = await readModel(running.dir)
+        expect(reread.model.tables.find((held) => held.name === 'orders')?.layout).toEqual({
+          x: 580,
+          y: 220,
+        })
+      },
+      { fixture: untidyModel },
+    )
+  })
+
+  it('leaves an empty group standing when its last member is deleted', async () => {
+    // Not a cascade. The group file keeps its label and its prose, `dbmd check`
+    // reports `group-empty`, and deciding what that means is the developer's.
+    await withStudio(
+      async (running) => {
+        for (const table of ['orders', 'customers']) {
+          const response = await call(running.studio, `/api/table/${table}`, { method: 'DELETE' })
+          expect(response.status).toBe(200)
+        }
+
+        const reread = await readModel(running.dir)
+        expect(reread.model.groups.map((group) => group.name)).toEqual(['billing'])
+        expect(reread.model.groupMembers.get('billing')).toEqual([])
+        expect(validate(reread.model).map((diagnostic) => diagnostic.code)).toContain('group-empty')
+      },
+      { fixture: untidyModel },
+    )
   })
 })
 

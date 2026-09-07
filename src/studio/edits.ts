@@ -61,11 +61,37 @@
 import { access, rm } from 'node:fs/promises'
 import { readModel } from '../model/read.js'
 import { serialiseModelFile, serialiseObject, writeModel } from '../model/write.js'
-import type { CanvasObject, Diagnostic, Model, ReadResult, Table } from '../model/types.js'
+import type {
+  CanvasObject,
+  Diagnostic,
+  Group,
+  Model,
+  Note,
+  ObjectKind,
+  ReadResult,
+  Table,
+} from '../model/types.js'
 import { MODEL_FILE, directoryOfKind } from '../model/paths.js'
 import { isSafeSegment, resolveWithin } from './safe-path.js'
 import { ModelWatcher } from './watch.js'
-import type { TablePatch, WireConflict, WireStatus, WireWrite } from './wire.js'
+import type {
+  GroupPatch,
+  NotePatch,
+  TablePatch,
+  WireConflict,
+  WireStatus,
+  WireWrite,
+} from './wire.js'
+
+/** The three kinds, in the order a model lists them, for a loop over all of them. */
+const KINDS: readonly ObjectKind[] = ['table', 'note', 'group']
+
+/** Which type each kind names, so an edit keeps its type through the round trip. */
+interface ObjectByKind {
+  readonly table: Table
+  readonly note: Note
+  readonly group: Group
+}
 
 /**
  * A refusal with the status the HTTP layer should send.
@@ -88,10 +114,14 @@ export class EditRefused extends Error {
 export type EditRefusalCode =
   /** The name cannot be a file name inside the model directory. */
   | 'unsafe-name'
-  /** No table of that name in the model. */
+  /** No object of that kind and name in the model. */
   | 'unknown-table'
-  /** A table of that name is already there, or a file is in its place. */
+  | 'unknown-note'
+  | 'unknown-group'
+  /** One of that kind and name is already there, or a file is in its place. */
   | 'table-exists'
+  | 'note-exists'
+  | 'group-exists'
   /** The reader could not build the table from its file, so a write would truncate it. */
   | 'incomplete'
   /** The file changed on disk since the session read it, so acting on it would lose that change. */
@@ -208,16 +238,30 @@ export class Edits {
     }
   }
 
-  table(name: string): Table {
+  /**
+   * One object on the canvas, whatever kind it is.
+   *
+   * Kinds are looked up rather than dispatched to three methods because
+   * everything below this line treats them identically: the same containment
+   * check, the same conflict check, the same debounced write of the same shape
+   * of file. ADR 0005 put a directory per kind precisely so that the difference
+   * between a note and a table is a directory name and a set of keys, and this
+   * is that sentence in the server.
+   */
+  object<K extends ObjectKind>(kind: K, name: string): ObjectByKind[K] {
     // For its refusal rather than for its answer: a name that cannot resolve to
     // a file inside the model directory is refused before it is looked up, so
     // every route gets the same containment check in the same words.
-    this.fileFor(name)
-    const found = this.model.tables.find((table) => table.name === name)
+    this.fileFor(kind, name)
+    const found = objectsOfKind(this.model, kind).find((object) => object.name === name)
     if (found === undefined) {
-      throw new EditRefused(404, 'unknown-table', `no table called \`${name}\` in this model`)
+      throw new EditRefused(404, `unknown-${kind}`, `no ${kind} called \`${name}\` in this model`)
     }
-    return found
+    return found as ObjectByKind[K]
+  }
+
+  table(name: string): Table {
+    return this.object('table', name)
   }
 
   /**
@@ -250,8 +294,25 @@ export class Edits {
    * yet: the write is deferred, the edit is not.
    */
   patchTable(name: string, patch: TablePatch, base: number): Table {
+    return this.patchObject('table', name, base, (table) => applyTablePatch(table, patch))
+  }
+
+  patchNote(name: string, patch: NotePatch, base: number): Note {
+    return this.patchObject('note', name, base, (note) => applyNotePatch(note, patch))
+  }
+
+  patchGroup(name: string, patch: GroupPatch, base: number): Group {
+    return this.patchObject('group', name, base, (group) => applyGroupPatch(group, patch))
+  }
+
+  private patchObject<K extends ObjectKind>(
+    kind: K,
+    name: string,
+    base: number,
+    apply: (current: ObjectByKind[K]) => ObjectByKind[K],
+  ): ObjectByKind[K] {
     this.requireCurrent(base, 'this patch')
-    const current = this.table(name)
+    const current = this.object(kind, name)
     if (!current.complete) {
       throw new EditRefused(
         409,
@@ -259,15 +320,15 @@ export class Edits {
         `\`${current.path}\` did not parse, so this server is holding less than the file does; writing it back would delete the part it could not read. Fix the file and reload`,
       )
     }
-    const next = applyPatch(current, patch)
-    this.model = { ...this.model, tables: replace(this.model.tables, next) }
+    const next = apply(current)
+    this.model = withObject(this.model, kind, next)
     // The session's own edit is folded into what it knows it is serving, so
     // that reading it back off the disk afterwards is not a change. `revision`
     // answers "did something happen that I did not ask for", and a client that
     // was told to redraw after every one of its own drags would be told to
     // redraw sixty times a second.
     this.restate()
-    this.schedule(fileOf(name))
+    this.schedule(fileOf(kind, name))
     return next
   }
 
@@ -276,52 +337,73 @@ export class Edits {
    * deliberate act, and a client that just made one wants it in `git status`.
    */
   async addTable(name: string, patch: TablePatch, base: number): Promise<Table> {
+    return this.addObject('table', name, base, (blank) => applyTablePatch(blank, patch))
+  }
+
+  async addNote(name: string, patch: NotePatch, base: number): Promise<Note> {
+    return this.addObject('note', name, base, (blank) => applyNotePatch(blank, patch))
+  }
+
+  /**
+   * Add a group.
+   *
+   * Nothing joins it here, and that is the format rather than an omission: a
+   * table declares its own membership with one line in its own file, so a group
+   * is born empty and the tables join it one `PATCH /api/table/:name` at a time.
+   * `dbmd check` reports the empty group in the meantime, which is exactly the
+   * warning it exists for.
+   */
+  async addGroup(name: string, patch: GroupPatch, base: number): Promise<Group> {
+    return this.addObject('group', name, base, (blank) => applyGroupPatch(blank, patch))
+  }
+
+  private async addObject<K extends ObjectKind>(
+    kind: K,
+    name: string,
+    base: number,
+    apply: (blank: ObjectByKind[K]) => ObjectByKind[K],
+  ): Promise<ObjectByKind[K]> {
     this.requireCurrent(base, 'this create')
-    const target = this.fileFor(name)
-    if (this.model.tables.some((table) => table.name === name)) {
-      throw new EditRefused(409, 'table-exists', `there is already a table called \`${name}\``)
+    const target = this.fileFor(kind, name)
+    if (objectsOfKind(this.model, kind).some((object) => object.name === name)) {
+      throw new EditRefused(409, `${kind}-exists`, `there is already a ${kind} called \`${name}\``)
     }
-    const created = applyPatch(
-      {
-        kind: 'table',
-        name,
-        path: fileOf(name),
-        // The blank line the format conventionally puts after the closing `---`
-        // belongs to the body, and `writeModel` concatenates rather than pads.
-        body: '\n',
-        complete: true,
-        columns: [],
-        indexes: [],
-      },
-      patch,
-    )
-    // A file with no table in the model is a file the reader could not parse
+    const created = apply(blankObject(kind, name) as ObjectByKind[K])
+    // A file with no object in the model is a file the reader could not parse
     // (ADR 0008 leaves it out rather than guessing), and writing over it would
     // destroy the thing whose problem the developer is trying to see.
     if (await exists(target)) {
       throw new EditRefused(
         409,
-        'table-exists',
+        `${kind}-exists`,
         `\`${created.path}\` is already a file, and it is not in the model, which means it did not parse. Fix or delete it rather than writing over it`,
       )
     }
-    this.model = { ...this.model, tables: sortByName([...this.model.tables, created]) }
+    this.model = withAdded(this.model, kind, created)
     this.restate()
-    this.edited.add(fileOf(name))
+    this.edited.add(fileOf(kind, name))
     await this.flush()
     return created
   }
 
   /**
-   * Remove a table and its file. `writeModel` never deletes, deliberately, so
+   * Remove an object and its file. `writeModel` never deletes, deliberately, so
    * this is the only place in the project that does, and it goes through the
    * same containment check as every other path here.
+   *
+   * A group is removed the same way as anything else and nothing is cascaded.
+   * A table that still says `group: billing` after `groups/billing.md` has gone
+   * is a `group-unknown` error from the reader, which is the studio saying what
+   * happened rather than quietly editing files the developer did not name. The
+   * mirror case matters more and is the same rule: removing the last table in a
+   * group leaves an empty group file, and `dbmd check` warns about it rather
+   * than the studio deleting somebody's prose on their behalf (ADR 0005).
    */
-  async removeTable(name: string, base: number): Promise<void> {
+  async removeObject(kind: ObjectKind, name: string, base: number): Promise<void> {
     this.requireCurrent(base, 'this delete')
-    this.table(name)
-    const target = this.fileFor(name)
-    const path = fileOf(name)
+    this.object(kind, name)
+    const target = this.fileFor(kind, name)
+    const path = fileOf(kind, name)
     // The same check a write gets, for the same reason and more so: deleting a
     // file somebody has just been typing into is the one thing here that `git
     // checkout` cannot undo if the file was never committed.
@@ -345,10 +427,7 @@ export class Edits {
     // model, this is a different delete from the one it asked for.
     this.requireCurrent(base, 'this delete')
     await this.serialise(async () => {
-      this.model = {
-        ...this.model,
-        tables: this.model.tables.filter((table) => table.name !== name),
-      }
+      this.model = withoutObject(this.model, kind, name)
       this.restate()
       await rm(target, { force: true })
       this.log(`removed ${path}`)
@@ -374,8 +453,8 @@ export class Edits {
 
   // ------------------------------------------------------------------------
 
-  private fileFor(name: string): string {
-    const target = resolveWithin(this.dir, directoryOfKind('table'), `${name}.md`)
+  private fileFor(kind: ObjectKind, name: string): string {
+    const target = resolveWithin(this.dir, directoryOfKind(kind), `${name}.md`)
     // Both checks, in this order, because they refuse different things: the
     // first says the name is not one path segment, the second says the resolved
     // path is not inside the model directory. See `safe-path.ts`.
@@ -383,7 +462,7 @@ export class Edits {
       throw new EditRefused(
         400,
         'unsafe-name',
-        `refusing \`${name}\`: a table name has to be one file name inside the model directory, and this one resolves outside it or is not a name a file can have`,
+        `refusing \`${name}\`: a ${kind} name has to be one file name inside the model directory, and this one resolves outside it or is not a name a file can have`,
       )
     }
     return target
@@ -482,11 +561,7 @@ export class Edits {
    * memory and taking the rest from disk is the same protection, per file.
    */
   private async absorb(read: ReadResult): Promise<void> {
-    const pending = new Set(
-      [...this.edited, ...this.writing]
-        .map(tableNameOf)
-        .filter((name): name is string => name !== undefined),
-    )
+    const pending = pendingNames([...this.edited, ...this.writing])
     // The baseline for a file with an unwritten edit stays frozen at what the
     // disk said when that edit was made. Taking the fresh read for it would be
     // the whole defect back again: a reload triggered by the hand edit would
@@ -495,11 +570,7 @@ export class Edits {
     const baseline = keeping(read.model, this.adopted.model, pending)
     // `carryForward` reads the model being replaced, so it has to run before
     // that model is replaced.
-    const served = keeping(
-      { ...read.model, tables: await this.carryForward(read.model.tables) },
-      this.model,
-      pending,
-    )
+    const served = keeping(await this.carryForward(read.model), this.model, pending)
     this.adopted = { model: baseline, diagnostics: read.diagnostics }
     this.model = served
     this.diagnostics = read.diagnostics
@@ -536,7 +607,7 @@ export class Edits {
   }
 
   /**
-   * Tables the reader no longer produces, kept as they last were.
+   * Objects the reader no longer produces, kept as they last were.
    *
    * ADR 0004: a hand edit that is invalid mid-keystroke will be seen by the
    * watcher, and the studio reports the parse failure and keeps showing the
@@ -546,27 +617,109 @@ export class Edits {
    * file is gone is gone; a table whose file is there and no longer parses is
    * kept.
    *
-   * The kept table is marked incomplete, which is what it now is: the reader
+   * The kept object is marked incomplete, which is what it now is: the reader
    * could not build it from its file. That is not cosmetic. It is the flag
-   * `writeModel` skips on and the flag `patchTable` refuses on, so a table
+   * `writeModel` skips on and the flag `patchObject` refuses on, so an object
    * shown from memory cannot be written back over the file it no longer
    * matches.
    */
-  private async carryForward(fresh: readonly Table[]): Promise<readonly Table[]> {
-    const names = new Set(fresh.map((table) => table.name))
-    const missing = this.model.tables.filter((table) => !names.has(table.name))
-    if (missing.length === 0) return fresh
-    const carried: Table[] = []
-    for (const table of missing) {
-      // Only ever a handful, and only when something has stopped parsing, so
-      // this costs nothing in the case that happens every keystroke.
-      const target = resolveWithin(this.dir, ...table.path.split('/'))
-      if (target !== undefined && (await exists(target))) {
-        carried.push({ ...table, complete: false })
+  private async carryForward(fresh: Model): Promise<Model> {
+    let model = fresh
+    for (const kind of KINDS) {
+      const arrived = objectsOfKind(fresh, kind)
+      const names = new Set(arrived.map((object) => object.name))
+      const missing = objectsOfKind(this.model, kind).filter((object) => !names.has(object.name))
+      if (missing.length === 0) continue
+      const carried: CanvasObject[] = []
+      for (const object of missing) {
+        // Only ever a handful, and only when something has stopped parsing, so
+        // this costs nothing in the case that happens every keystroke.
+        const target = resolveWithin(this.dir, ...object.path.split('/'))
+        if (target !== undefined && (await exists(target))) {
+          carried.push({ ...object, complete: false })
+        }
       }
+      if (carried.length === 0) continue
+      model = withObjectsOfKind(model, kind, sortByName([...arrived, ...carried]))
     }
-    if (carried.length === 0) return fresh
-    return sortByName([...fresh, ...carried])
+    return model
+  }
+}
+
+// --------------------------------------------------------------------------
+// The three object lists, reached by kind.
+//
+// A `Model` names them separately because a caller nearly always wants one of
+// them, and everything in this file wants whichever one a request named. These
+// four functions are the whole of the translation, in one place, so that adding
+// a fourth kind (ADR 0005 expects some) is a case here rather than a search.
+// --------------------------------------------------------------------------
+
+function objectsOfKind(model: Model, kind: ObjectKind): readonly CanvasObject[] {
+  switch (kind) {
+    case 'table':
+      return model.tables
+    case 'note':
+      return model.notes
+    case 'group':
+      return model.groups
+  }
+}
+
+function withObjectsOfKind(
+  model: Model,
+  kind: ObjectKind,
+  objects: readonly CanvasObject[],
+): Model {
+  switch (kind) {
+    case 'table':
+      return { ...model, tables: objects as readonly Table[] }
+    case 'note':
+      return { ...model, notes: objects as readonly Note[] }
+    case 'group':
+      return { ...model, groups: objects as readonly Group[] }
+  }
+}
+
+/** The model with one object replaced by an edited version of itself. */
+function withObject(model: Model, kind: ObjectKind, next: CanvasObject): Model {
+  return withObjectsOfKind(
+    model,
+    kind,
+    objectsOfKind(model, kind).map((object) => (object.name === next.name ? next : object)),
+  )
+}
+
+/** The model with one object added, in the order the reader would have read it. */
+function withAdded(model: Model, kind: ObjectKind, created: CanvasObject): Model {
+  return withObjectsOfKind(model, kind, sortByName([...objectsOfKind(model, kind), created]))
+}
+
+function withoutObject(model: Model, kind: ObjectKind, name: string): Model {
+  return withObjectsOfKind(
+    model,
+    kind,
+    objectsOfKind(model, kind).filter((object) => object.name !== name),
+  )
+}
+
+/** The empty object a create starts from, before the patch is applied to it. */
+function blankObject(kind: ObjectKind, name: string): CanvasObject {
+  const shared = {
+    name,
+    path: fileOf(kind, name),
+    // The blank line the format conventionally puts after the closing `---`
+    // belongs to the body, and `writeModel` concatenates rather than pads.
+    body: '\n',
+    complete: true as const,
+  }
+  switch (kind) {
+    case 'table':
+      return { kind, ...shared, columns: [], indexes: [] }
+    case 'note':
+      return { kind, ...shared }
+    case 'group':
+      return { kind, ...shared }
   }
 }
 
@@ -581,27 +734,55 @@ export class Edits {
  * "has this file moved since the edit was made", and refreshing the baseline
  * from a disk that had already moved is how that question quietly answers no.
  */
-function keeping(fresh: Model, held: Model, names: ReadonlySet<string>): Model {
-  if (names.size === 0) return fresh
-  return {
-    ...fresh,
-    tables: sortByName([
-      ...fresh.tables.filter((table) => !names.has(table.name)),
-      ...held.tables.filter((table) => names.has(table.name)),
-    ]),
+function keeping(fresh: Model, held: Model, names: PendingNames): Model {
+  let model = fresh
+  for (const kind of KINDS) {
+    const pending = names.get(kind)
+    if (pending === undefined || pending.size === 0) continue
+    model = withObjectsOfKind(
+      model,
+      kind,
+      sortByName([
+        ...objectsOfKind(fresh, kind).filter((object) => !pending.has(object.name)),
+        ...objectsOfKind(held, kind).filter((object) => pending.has(object.name)),
+      ]),
+    )
   }
+  return model
 }
 
-/** Where a table's file is, in the words `writeModel` uses for it. */
-function fileOf(name: string): string {
-  return `${directoryOfKind('table')}/${name}.md`
+/** Where an object's file is, in the words `writeModel` uses for it. */
+function fileOf(kind: ObjectKind, name: string): string {
+  return `${directoryOfKind(kind)}/${name}.md`
 }
 
-/** The table a `tables/x.md` path names, or `undefined` if it names something else. */
-function tableNameOf(path: string): string | undefined {
-  const prefix = `${directoryOfKind('table')}/`
-  if (!path.startsWith(prefix) || !path.endsWith('.md')) return undefined
-  return path.slice(prefix.length, -'.md'.length)
+/** The names with an unwritten edit, by kind, which is what `keeping` asks about. */
+type PendingNames = ReadonlyMap<ObjectKind, ReadonlySet<string>>
+
+function pendingNames(paths: readonly string[]): PendingNames {
+  const pending = new Map<ObjectKind, Set<string>>()
+  for (const path of paths) {
+    const named = objectAt(path)
+    if (named === undefined) continue
+    const held = pending.get(named.kind) ?? new Set<string>()
+    held.add(named.name)
+    pending.set(named.kind, held)
+  }
+  return pending
+}
+
+/**
+ * The object a `tables/x.md` or `notes/x.md` path names, or `undefined` when it
+ * names something else, `_model.md` included.
+ */
+function objectAt(path: string): { kind: ObjectKind; name: string } | undefined {
+  if (!path.endsWith('.md')) return undefined
+  for (const kind of KINDS) {
+    const prefix = `${directoryOfKind(kind)}/`
+    if (!path.startsWith(prefix)) continue
+    return { kind, name: path.slice(prefix.length, -'.md'.length) }
+  }
+  return undefined
 }
 
 /**
@@ -687,7 +868,7 @@ function changedUnderneath(path: string, action: string): string {
   )
 }
 
-function applyPatch(table: Table, patch: TablePatch): Table {
+function applyTablePatch(table: Table, patch: TablePatch): Table {
   const next: {
     -readonly [K in keyof Table]: Table[K]
   } = { ...table }
@@ -705,13 +886,37 @@ function applyPatch(table: Table, patch: TablePatch): Table {
   return next
 }
 
-function replace(tables: readonly Table[], next: Table): readonly Table[] {
-  return tables.map((table) => (table.name === next.name ? next : table))
+function applyNotePatch(note: Note, patch: NotePatch): Note {
+  const next: { -readonly [K in keyof Note]: Note[K] } = { ...note }
+  if (patch.body !== undefined) next.body = patch.body
+  if (patch.layout !== undefined) {
+    if (patch.layout === null) delete next.layout
+    else next.layout = patch.layout
+  }
+  if (patch.color !== undefined) {
+    if (patch.color === null) delete next.color
+    else next.color = patch.color
+  }
+  return next
 }
 
-/** The reader sorts, so a model that gained a table keeps the same order it would on reload. */
-function sortByName(tables: readonly Table[]): readonly Table[] {
-  return [...tables].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+function applyGroupPatch(group: Group, patch: GroupPatch): Group {
+  const next: { -readonly [K in keyof Group]: Group[K] } = { ...group }
+  if (patch.body !== undefined) next.body = patch.body
+  if (patch.label !== undefined) {
+    if (patch.label === null) delete next.label
+    else next.label = patch.label
+  }
+  if (patch.color !== undefined) {
+    if (patch.color === null) delete next.color
+    else next.color = patch.color
+  }
+  return next
+}
+
+/** The reader sorts, so a model that gained an object keeps the order a reload would give it. */
+function sortByName<T extends CanvasObject>(objects: readonly T[]): readonly T[] {
+  return [...objects].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
 async function exists(target: string): Promise<boolean> {

@@ -1,5 +1,5 @@
 /**
- * The studio server: `node:http`, five routes and a static directory.
+ * The studio server: `node:http`, a handful of routes and a static directory.
  *
  * No framework, on purpose. ADR 0004 already decided the client has no UI
  * library, and the same argument applies harder to the server: this is a tool
@@ -41,13 +41,18 @@ import { Edits, EditRefused } from './edits.js'
 import { resolveWithin } from './safe-path.js'
 import {
   isPatchError,
+  parseGroupPatch,
+  parseNewGroup,
+  parseNewNote,
   parseNewTable,
+  parseNotePatch,
   parseRevision,
   parseTablePatch,
   REVISION_HEADER,
   toWireModel,
   type WireModelResponse,
 } from './wire.js'
+import type { ObjectKind } from '../model/types.js'
 
 /** Loopback, always. Not an option, because there is no good reason to want another. */
 const HOST = '127.0.0.1'
@@ -235,7 +240,8 @@ async function route(
     return
   }
 
-  if (path.length === 2 && path[1] === 'table') {
+  const kind = KIND_ENDPOINTS.get(path[1] ?? '')
+  if (kind !== undefined && path.length === 2) {
     if (method !== 'POST') return methodNotAllowed(response, ['POST'])
     // Content type first, then the revision, then the body. The first is the
     // one that is security (a form post is refused before anything else is
@@ -246,17 +252,17 @@ async function route(
     if (base === undefined) return
     const body = await readJsonBody(request, response)
     if (body === undefined) return
-    const parsed = parseNewTable(body)
+    const parsed = parseNew(kind, body)
     if (isPatchError(parsed)) {
       send(response, 400, { error: parsed.error, code: 'bad-request' })
       return
     }
-    const table = await edits.addTable(parsed.value.name, parsed.value.patch, base)
-    send(response, 201, { table, ...edits.status() })
+    const created = await create(edits, kind, parsed.value.name, parsed.value.patch, base)
+    send(response, 201, { [kind]: created, ...edits.status() })
     return
   }
 
-  if (path.length === 3 && path[1] === 'table') {
+  if (kind !== undefined && path.length === 3) {
     const name = path[2] ?? ''
     if (method === 'PATCH') {
       if (!requiresJson(request, response)) return
@@ -264,30 +270,117 @@ async function route(
       if (base === undefined) return
       const body = await readJsonBody(request, response)
       if (body === undefined) return
-      const parsed = parseTablePatch(body)
+      const parsed = parsePatch(kind, body)
       if (isPatchError(parsed)) {
         send(response, 400, { error: parsed.error, code: 'bad-request' })
         return
       }
-      const table = edits.patchTable(name, parsed.value, base)
-      send(response, 200, { table, ...edits.status() })
+      const patched = patch(edits, kind, name, parsed.value, base)
+      send(response, 200, { [kind]: patched, ...edits.status() })
       return
     }
     if (method === 'DELETE') {
       const base = revisionOf(request, response)
       if (base === undefined) return
-      await edits.removeTable(name, base)
+      await edits.removeObject(kind, name, base)
       send(response, 200, { removed: name, ...edits.status() })
       return
     }
     if (method === 'GET') {
-      send(response, 200, { table: edits.table(name), ...edits.status() })
+      send(response, 200, { [kind]: edits.object(kind, name), ...edits.status() })
       return
     }
     return methodNotAllowed(response, ['GET', 'PATCH', 'DELETE'])
   }
 
   send(response, 404, { error: `no such endpoint: /${path.join('/')}`, code: 'unknown-endpoint' })
+}
+
+/**
+ * The three endpoints that edit an object on the canvas, and the kind each one
+ * is about.
+ *
+ * One route rather than three copies of it, because ADR 0005 made a kind a
+ * directory and a set of keys and nothing else: the containment check, the
+ * revision guard, the debounce and the conflict check are the same for all
+ * three, and only the patch parser and the apply differ. The endpoint is
+ * singular (`/api/note`) and the directory is plural (`notes/`), which is the
+ * shape `/api/table` already had.
+ */
+const KIND_ENDPOINTS: ReadonlyMap<string, ObjectKind> = new Map<string, ObjectKind>([
+  ['table', 'table'],
+  ['note', 'note'],
+  ['group', 'group'],
+])
+
+function parseNew(
+  kind: ObjectKind,
+  body: unknown,
+): ReturnType<typeof parseNewTable> | ReturnType<typeof parseNewNote> {
+  switch (kind) {
+    case 'table':
+      return parseNewTable(body)
+    case 'note':
+      return parseNewNote(body)
+    case 'group':
+      return parseNewGroup(body)
+  }
+}
+
+function parsePatch(
+  kind: ObjectKind,
+  body: unknown,
+): ReturnType<typeof parseTablePatch> | ReturnType<typeof parseNotePatch> {
+  switch (kind) {
+    case 'table':
+      return parseTablePatch(body)
+    case 'note':
+      return parseNotePatch(body)
+    case 'group':
+      return parseGroupPatch(body)
+  }
+}
+
+/**
+ * The three creates, told apart by the parser that produced the patch.
+ *
+ * The cast is where the union the router carries meets the three typed methods,
+ * and it is safe for the reason the router is one route at all: `parseNew`
+ * dispatched on the same `kind`, so the patch in hand is the one this branch's
+ * method takes. `edits.ts` keeps the types honest either side of this line.
+ */
+async function create(
+  edits: Edits,
+  kind: ObjectKind,
+  name: string,
+  value: unknown,
+  base: number,
+): Promise<unknown> {
+  switch (kind) {
+    case 'table':
+      return edits.addTable(name, value as Parameters<Edits['addTable']>[1], base)
+    case 'note':
+      return edits.addNote(name, value as Parameters<Edits['addNote']>[1], base)
+    case 'group':
+      return edits.addGroup(name, value as Parameters<Edits['addGroup']>[1], base)
+  }
+}
+
+function patch(
+  edits: Edits,
+  kind: ObjectKind,
+  name: string,
+  value: unknown,
+  base: number,
+): unknown {
+  switch (kind) {
+    case 'table':
+      return edits.patchTable(name, value as Parameters<Edits['patchTable']>[1], base)
+    case 'note':
+      return edits.patchNote(name, value as Parameters<Edits['patchNote']>[1], base)
+    case 'group':
+      return edits.patchGroup(name, value as Parameters<Edits['patchGroup']>[1], base)
+  }
 }
 
 function methodNotAllowed(response: ServerResponse, allowed: readonly string[]): void {

@@ -79,6 +79,13 @@ const noPasswords: Note = {
   path: 'notes/there-are-no-passwords-here.md',
   complete: true,
   layout: { x: 40, y: 320, w: 340, h: 180 },
+  // The one thing in the scaffold whose only job is to be an example of a key.
+  // `color` is optional and a note with none draws plain, which reads as a box
+  // rather than as the sticky note the README and `_model.md` both promise. It
+  // is also the only place a new user meets the rule that a colour is a name
+  // and never a hex value (ADR 0005), and a diff that says `color: amber` is
+  // the whole argument for that in one line.
+  color: 'amber',
   body: `
 Credentials belong to the identity provider. There is no password, no reset
 token and no session in this model, and something that looks like one turning up
