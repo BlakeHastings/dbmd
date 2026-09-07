@@ -62,6 +62,17 @@ bd blocked            # and why
 
 ADR 0002 says why. Items are `dbmd-N`; branches are `<area>/<N>-<slug>`.
 
+`.beads/issues.jsonl` is the tracked file and the thing that survives a clone.
+The database under `.beads/embeddeddolt/` is local, derived and untracked, so a
+checkout without a working `bd` still has the whole backlog: it is one JSON
+object per line and `node -e` reads it fine. Use `bd` when it works, read the
+file when it does not, and do not treat a missing tool as a missing backlog.
+
+Use beads **v1.2.2 or later**. v1.2.0 and v1.2.1 were published by accident
+without release testing and migrate a local database to a schema later binaries
+refuse. Creating items with an explicit `--id dbmd-N` keeps the numbering the
+branch convention above depends on; without it `bd` will hand out a suffixed id.
+
 ## Invariants
 
 Two, and both are about this repository rather than about code that does not
