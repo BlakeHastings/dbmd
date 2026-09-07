@@ -562,3 +562,50 @@ Two consequences worth knowing before you are in the middle of one:
 - **It is not a reason to stop filing while a branch is open.** Filing is how the
   loop keeps state, and a mechanical conflict with a one-command resolution is
   cheaper than a finding that was never written down.
+
+## Waiting for a check and asking about a check are different, and I conflated them three times
+
+On 2026-09-07, merging a queue of five, I rebased each branch and waited for its
+checks before merging. Three times my wait returned early and wrong, in three
+different ways, all of them the same underlying error.
+
+**A branch with no checks yet has none pending.** After a force-push, GitHub
+reports `no checks reported on the ... branch` for a while. A loop that counts
+pending entries counts zero and concludes the branch is ready. It is not ready;
+nothing has started.
+
+**A branch that was just force-pushed still shows the old commit's checks.**
+`gh pr checks` answered with five passes belonging to the commit I had just
+replaced. The count was right, the states were right, and the run was somebody
+else's.
+
+**`--watch` returns immediately on stale results.** It watched a run that had
+already finished rather than the one about to start.
+
+All three are **absence or staleness reported as success**, which is the same
+shape as the red builds on `main` that nothing was looking at, turned on the
+person who had just merged the fix for it. That is what makes it worth a section
+rather than a shrug: I was holding the lesson in one hand and repeating it with
+the other.
+
+**The version that cannot lie is to poll by the commit.** Ask the run listing for
+runs whose `headSha` starts with the SHA you just pushed, and treat "no run yet"
+as *keep waiting* rather than as *nothing to wait for*:
+
+```bash
+H=$(git rev-parse HEAD | cut -c1-7)
+gh run list --branch "$B" --limit 4 --json headSha,status,conclusion,workflowName
+# filter to headSha starting with $H; 'no run yet' means wait, not proceed
+```
+
+The pull-request check listing is the right tool for *reading* a verdict and the
+wrong one for *waiting* for it, because it answers about the pull request rather
+than about the commit, and after a force-push those are different things for a
+minute or two.
+
+**The merge gate catches this anyway, which is why it cost nothing.**
+`merge-pr.mjs` refuses a branch whose green is stale or which is behind, so every
+one of these three would have been refused at the merge rather than merged on a
+bad reading. That is the fourth constraint doing its job: the prevention held
+while my detection was wrong, and I only noticed because I read the refusal
+instead of retrying past it.
