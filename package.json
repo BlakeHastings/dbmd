@@ -60,8 +60,7 @@
     "check:commands": "node scripts/check-commands.mjs",
     "check:scenes": "node scripts/check-scene-classes.mjs",
     "check:pack": "node scripts/smoke-pack.mjs",
-    "check:guards": "node scripts/check-pack-guard.mjs",
-    "backlog": "bd export -o .beads/issues.jsonl"
+    "check:guards": "node scripts/check-pack-guard.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",

@@ -34,11 +34,24 @@ correction. The general shape is worth keeping: a claim about where state lives
 is checkable in about ten seconds and was wrong here on the first try.
 
 **`bd export` with no `-o` prints to stdout and does not write the tracked
-file.** The auto-export that does write it is throttled, so the committed
-`.beads/issues.jsonl` silently lags behind the database. Four items were missing
-from it on the first check. `npm run backlog` is the command that actually
-writes it; run it before any commit that changed the backlog, and check the
-count.
+file.** That is still true, and it is no longer something you have to do
+anything about. `.beads/config.yaml` sets `export.auto: true` and
+`export.git-add: true`, so beads writes `.beads/issues.jsonl` on every write and
+stages it. Measured on 2026-09-07: a fresh `bd export` of all ninety-one items
+and the committed file agreed on every id and every `updated_at`, with nobody
+having run an export.
+
+This paragraph used to end by telling you to run an npm script called backlog
+before any commit that changed the backlog. That script is gone (dbmd-7xa), and
+it is written here without backticks because it is no longer a command: a
+backtick is a claim the thing exists, and `scripts/check-commands.mjs` is the
+thing that found this sentence when the script was deleted. It could not run
+anyway: `bd` lives at `%LOCALAPPDATA%\Programs\beads\bd.exe`, which is on no
+PATH npm can see from a plain checkout, so it answered `'bd' is not recognized`. A
+script that cannot run, doing a job already done, in the file people read to
+learn how the project works, is the shape this repository has paid for twice.
+If you do want to force an export, `bd export -o .beads/issues.jsonl` is the
+whole of what it did, and it needs a `bd` you can already run.
 
 **`bd create` refuses `--id` together with `--parent`.** Create with `--id`,
 then add the edge with `bd dep add <child> <parent> --type parent-child`. Worth
