@@ -37,6 +37,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { narrate } from '../cli/output.js'
+import { errnoText } from '../diagnostics.js'
 import { Edits, EditRefused } from './edits.js'
 import { resolveWithin } from './safe-path.js'
 import {
@@ -558,7 +559,31 @@ function send(response: ServerResponse, status: number, payload: unknown): void 
   response.end(text)
 }
 
+/**
+ * What to say about an error nothing above caught, for the 500 and the line
+ * beside it.
+ *
+ * **A 500 body is output, so ADR 0006 rule 4 applies to it.** A Node system
+ * error's `message` ends in the path the call was made with, and every path
+ * this server hands the filesystem is absolute, so the unhandled case is the
+ * one place left that could print where somebody keeps their files. The reader
+ * throws the system message away for exactly this reason and keeps the errno;
+ * `errnoText` is where that rule and the words beside the errno already live,
+ * so this repeats the reader rather than growing a second copy.
+ *
+ * `syscall` rather than `code` is the test because it is what distinguishes a
+ * failed system call from every other `Error` that happens to carry a `code`.
+ * Anything that is not one is a bug in this server, it names no path, and it
+ * says whatever it says: turning `ERR_INVALID_ARG_TYPE` into itself would cost
+ * the sentence that makes it findable.
+ *
+ * This is a net under the refusals, not a substitute for them. A filesystem
+ * error a request can predict belongs in an `EditRefused` with a code and a
+ * relative path, which is what `removeObject` raises for the file it cannot
+ * read.
+ */
 function messageOf(error: unknown): string {
+  if (error instanceof Error && 'syscall' in error) return errnoText(error)
   return error instanceof Error ? error.message : String(error)
 }
 

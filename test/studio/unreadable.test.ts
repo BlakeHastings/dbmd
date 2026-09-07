@@ -52,6 +52,10 @@ import { exampleShop, withCopy } from '../model/fixtures.js'
 const fail = vi.hoisted(() => ({
   readFile: undefined as undefined | ((path: string) => unknown),
   readdir: undefined as undefined | ((path: string) => unknown),
+  // `rm` is here for dbmd-062, and it is the call the other two are not: a file
+  // that will not unlink is not missing from the read, so nothing before the
+  // delete has a chance to see it and the throw lands on the 500.
+  rm: undefined as undefined | ((path: string) => unknown),
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -69,17 +73,31 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     default: actual,
     readFile: intercept(() => fail.readFile, actual.readFile as Call),
     readdir: intercept(() => fail.readdir, actual.readdir as Call),
+    rm: intercept(() => fail.rm, actual.rm as Call),
   }
 })
 
 afterEach(() => {
   fail.readFile = undefined
   fail.readdir = undefined
+  fail.rm = undefined
 })
 
-/** A filesystem error as Node raises one, errno and all. */
-function errno(code: string, path: string): Error {
-  return Object.assign(new Error(`${code}: something went wrong, open '${path}'`), { code })
+/**
+ * A filesystem error as Node raises one, errno and all.
+ *
+ * `syscall` is part of "as Node raises one" rather than decoration: it is what
+ * tells a failed system call apart from every other `Error` carrying a `code`,
+ * and the studio's 500 asks that question before it decides whether the message
+ * is safe to print. The message ends in the path for the same reason, because
+ * that is the half ADR 0006 rule 4 forbids in output.
+ */
+function errno(code: string, path: string, syscall = 'open'): Error {
+  return Object.assign(new Error(`${code}: something went wrong, ${syscall} '${path}'`), {
+    code,
+    syscall,
+    path,
+  })
 }
 
 /** Fail exactly one entry, by its base name, and let everything else through. */
@@ -291,6 +309,97 @@ describe('a delete of a file the studio cannot read', () => {
       expect(refused.body['error']).toContain('did not go through with deleting it')
 
       fail.readFile = undefined
+      expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toBe(before)
+    })
+  })
+})
+
+/**
+ * The same delete, one read later. dbmd-062.
+ *
+ * The refusal above compares the file on disk with the version the session
+ * holds, and an unreadable file is missing from the first side, which is what
+ * makes the two differ. Give the session one re-read while the file is still
+ * unreadable and it is missing from the second side as well: the comparison
+ * finds them equal, agrees there is nothing in the way, and hands an `rm` a
+ * file the operating system will not let go of. That threw, nothing caught it,
+ * and the answer was `500 internal` carrying the absolute path the reader is
+ * careful never to print. ADR 0006 rule 4.
+ *
+ * A re-read is not a contrived step. Every flush does one, the watcher does one
+ * per burst of filesystem events, and the studio's own writes cause both, so
+ * the ordinary way to meet this is to leave the page open for a moment before
+ * pressing delete.
+ */
+describe('a delete of a file the session has already absorbed as unreadable', () => {
+  const ABSOLUTE = 'C:\\Users\\somebody\\models\\shop\\tables\\orders.md'
+
+  it('is the same refusal, and says the relative path', async () => {
+    await withStudio(async ({ studio, dir }) => {
+      const before = await readFile(join(dir, 'tables', 'orders.md'), 'utf8')
+      fail.readFile = only('orders.md', errno('EBUSY', ABSOLUTE))
+      // The step that puts this past the check above: a flush re-reads, so the
+      // read with the file missing from it becomes the baseline the delete
+      // compares against.
+      await flush(studio)
+      // And the delete really would throw here. `rm` on a file another process
+      // holds open answers `EBUSY` on Windows, and that throw is what produced
+      // the 500; a test that left it out would pass on the day the refusal
+      // stopped working.
+      fail.rm = only('orders.md', errno('EBUSY', ABSOLUTE, 'unlink'))
+
+      const refused = await remove(studio, 'orders')
+
+      expect(refused.status).toBe(409)
+      expect(refused.body['code']).toBe('unreadable')
+      expect(refused.body['error']).toContain(`\`${ORDERS}\``)
+      expect(refused.body['error']).toContain('cannot read the file: the file is in use (EBUSY)')
+      expect(refused.body['error']).toContain('did not go through with deleting it')
+      // No guess at a cause, exactly as the write path is not allowed one.
+      expect(refused.body['error']).not.toMatch(/lock|another program|antivirus/i)
+      expect(JSON.stringify(refused.body)).not.toContain(ABSOLUTE)
+
+      fail.rm = undefined
+      fail.readFile = undefined
+      expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toBe(before)
+    })
+  })
+
+  it('reads the same for the errno a POSIX permission gives', async () => {
+    const posix = '/home/somebody/models/shop/tables/orders.md'
+    await withStudio(async ({ studio }) => {
+      fail.readFile = only('orders.md', errno('EACCES', posix))
+      await flush(studio)
+      fail.rm = only('orders.md', errno('EACCES', posix, 'unlink'))
+
+      const refused = await remove(studio, 'orders')
+
+      expect(refused.status).toBe(409)
+      expect(refused.body['code']).toBe('unreadable')
+      expect(refused.body['error']).toContain('cannot read the file: permission denied (EACCES)')
+      expect(JSON.stringify(refused.body)).not.toContain(posix)
+    })
+  })
+
+  it('names no machine even when the throw is one nothing predicted', async () => {
+    // The file reads perfectly and still will not unlink, which is what a
+    // handle opened for sharing gives on Windows. No refusal can see that
+    // coming, so it lands on the 500 that has no case for it, and a 500 body is
+    // output like every other. This is the net under the refusals, not a
+    // substitute for one: the status stays 500 because something really did go
+    // wrong, and only the borrowed system message goes.
+    await withStudio(async ({ studio, dir }) => {
+      const before = await readFile(join(dir, 'tables', 'orders.md'), 'utf8')
+      fail.rm = only('orders.md', errno('EBUSY', ABSOLUTE, 'unlink'))
+
+      const failed = await remove(studio, 'orders')
+
+      expect(failed.status).toBe(500)
+      expect(failed.body['code']).toBe('internal')
+      expect(failed.body['error']).toBe('the file is in use (EBUSY)')
+      expect(JSON.stringify(failed.body)).not.toContain(ABSOLUTE)
+
+      fail.rm = undefined
       expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toBe(before)
     })
   })

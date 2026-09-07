@@ -420,13 +420,22 @@ export class Edits {
     // would quietly make the change on disk the new baseline, which is the
     // shape the whole defect had.
     const disk = await readModel(this.dir)
-    if (renderOf(disk.model, path) !== renderOf(this.adopted.model, path)) {
-      await this.serialise(() => this.absorb(disk))
-      // Which of the two it is, in the reader's own words. See `saidAbout`.
-      const said = saidAbout(disk.diagnostics, path)
-      throw said === undefined
-        ? new EditRefused(409, 'conflicted', changedUnderneath(path, 'deleting it'))
-        : new EditRefused(409, 'unreadable', couldNotBeRead(path, 'deleting it', said))
+    // Asked of every delete rather than only of one whose baseline moved, and
+    // that is the whole of dbmd-062. A file the reader could not open is absent
+    // from this read; once the session has adopted such a read it is absent
+    // from the baseline too, so the comparison below finds the two sides equal
+    // and waves the delete through to an `rm` that throws. The reader's answer
+    // does not depend on what the session happens to have absorbed, which is
+    // what makes it the thing to ask rather than a second thing to compare.
+    const said = saidAbout(disk.diagnostics, path)
+    const changed = renderOf(disk.model, path) !== renderOf(this.adopted.model, path)
+    if (changed) await this.serialise(() => this.absorb(disk))
+    // Which of the two it is, in the reader's own words. See `saidAbout`.
+    if (said !== undefined) {
+      throw new EditRefused(409, 'unreadable', couldNotBeRead(path, 'deleting it', said))
+    }
+    if (changed) {
+      throw new EditRefused(409, 'conflicted', changedUnderneath(path, 'deleting it'))
     }
     // Anything already queued is written first, in order, so a pending edit to
     // this table cannot land after the file is gone and recreate it.
