@@ -394,3 +394,15 @@ rather than by reading.
   `--json`. **Two features that each work, with an empty seam between them**,
   because `refs` shipped first. Filed.
 
+
+- **The referential actions are editable in the studio and the editor honours the
+  distinction the format makes.** Driven on a copy of `examples/shop`: the panel
+  shows two selects on a column that has a `ref`, carrying the five actions plus
+  an empty option, and the empty one is **not** `no action`. Setting `cascade` to
+  `restrict` wrote one line in one file. Setting it to the empty option **removed
+  the key** rather than writing `no action`, which is ADR 0046's distinction
+  between absent and declared surviving into the editor. Clearing the `ref:`
+  itself took the action with it rather than leaving an orphan the validator
+  would then reject. Every step left the model clean under `--strict`, and no
+  file but the edited one changed.
+
