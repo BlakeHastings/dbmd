@@ -128,8 +128,14 @@ async function smoke() {
   checkTheEntryPoint(install)
   checkItCanBePublished(install)
   console.log('Read the packaged manifest for "private" and "bin".')
-  const looked = checkTheSourceMapReferences(install)
-  console.log(`Resolved every sourceMappingURL in the ${looked} shipped .js files.`)
+  // The action taken, not the verdict on it, which is what every other line in
+  // this list says and is the only wording that survives a failing run. The
+  // verdict is three lines further down, in the refusal, and a step list that
+  // claims success above its own refusal reads as a contradiction rather than
+  // as a report. This repository has found that shape more than once in `dbmd
+  // check`, which said `no problems` about models that had them.
+  const read = checkTheSourceMapReferences(install)
+  console.log(`Read the ${read} shipped .js files for source-map references.`)
   const commands = await checkTheCommands(install, manifest.version)
   console.log(`Ran the installed binary: ${commands.join(', ')}.`)
   await checkTheStudio(install)
