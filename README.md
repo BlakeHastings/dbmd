@@ -22,7 +22,10 @@ opens it, and `--port N` and `--no-open` are the two flags it takes.
 `npx dbmd check` is the one to put in CI: it reads the model, prints every
 problem grouped by the file it is in, and exits non-zero on an error, or on any
 diagnostic at all with `--strict`. `--json` gives the same answer and the same
-exit code in a shape a script can read. There is no `export` yet. What is
+exit code in a shape a script can read. `npx dbmd export` writes the model as a
+mermaid diagram into `db-model/README.md`, between two markers, so a pull
+request that changes a table shows a changed picture that GitHub renders for
+anybody who opens it; `--stdout` prints it instead of writing. What is
 decided is in
 [`docs/architecture/decisions/`](docs/architecture/decisions/), and why the
 format is shaped this way is

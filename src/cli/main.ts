@@ -17,6 +17,7 @@
 import { createRequire } from 'node:module'
 import { checkCommand } from './check.js'
 import { EXIT_FAILURE, EXIT_USAGE, UsageError, type Command } from './command.js'
+import { exportCommand } from './export.js'
 import { initCommand } from './init.js'
 import { studioCommand } from './studio.js'
 import {
@@ -34,10 +35,10 @@ import {
  *
  * The order is the order the root `--help` lists them in, and it is the order a
  * person meets them rather than alphabetical: `init` makes a model, `check`
- * says whether it is still good, `studio` is where it is edited. `export` is
- * its own work item and lands in this array when it does.
+ * says whether it is still good, `studio` is where it is edited, and `export`
+ * is how everybody else gets to see it.
  */
-const COMMANDS: readonly Command[] = [initCommand, checkCommand, studioCommand]
+const COMMANDS: readonly Command[] = [initCommand, checkCommand, studioCommand, exportCommand]
 
 /**
  * From the installed package's own `package.json`, so `--version` cannot
