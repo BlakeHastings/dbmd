@@ -165,6 +165,19 @@ the file is still there, which is the only honest way to ask.
 - **The watcher can be switched off and nothing unsafe happens.** Only the live
   update goes away. That is the point of putting the refusal at the write, and it
   is how the write-time check is tested.
+- **A refusal is reported after the request that caused it has been answered,
+  so an operation composed of several requests cannot abort on one.** The write
+  is debounced by ADR 0004, so a `PATCH` is answered `200` when the edit is
+  accepted and the refusal happens at the flush, on the status. That is fine for
+  a drag and is not fine for the inspector's rename, which is a create, a patch
+  per referring table and a delete (ADR 0016). If one of those patches is
+  refused, the rest of the rename still runs: the new table is created, the old
+  one is deleted, and the file whose patch was refused is left referencing a
+  table that is no longer there. **The rename half-applies rather than refusing
+  cleanly**, the refusal is correct and visible in `conflicts`, and the dangling
+  ref is not a reader diagnostic because ADR 0017 makes cross-object checks the
+  validator's. Closing it means either a client that reads `conflicts` after each
+  step and stops, or a rename endpoint the server can refuse as one thing.
 - **A residual race remains and is named.** Once the rename that lands a write
   has started, which of it and an editor's save reaches the directory last is the
   filesystem's decision. The studio adopts whatever ended up there. Closing that

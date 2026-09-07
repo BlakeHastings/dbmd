@@ -497,3 +497,111 @@ describe('deleting a table somebody is editing', () => {
     )
   })
 })
+
+describe('the inspector writes several different files at once', () => {
+  /** Four tables touched inside one debounce window, which a drag never did. */
+  const four = ['orders', 'customers', 'products', 'addresses'] as const
+
+  it('writes all of them, and calls none of them a conflict', async () => {
+    // The check before a write reads the directory once and compares per file.
+    // A comparison that had drifted into "did anything change" would refuse
+    // every file in the batch as soon as the first one of them was written.
+    await withStudio(async (running) => {
+      for (const name of four) {
+        expect((await patch(running.studio, name, { layout: { x: 11, y: 22 } })).status).toBe(200)
+      }
+      await settle(running.studio)
+
+      expect((await status(running.studio)).conflicts).toEqual([])
+      expect(writes(running)).toEqual([
+        'wrote tables/addresses.md, tables/customers.md, tables/orders.md, tables/products.md',
+      ])
+      const read = await readModel(running.dir)
+      for (const name of four) {
+        expect(read.model.tables.find((table) => table.name === name)?.layout).toEqual({
+          x: 11,
+          y: 22,
+        })
+      }
+    })
+  })
+
+  it('refuses only the one that moved, and lands the other three', async () => {
+    await withStudio(
+      async (running) => {
+        for (const name of four) await patch(running.studio, name, { layout: { x: 33, y: 44 } })
+        await editByHand(running.dir, 'tables/products.md', addColumn)
+        await settle(running.studio)
+
+        const after = await status(running.studio)
+        expect(after.conflicts.map((conflict) => conflict.path)).toEqual(['tables/products.md'])
+        expect(after.lastWrite?.paths).toEqual([
+          'tables/addresses.md',
+          'tables/customers.md',
+          'tables/orders.md',
+        ])
+        const read = await readModel(running.dir)
+        for (const name of ['orders', 'customers', 'addresses']) {
+          expect(read.model.tables.find((table) => table.name === name)?.layout).toEqual({
+            x: 33,
+            y: 44,
+          })
+        }
+        expect(await columnNames(running.dir, 'products')).toContain('hand_edited_note')
+      },
+      { debounceMs: 400 },
+    )
+  })
+})
+
+describe('git checkout, which ADR 0004 says is the undo', () => {
+  it('is noticed, and the undone version is not written back', async () => {
+    // A developer does this constantly, and it is the undo this tool tells them
+    // to use, so a studio that quietly restored what they had just discarded
+    // would be undoing the undo.
+    await withStudio(async (running) => {
+      const committed = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
+      await patch(running.studio, 'orders', { layout: { x: 999, y: 999 } })
+      await settle(running.studio)
+      const written = await status(running.studio)
+
+      // What `git checkout -- db-model` does to the filesystem: the committed
+      // bytes, back where they were, with nothing to tell the studio about it.
+      await writeFile(join(running.dir, 'tables', 'orders.md'), committed, 'utf8')
+      await until(
+        async () => ((await status(running.studio)).revision > written.revision ? true : undefined),
+        'the watcher to notice a checkout',
+      )
+
+      await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
+      await settle(running.studio)
+      const after = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
+      expect(after).not.toContain('999')
+      const read = await readModel(running.dir)
+      expect(read.model.tables.find((table) => table.name === 'orders')?.layout).toEqual({
+        x: 500,
+        y: 500,
+      })
+    })
+  })
+
+  it('is refused rather than written back when the watcher never fired', async () => {
+    await withStudio(
+      async (running) => {
+        const committed = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
+        await patch(running.studio, 'orders', { layout: { x: 999, y: 999 } })
+        await settle(running.studio)
+
+        await writeFile(join(running.dir, 'tables', 'orders.md'), committed, 'utf8')
+        await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
+        await settle(running.studio)
+
+        expect((await status(running.studio)).conflicts.map((conflict) => conflict.path)).toEqual([
+          'tables/orders.md',
+        ])
+        expect(await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')).toBe(committed)
+      },
+      { watch: false },
+    )
+  })
+})
