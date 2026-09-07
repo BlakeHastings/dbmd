@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with four agents in flight and no pull request open.**
+**As of 2026-09-07, with three agents in flight and no pull request open.**
 
 ## Where the work is
 
-Fifty-five pull requests have merged, all through `merge-pr.mjs`, and the
+Sixty pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -16,17 +16,24 @@ From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
 
 ```bash
-node dist/cli.js import   # a catalogue JSON becomes a model directory
+node dist/cli.js query    # prints your engine's introspection SQL, for you to run
+node dist/cli.js import   # the JSON that returns becomes a model directory
 node dist/cli.js init     # scaffolds a model directory
 node dist/cli.js check    # validates it, exits 1 on an error, --strict promotes warnings
 node dist/cli.js export   # a mermaid diagram GitHub renders in a pull request
 node dist/cli.js studio   # a canvas: drag, edit, rename across files, add and delete tables
 ```
 
-**`dbmd import` closes the argument the project was built to make.** A database
-becomes markdown becomes a picture you can drag, and no credential and no driver
-is ever the tool's business: you run the query, it reads what your client
-printed.
+**The journey runs end to end for the first time.** `dbmd query` prints the SQL,
+you run it with the client you already trust, and `dbmd import` reads what came
+back. It was proved against a PostgreSQL 16 container: query, run, import,
+`dbmd check` clean. No credential and no driver is ever this tool's business.
+
+Until 2026-09-07 that journey had no first step. `dbmd query` was named by four
+error messages, the format page, ADR 0007 and `AGENTS.md`, and did not exist.
+**The tool told people to run a command it then rejected**, and there was no
+backlog item to build it. Look for that shape: a thing referred to so
+consistently that nobody checks it is there.
 
 **It is not published to npm** and `package.json` is `"private": true` on purpose.
 `AGENTS.md` and `README.md` both say so. Two files claimed otherwise for a day and
@@ -87,15 +94,13 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-7nb**, `dbmd query`. **P1, and the most important thing open.** `dbmd
-  import` closes this project's argument and its only documented input is a
-  command that does not exist, which the tool's own error messages tell people
-  to run.
-- **dbmd-17**, a group's computed box enclosing things that are not members.
-  Newly reachable, because groups only started drawing today.
-- **dbmd-0s1**, breaking each enforcement guard on purpose to prove it still
-  fails.
-- **dbmd-mua**, the README still calling the import path unfinished.
+- **dbmd-49**, four small studio wrongnesses, the worst of which is a
+  confirmation dialog that states something untrue at the moment the user
+  decides.
+- **dbmd-56**, the file-name rule spelled in two places, with the studio's limit
+  now looser than the writer's.
+- **dbmd-3xq**, the last four sleeps in the watcher tests, and whether the three
+  behaviours they guard can fail at all.
 
 ## What proved out, and is easy to lose
 
