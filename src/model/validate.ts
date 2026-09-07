@@ -111,18 +111,31 @@ function duplicateIndexes(table: Table, out: Diagnostic[]): void {
   }
 }
 
+/**
+ * An index key naming a column its own table does not have.
+ *
+ * An expression key is skipped, and skipped rather than parsed. dbmd does not
+ * read SQL, so it cannot say which columns `lower(ledger_code)` mentions, and a
+ * rule that guessed would either miss the typo it exists for or invent one. The
+ * expression is carried and shown and nothing here has an opinion about it.
+ * ADR 0022.
+ *
+ * The message names the other spelling. Somebody who meant an expression and
+ * wrote it as a bare string lands exactly here, and this diagnostic is the only
+ * place they will be told which of the two they wrote.
+ */
 function indexColumns(table: Table, out: Diagnostic[]): void {
   if (!table.complete) return
   const columns = columnNames(table)
   for (const index of table.indexes) {
-    for (const column of index.columns) {
-      if (columns.has(column)) continue
+    for (const key of index.columns) {
+      if (typeof key !== 'string' || columns.has(key)) continue
       push(
         out,
         'index-column-unknown',
         'error',
         table.path,
-        `the index \`${index.name}\` names the column \`${column}\`, which \`${table.name}\` does not have`,
+        `the index \`${index.name}\` names the column \`${key}\`, which \`${table.name}\` does not have; if it is an expression rather than a column, write it as \`{ expression: ${key} }\``,
       )
     }
   }
@@ -215,9 +228,12 @@ function identifiesOneRow(table: Table): ReadonlySet<string> {
   const only = primary[0]
   if (primary.length === 1 && only !== undefined) keys.add(only.name)
   for (const index of table.indexes) {
-    const column = index.columns[0]
-    if (index.unique !== true || index.columns.length !== 1 || column === undefined) continue
-    keys.add(column)
+    const key = index.columns[0]
+    // An expression key is not a column, so a unique index over one makes no
+    // column of this table unique: `unique (lower(email))` constrains the
+    // lower-cased value and leaves `email` free to repeat in other cases.
+    if (index.unique !== true || index.columns.length !== 1 || typeof key !== 'string') continue
+    keys.add(key)
   }
   return keys
 }

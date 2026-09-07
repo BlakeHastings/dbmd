@@ -97,7 +97,7 @@ describe('what SQL Server forced into the contract', () => {
     const index = tableNamed(sqlserver, 'OrderLine').indexes[0]
     expect(index?.includedColumns).toEqual(['Quantity'])
     expect(index?.isClustered).toBe(false)
-    expect(index?.columns).toEqual([{ name: 'OrderId' }, { name: 'LineNo', descending: true }])
+    expect(index?.columns).toEqual([{ column: 'OrderId' }, { column: 'LineNo', descending: true }])
     expect(index?.filterExpression).toBe('([Quantity]>(0))')
     expect(tableNamed(sqlserver, 'OrderLine').primaryKey?.isClustered).toBe(true)
   })

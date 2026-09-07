@@ -17,7 +17,7 @@ import type {
   ColumnType,
   ForeignKey,
   Index,
-  IndexColumn,
+  IndexKey,
   IntrospectionDocument,
   NormalisedType,
   PrimaryKey,
@@ -217,12 +217,12 @@ function postgresIndex(raw: Raw): Index {
   const included = list(raw['included_columns']).map((c) => String(c))
   return {
     name: str(raw['index_name']) ?? '',
-    columns: list(raw['key_columns']).map((c): IndexColumn => {
-      const column = obj(c)
-      return {
-        name: str(column['column_name']) ?? '',
-        ...(bool(column['is_descending']) ? { descending: true } : {}),
-      }
+    columns: list(raw['key_columns']).map((c): IndexKey => {
+      const key = obj(c)
+      const direction = bool(key['is_descending']) ? { descending: true } : {}
+      const column = str(key['column_name'])
+      if (column !== undefined) return { column, ...direction }
+      return { expression: str(key['expression']) ?? '', ...direction }
     }),
     ...(included.length > 0 ? { includedColumns: included } : {}),
     isUnique: bool(raw['is_unique']),
@@ -447,11 +447,11 @@ function sqlServerIndex(raw: Raw): Index {
   const included = list(raw['includedColumns']).map((c) => String(c))
   return {
     name: str(raw['name']) ?? '',
-    columns: list(raw['keyColumns']).map((c): IndexColumn => {
-      const column = obj(c)
+    columns: list(raw['keyColumns']).map((c): IndexKey => {
+      const key = obj(c)
       return {
-        name: str(column['name']) ?? '',
-        ...(bool(column['isDescending']) ? { descending: true } : {}),
+        column: str(key['name']) ?? '',
+        ...(bool(key['isDescending']) ? { descending: true } : {}),
       }
     }),
     ...(included.length > 0 ? { includedColumns: included } : {}),

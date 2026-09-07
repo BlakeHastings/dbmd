@@ -43,7 +43,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { MODEL_FILE, directoryOfKind } from './paths.js'
-import type { CanvasObject, Column, Index, Layout, Model, Table } from './types.js'
+import type { CanvasObject, Column, Index, IndexKey, Layout, Model, Table } from './types.js'
 
 // --------------------------------------------------------------------------
 // Serialising: a model, or one object on it, as the full text of its file.
@@ -111,10 +111,25 @@ function columnLines(column: Column): string[] {
 }
 
 function indexLines(index: Index): string[] {
-  const columns = index.columns.map((column) => scalar(column, 'flow')).join(', ')
+  const columns = index.columns.map(indexKey).join(', ')
   const lines = [`  - name: ${scalar(index.name)}`, `    columns: [${columns}]`]
   if (index.unique !== undefined) lines.push(`    unique: ${index.unique}`)
   return lines
+}
+
+/**
+ * A column name, or `{ expression: ... }` for engine SQL.
+ *
+ * The mapping stays on the one line the list already is, because the list is
+ * flow style (ADR 0003 sells a layout as the line a reviewer skips, and an
+ * index's key tuple reads the same way). The expression goes through the same
+ * scalar rule as every other value here, so `lower(email)` stays plain and
+ * `date_trunc('day', created_at)` is quoted, decided by the characters in it
+ * rather than by what the value is for.
+ */
+function indexKey(key: IndexKey): string {
+  if (typeof key === 'string') return scalar(key, 'flow')
+  return `{ expression: ${scalar(key.expression, 'flow')} }`
 }
 
 /**

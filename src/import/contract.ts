@@ -162,16 +162,44 @@ export interface ForeignKey {
   readonly onUpdate?: ReferentialAction
 }
 
-export interface IndexColumn {
-  readonly name: string
+/**
+ * One key of an index: a column of the table, or an expression over it.
+ *
+ * The two are spelled apart rather than both arriving as a bare string, because
+ * a bare string cannot tell them apart and both are legal. An index on
+ * `lower(ledger_code)` and an index on a column literally called
+ * `lower(ledger_code)` produced byte-identical output until this union existed,
+ * which is the whole of dbmd-18. ADR 0022.
+ *
+ * A key says exactly one of `column` and `expression`. Neither is
+ * `import/missing-field`; both is `import/conflicting-fields`, because a key
+ * that says both holds no fact dbmd could choose between.
+ */
+export type IndexKey = IndexKeyColumn | IndexKeyExpression
+
+export interface IndexKeyColumn {
+  /** A column of this table, by name. */
+  readonly column: string
   /** Absent means ascending. Both engines record direction per key column. */
+  readonly descending?: boolean
+}
+
+export interface IndexKeyExpression {
+  /**
+   * Engine-native, verbatim, for the same reason as `ColumnDefault.expression`:
+   * dbmd never executes it and cannot parse it, so it is carried and shown and
+   * never interpreted. Postgres calls these functional indexes; SQL Server
+   * reaches the same place through a computed column, which arrives as a column
+   * and needs nothing here.
+   */
+  readonly expression: string
   readonly descending?: boolean
 }
 
 export interface Index {
   readonly name: string
-  /** The key columns, ordered. At least one. */
-  readonly columns: readonly IndexColumn[]
+  /** The keys, ordered. At least one, each a column or an expression. */
+  readonly columns: readonly IndexKey[]
   /**
    * Payload columns carried in the leaf, not part of the key. SQL Server has had
    * `INCLUDE` since 2005 and Postgres since 11, so this is union rather than a
@@ -644,7 +672,7 @@ function readIndex(diagnostics: Diagnostic[], raw: unknown, path: string): Index
   ])
   const name = requiredString(diagnostics, obj, 'name', path)
   const columns = readList(diagnostics, obj, 'columns', path, { required: true }).map((item, i) =>
-    readIndexColumn(diagnostics, item, `${path}.columns[${i}]`),
+    readIndexKey(diagnostics, item, `${path}.columns[${i}]`),
   )
   if (columns.length === 0) {
     error(diagnostics, 'import/empty-value', `${path}.columns`, 'an index names no key columns')
@@ -668,12 +696,41 @@ function readIndex(diagnostics: Diagnostic[], raw: unknown, path: string): Index
   }
 }
 
-function readIndexColumn(diagnostics: Diagnostic[], raw: unknown, path: string): IndexColumn {
-  const obj = asObject(diagnostics, raw, path, 'an index column') ?? {}
-  unknownFields(diagnostics, obj, path, ['name', 'descending'])
-  const name = requiredString(diagnostics, obj, 'name', path)
+/**
+ * One index key, which is a column or an expression and never both.
+ *
+ * A file that says both is rejected rather than resolved in either direction.
+ * Preferring one would make the other silently disappear, and the reason this
+ * union exists at all is that a silently-disappearing distinction is what a
+ * bare string was already doing.
+ */
+function readIndexKey(diagnostics: Diagnostic[], raw: unknown, path: string): IndexKey {
+  const obj = asObject(diagnostics, raw, path, 'an index key') ?? {}
+  unknownFields(diagnostics, obj, path, ['column', 'expression', 'descending'])
+  const column = optionalString(diagnostics, obj, 'column', path)
+  const expression = optionalString(diagnostics, obj, 'expression', path)
   const descending = optionalBoolean(diagnostics, obj, 'descending', path)
-  return { name: name ?? '', ...(descending !== undefined ? { descending } : {}) }
+  const direction = descending !== undefined ? { descending } : {}
+
+  if (column !== undefined && expression !== undefined) {
+    error(
+      diagnostics,
+      'import/conflicting-fields',
+      path,
+      'an index key says both `column` and `expression`, and one index key is one or the other',
+    )
+    return { column, ...direction }
+  }
+  if (expression !== undefined) return { expression, ...direction }
+  if (column === undefined) {
+    error(
+      diagnostics,
+      'import/missing-field',
+      path,
+      "an index key needs `column`, naming a column of this table, or `expression`, carrying the engine's own text",
+    )
+  }
+  return { column: column ?? '', ...direction }
 }
 
 function readForeignKey(diagnostics: Diagnostic[], raw: unknown, path: string): ForeignKey {

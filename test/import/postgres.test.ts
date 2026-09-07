@@ -212,7 +212,7 @@ describe('parse, over the cross-engine fixture', () => {
     expect(tableNamed(document, 'public', 'order_line').indexes).toEqual([
       {
         name: 'order_line_open_idx',
-        columns: [{ name: 'order_id' }, { name: 'line_no', descending: true }],
+        columns: [{ column: 'order_id' }, { column: 'line_no', descending: true }],
         includedColumns: ['quantity'],
         isUnique: false,
         filterExpression: '(quantity > 0)',
@@ -327,10 +327,20 @@ describe('parse, over the branches only Postgres has', () => {
     ).toBeUndefined()
   })
 
-  it('names an expression index key by its expression, since it has no column', () => {
+  // dbmd-18: the query used to COALESCE the expression into `column_name`, so
+  // this index and an index on a column literally called `lower(note)` printed
+  // the same bytes. A column may be called that, so the ambiguity was real and
+  // not theoretical, and it is closed by reporting the two in two fields.
+  it('reports an expression key as an expression and never as a column name', () => {
     const indexes = tableNamed(document, 'public', 'order_line').indexes
     expect(indexes.map((i) => i.name)).toEqual(['order_line_note_lower_idx', 'order_line_open_idx'])
-    expect(indexes[0]?.columns).toEqual([{ name: 'lower(note)' }])
+    expect(indexes[0]?.columns).toEqual([{ expression: 'lower(note)' }])
+    // The plain index beside it is still a column, in the same list, so the
+    // distinction is one the shape carries rather than one this table happens to.
+    expect(indexes[1]?.columns).toEqual([
+      { column: 'order_id' },
+      { column: 'line_no', descending: true },
+    ])
   })
 
   it('crosses schemas on a foreign key rather than assuming its own', () => {

@@ -158,10 +158,10 @@ action is one of: noAction restrict cascade setNull setDefault
 ```
 
 ```
-Index                                 IndexColumn        CheckConstraint
-  name               string             name  string       name        string?
-  columns            IndexColumn[]      descending bool?   expression  string
-  includedColumns    string[]?
+Index                                 IndexKey            CheckConstraint
+  name               string              column      string?  name       string?
+  columns            IndexKey[]          expression  string?  expression string
+  includedColumns    string[]?           descending  bool?
   isUnique           boolean
   isClustered        boolean?
   filterExpression   string?
@@ -172,6 +172,18 @@ The index that backs the primary key is not repeated in `indexes`. The primary
 key is the modelling truth and one fact belongs in one place. An index backing a
 `UNIQUE` constraint does appear, with `isUniqueConstraint` true, because dropping
 it means dropping the constraint and that is worth being able to see.
+
+**An index key is a column or an expression, and exactly one of the two.** An
+`IndexKey` carries `column`, naming a column of the table, or `expression`,
+carrying the engine's own text for a functional or computed key. Neither is
+`import/missing-field`, both is `import/conflicting-fields`, and nothing
+prefers one over the other when a file says both.
+
+The two are separate fields rather than one string because a column can legally
+be *called* `lower(ledger_code)`. A key that reported the expression under
+`name` was byte-identical to a key naming that column, which is dbmd-18: the
+same output for two different schemas, with no way back. ADR 0022 is
+the argument, and it holds for the markdown format too.
 
 ## Rules that apply everywhere
 
@@ -189,8 +201,8 @@ be the same length, and a file where they are not gets
 `import/mismatched-columns`.
 
 **Expressions are verbatim.** `default.expression`, `generated.expression`,
-`checkConstraints[].expression` and `filterExpression` are the engine's own text,
-unmodified. SQL Server really does report `((0))` for a default of zero, and this
+`checkConstraints[].expression`, `indexes[].columns[].expression` and
+`filterExpression` are the engine's own text, unmodified. SQL Server really does report `((0))` for a default of zero, and this
 contract keeps the parentheses. dbmd describes a schema and never generates DDL,
 so the string is only ever displayed, and unwrapping it is a guess that is safe
 for `((0))` and not safe in general. A provider that wants to tidy them should
@@ -300,7 +312,7 @@ schemas, the included column and the filtered index:
   "indexes": [
     {
       "name": "IX_OrderLine_Open",
-      "columns": [{ "name": "OrderId" }, { "name": "LineNo", "descending": true }],
+      "columns": [{ "column": "OrderId" }, { "column": "LineNo", "descending": true }],
       "includedColumns": ["Quantity"],
       "isUnique": false,
       "isClustered": false,

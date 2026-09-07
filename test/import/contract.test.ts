@@ -181,8 +181,8 @@ describe('validateIntrospectionDocument', () => {
           { ...minimalColumn, name: 'a' },
         ],
         indexes: [
-          { name: 'ix_b', columns: [{ name: 'b' }], isUnique: false },
-          { name: 'ix_a', columns: [{ name: 'a' }], isUnique: false },
+          { name: 'ix_b', columns: [{ column: 'b' }], isUnique: false },
+          { name: 'ix_a', columns: [{ column: 'a' }], isUnique: false },
         ],
       }),
       table({ name: 'apple' }),

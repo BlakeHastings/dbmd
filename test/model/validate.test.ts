@@ -45,7 +45,7 @@ describe('a model that breaks every rule a directory can break', () => {
       'warning groups/orphans.md [group-empty] no table declares `group: orphans`; an empty group is usually a rename that missed a file',
       'error tables/baskets.md [duplicate-column] `baskets` declares more than one column called `token`',
       'error tables/deliveries.md [duplicate-index] `deliveries` declares more than one index called `deliveries_order_idx`',
-      'error tables/orders.md [index-column-unknown] the index `orders_status_idx` names the column `status`, which `orders` does not have',
+      'error tables/orders.md [index-column-unknown] the index `orders_status_idx` names the column `status`, which `orders` does not have; if it is an expression rather than a column, write it as `{ expression: status }`',
       'error tables/orders.md [ref-column-unknown] `ref: baskets.reference` on column `basket_id` names no column of `baskets`',
       'error tables/orders.md [ref-table-unknown] `ref: custmers.id` on column `customer_id` names no table; there is no tables/custmers.md',
       "warning tables/orders.md [ref-target-not-unique] `ref: promotions.code` on column `promo_code` points at a column that is neither `promotions`'s whole primary key nor covered by a single-column unique index, so it does not identify one row",
