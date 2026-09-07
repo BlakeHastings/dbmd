@@ -171,3 +171,130 @@ rule you learn once and a rule you resent.
   shape rather than an interface. If `src/cli/main.ts` is restructured, this
   check throws rather than passing empty, but the reader of that failure should
   come here.
+
+## Amendment, 2026-09-07: the revisit condition fired, and a fourth shape is added
+
+**"A reference is found that this check cannot see."** That is the second
+condition above, and it says the case is worth writing down rather than fixing
+quietly, because the shapes list "is meant to grow from evidence rather than from
+imagination". The case arrived, and this is it.
+
+### The evidence
+
+`scripts/guard-merge.mjs` named `scripts/command-reader.test.mjs` in a comment,
+as the test that catches drift between the copies of its command reader. That
+file exists only in the repository the guard is installed from. There is no such
+file here and there never has been. ADR 0059 is what came of reading that
+comment: the copy is unchecked, and it now says so.
+
+This check scanned that file on every run and saw nothing. All three shapes above
+begin with a runner, because all three read an *invocation*. Nobody was being
+told to run the test, so nothing was written in front of its name, and a comment
+claiming a safety net that did not exist walked through a gate whose entire
+subject is confident references to things that are not there.
+
+### The shape
+
+A bare path into `scripts/`, resolved against the filesystem exactly as
+`node scripts/<file>` already is, and read only where it begins a code span or a
+line inside a fence:
+
+| Written          | Resolved against |
+| ---------------- | ---------------- |
+| `scripts/<file>` | the filesystem   |
+
+The marker works on it like every other shape, written
+`<!-- hypothetical: scripts/drift.test.mjs -->`. A fourth shape that could not be
+excused would be a fourth shape people worked around.
+
+### The measurement, including the half that argues against building it
+
+Across the files this check already scans, tracked `.md`, `.ts` and `.mjs` minus
+`docs/architecture/decisions/`, `.beads/` and `test/guards/`:
+
+| tree                                   | files | backticked `scripts/` paths | not resolving |
+| -------------------------------------- | ----- | --------------------------- | ------------- |
+| `949903c^`, the commit before PR #146  | 175   | 21                          | **1**         |
+| `d872331`, where this branch starts    | 175   | 19                          | **0**         |
+
+The one is `scripts/guard-merge.mjs:132`, and PR #146 rewrote that comment by
+hand this afternoon.
+
+**So the shape catches nothing on the day it ships, and that is the honest
+argument against building it.** A gate that has never caught anything is a
+maintenance cost pretending to be safety, and this repository has already
+declined one on exactly that ground: `docs/process/verified.md` records a
+markdown link checker that was measured, found to have zero hits, and not built.
+
+That precedent was read, and it does not cover this. The link checker was
+declined for two reasons, zero hits *and* that it would not have caught the
+defect that prompted the look, because that one was a stale section heading in
+prose. This shape did catch the defect that prompted it. It stands at zero
+because a person fixed the single instance a few hours ago, which is a different
+fact from never having found anything.
+
+What is built rather than measured is the forward half, and it is written here so
+a later reader can hold it to account. **Nineteen backticked `scripts/` paths
+across ten files were unchecked, and this repository has already deleted a script
+out from under a sentence.** The npm script named `backlog` was deleted, the
+paragraph in `docs/process/orchestrating.md` naming it went stale, and this check
+found it, but only because the sentence said `npm run backlog`. Had the sentence
+named the file, nothing here would have noticed. It is the same defect one
+spelling over.
+
+The convention this rests on is already written down and already obeyed. That
+same paragraph names the deleted script *without* backticks, on purpose,
+"because it is no longer a command: a backtick is a claim the thing exists". The
+new shape enforces a rule the writers here are already following.
+
+### Why it stops at `scripts/`
+
+The wide version, every backticked repo-relative path, was run first. It found
+six references: one was the defect, and five were correct sentences. A
+hypothetical in ADR 0043's revisit clause, a branch name beginning `docs/`, two
+historical mentions inside backlog bodies, and a sentence in
+`docs/process/orchestrating.md` naming `docs/process/gotchas.md` precisely in
+order to say the file no longer exists.
+
+**That last one is the argument, and it is not an edge case.** Naming a file is
+the honest way to record that it was deleted. A rule demanding every backticked
+path resolve buys one defect at the price of pushing writers towards vaguer
+history. Every shape above reads a claim that something is runnable *now*, and a
+path in general is as often a claim about what happened. Scoping to `scripts/`
+keeps the new shape on the runnable side of that line.
+
+### Why the path has to begin the code
+
+The bare word `dbmd` is anchored because `dbmd` is also this project's name. The
+bare path is anchored for a different reason, and the reason was measured rather
+than anticipated: a template literal is a code span by this checker's own rule,
+and this repository writes its failure messages as paragraphs of prose inside
+one. `scripts/check-main-provenance.mjs` ends a sentence with "Add the case to
+scripts/guard-merge.mjs." The unanchored sweep read the full stop as part of the
+filename and called the file missing.
+
+That was the only false positive either form produced across the whole tree.
+Requiring the path to begin the code removes it without a second rule about
+punctuation: a path that starts a code span is being pointed at, and a path in
+the middle of one is usually being talked about. `npm run check` runs inside
+`prepublishOnly`, which is what a release tag runs, so a shape that fires on
+correct prose fails a publish. That asymmetry is why the narrower reading wins
+wherever the two disagree.
+
+### What did not change, and what was seen to fail
+
+The exclusions. `docs/architecture/decisions/` stays out because a record is
+history and a stale `scripts/` path inside one is harmless, which is the same
+reason as before and is not weakened by there being a fourth shape. `.beads/`
+and `test/guards/` stay out for the reasons already given.
+
+`test/guards/broken-on-purpose.test.ts` grows three cases, and each was watched
+to fail before it was believed, per ADR 0034: the shape firing on a path that is
+not there, which goes red when the shape is removed; the shape staying silent on
+a path mid-span, which goes red when the shape is unanchored; and the marker
+excusing a path, which goes red when the shape is removed.
+
+The check found its own first offender again, which is the second time this
+record gets to say so. The comment written to explain this addition used two
+example paths in backticks, neither of which exists, and the check refused both
+within seconds of the shape being added. They are written bare now.

@@ -116,10 +116,11 @@ story on that one.
 four error messages, a documentation page, a decision record and `AGENTS.md`
 before anybody wrote it, and every reference agreed with every other, so there
 was nothing to notice. `npm run check:commands` resolves every `dbmd <command>`,
-`npm run <script>` and `node scripts/<file>` written inside backticks anywhere
-in the tree. Prose is not read at all, so "dbmd reads the model" is none of its
-business. If you mean something that does not exist yet, say so on the line you
-wrote it:
+`npm run <script>`, `node scripts/<file>` and bare `scripts/<file>` written
+inside backticks anywhere in the tree. Prose is not read at all, so "dbmd reads
+the model" is none of its business, and a bare path counts only where it begins
+the code, so naming a file in the middle of a sentence is still free. If you mean
+something that does not exist yet, say so on the line you wrote it:
 
 ```
 A future `dbmd fmt` will tidy a whole directory. <!-- hypothetical: dbmd fmt -->

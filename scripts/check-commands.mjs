@@ -13,11 +13,12 @@
 // run it. It was found weeks late and by accident.
 //
 // A hand sweep on 2026-09-07 found it was the only one. This is that sweep,
-// repeated on every run, over three kinds of reference:
+// repeated on every run, over four kinds of reference:
 //
 //   `dbmd <command>`        against the CLI's registered commands
 //   `npm run <script>`      against `package.json`
 //   `node scripts/<file>`   against the filesystem
+//   `scripts/<file>`        against the filesystem
 //
 // WHY IT READS BACKTICKS AND NOT PROSE
 // The obvious check parses prose for anything shaped like a command, and the
@@ -33,6 +34,24 @@
 // there was nothing false in it: every backticked `dbmd <word>` on `main` is a
 // real command or a marked hypothetical. Prose is left alone entirely, which is
 // why this costs a writer nothing until they mean a command.
+//
+// WHY A BARE PATH INTO scripts/ IS READ, AND ONLY INTO scripts/
+// The fourth shape reads a path where the other three read an invocation, and
+// it is here from evidence rather than from symmetry. guard-merge.mjs named a
+// sibling test in a comment, as the thing that caught drift between the copies
+// of its command reader, and that file exists only in the repository the guard
+// is installed from. Nobody was being told to run it, so no runner appeared in
+// front of it, so the three shapes above walked past a comment claiming a
+// safety net that was not there. ADR 0059 is what came of reading it.
+//
+// It stops at scripts/, and that boundary was measured rather than guessed. The
+// wide version, every backticked repo-relative path, found six references: that
+// one defect and five correct sentences, one of which names a file precisely in
+// order to say the file is gone. Naming a thing is the honest way to record
+// that it was deleted, so a rule demanding every backticked path resolve would
+// buy one defect at the price of pushing writers towards vaguer history. A path
+// into scripts/ is a claim about something runnable now, which is the claim the
+// other three shapes already make, and that is where this stops.
 //
 // WHY A HYPOTHETICAL NEEDS A MARKER
 // "A future `dbmd fmt` will want this" is correct and must not fail a build.
@@ -194,12 +213,24 @@ function scannedFiles() {
  * this tree. A check that understood only the bare word would pass a README
  * telling a first-time user to run something that is not there.
  *
- * Only the bare word is `anchored`, and that is the one ambiguity worth
- * spending a rule on: `dbmd` is also the name of this project, so "of dbmd
- * reads version 1" appears inside a fenced block of example output. Requiring
- * the bare form to begin the code settles it without guessing at the word after
- * it. Every other shape names a runner, nobody writes `npm run` or `npx dbmd`
- * by accident, and those are read wherever they appear.
+ * Two shapes are `anchored`, each for its own ambiguity, and every shape that
+ * names a runner is read wherever it appears: nobody writes `npm run` or
+ * `npx dbmd` by accident.
+ *
+ * The bare word, because `dbmd` is also the name of this project, so example
+ * output inside a fenced block says "this build of dbmd reads version 1".
+ * Requiring the bare form to begin the code settles it without guessing at the
+ * word after it.
+ *
+ * The bare path, because a template literal is a code span by the rule below,
+ * and this repository's failure messages are paragraphs of prose written
+ * inside one. `check-main-provenance.mjs` ends a sentence with "Add the case to
+ * scripts/guard-merge.mjs." and the unanchored sweep read the full stop as part
+ * of the filename and called it missing. That is the only false positive either
+ * form produced across the tree, and requiring the path to begin the code
+ * removes it without a second rule about punctuation: a path that starts a code
+ * span is being pointed at, and a path in the middle of one is usually being
+ * talked about.
  */
 const REFERENCES = [
   {
@@ -238,6 +269,12 @@ const REFERENCES = [
     anchored: false,
     named: (path) => `node ${path}`,
   },
+  {
+    kind: 'script file',
+    pattern: /(scripts\/[\w.-]+)/g,
+    anchored: true,
+    named: (path) => path,
+  },
 ]
 
 /**
@@ -248,7 +285,7 @@ const REFERENCES = [
  * this pattern's business.
  */
 const MARKER =
-  /hypothetical:\s*(dbmd\s+[a-z][a-z0-9-]*|npm\s+run\s+[a-z][a-z0-9:_-]*|node\s+scripts\/[\w.-]+)/g
+  /hypothetical:\s*(dbmd\s+[a-z][a-z0-9-]*|npm\s+run\s+[a-z][a-z0-9:_-]*|node\s+scripts\/[\w.-]+|scripts\/[\w.-]+)/g
 
 /** A shell prompt, which is punctuation in front of the command and not code. */
 const PROMPT = /^\s*(?:[$>]\s+)?/
@@ -357,14 +394,22 @@ const scripts = npmScripts()
 
 function kindOf(named) {
   if (named.startsWith('npm run ')) return 'npm script'
-  if (named.startsWith('node ')) return 'script file'
+  if (named.startsWith('node ') || named.startsWith('scripts/')) return 'script file'
   return 'dbmd command'
 }
 
 function resolves(named) {
   const kind = kindOf(named)
   if (kind === 'npm script') return scripts.has(named.slice('npm run '.length))
-  if (kind === 'script file') return existsSync(join(ROOT, named.slice('node '.length)))
+  if (kind === 'script file') {
+    // The runner is optional. A path with node in front of it and the same
+    // path on its own are one claim about one file, and both resolve against
+    // the filesystem. The two example spellings this comment wanted are left
+    // out of it: they name a file that does not exist, which is the thing this
+    // refuses, and it refused them within seconds of the shape being added.
+    const path = named.startsWith('node ') ? named.slice('node '.length) : named
+    return existsSync(join(ROOT, path))
+  }
   return commands.has(named.slice('dbmd '.length))
 }
 
