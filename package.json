@@ -60,12 +60,12 @@
     "check:commands": "node scripts/check-commands.mjs",
     "check:scenes": "node scripts/check-scene-classes.mjs",
     "check:pack": "node scripts/smoke-pack.mjs",
-    "check:guards": "node scripts/check-pack-guard.mjs",
-    "backlog": "bd export -o .beads/issues.jsonl"
+    "check:guards": "node scripts/check-pack-guard.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
     "esbuild": "^0.28.2",
+    "mermaid": "^11.17.2",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"

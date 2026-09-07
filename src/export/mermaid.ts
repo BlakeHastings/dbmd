@@ -26,6 +26,12 @@
  *   its own column beside the rewritten one. Nothing is silently different.
  * - **A relationship label is quoted**, like an entity name, for the same
  *   reason.
+ *
+ * Every one of those was measured by hand once and believed afterwards. Since
+ * dbmd-7s6 they are measured on every run: `test/export/mermaid.test.ts` hands
+ * each diagram it builds to `mermaid.parse`, which needs no DOM and is the same
+ * grammar GitHub renders with, and the first run of it corrected three of the
+ * rules below. ADR 0048.
  */
 
 import { compareCodeUnits } from '../diagnostics.js'
@@ -270,21 +276,37 @@ function relationship(edge: Edge): string {
 
 /**
  * A name in a position mermaid lets us quote: an entity, or a relationship
- * label. Anything at all can go in one, which is why every such name is quoted
+ * label. Almost anything can go in one, which is why every such name is quoted
  * rather than only the ones that look dangerous.
+ *
+ * "Almost" is dbmd-7s6's correction, made by handing this module's output to
+ * mermaid's own parser for the first time. Two characters are not accepted
+ * inside a quoted entity name however they are written, and an empty one is a
+ * parse error; `escaped` answers the first two and the branch below answers the
+ * third. A nameless table becomes a nameless box rather than a name this file
+ * invented, which is the same answer the rest of this module gives: say what
+ * the model says, and never quietly say something else. ADR 0048.
  */
 function quoted(text: string): string {
-  return `"${escaped(text)}"`
+  const inner = escaped(text)
+  return inner === '' ? '" "' : `"${inner}"`
 }
 
 /**
  * The characters that mean something else inside a mermaid string, as mermaid's
- * own entity escapes.
+ * own numeric entity escapes.
  *
  * `#` is replaced first, so that the `#` this function writes is not then read
  * as the start of an escape that a table name already contained. A control
  * character becomes a space rather than an escape: it has no legible rendering
  * and a diagram is a thing people look at.
+ *
+ * `\` and `%` are here because mermaid's parser refuses them in a quoted entity
+ * name, which is the opposite of what ADR 0023 measured by hand and recorded as
+ * "every character tried". Both are legal in a table name on Linux, where a file
+ * may be called `a\b`, and `%%` opens a comment to mermaid's lexer. Their
+ * numeric escapes are accepted where the characters are not, and dbmd-7s6's
+ * tests parse both forms rather than assume they round-trip.
  */
 function escaped(text: string): string {
   return text
@@ -293,6 +315,8 @@ function escaped(text: string): string {
     .replace(/"/g, '#quot;')
     .replace(/</g, '#lt;')
     .replace(/>/g, '#gt;')
+    .replace(/\\/g, '#92;')
+    .replace(/%/g, '#37;')
 }
 
 /**
@@ -313,12 +337,28 @@ function escaped(text: string): string {
  */
 function word(text: string, position: 'type' | 'name'): string {
   let safe = text.replace(position === 'type' ? UNSAFE_IN_TYPE : UNSAFE_IN_NAME, '_')
-  // A leading digit opens a number to the lexer, and an empty word is not a
-  // word at all. One underscore answers both.
-  if (safe === '' || /^[0-9]/.test(safe)) safe = `_${safe}`
+  if (!OPENS_A_WORD.test(safe)) safe = `_${safe}`
   if (KEY_MARKERS.has(safe.toLowerCase())) safe = `${safe}_`
   return safe
 }
+
+/**
+ * What mermaid's ER lexer will let a word start with: a letter of any script,
+ * or an underscore. Nothing else, in either position.
+ *
+ * This was `/^[0-9]/`, on the reasoning that a leading digit opens a number to
+ * the lexer and an empty word is not a word. Both are true and neither was the
+ * whole rule. dbmd-7s6 put mermaid's own parser behind these tests and tried
+ * every character the two sets above let through: `-`, `.`, `[`, `]`, `(`, `)`
+ * and `,` are all fine in the middle of a word and all a parse error at the
+ * front of one, so `[int]`, the SQL Server catalogue's own spelling, and a
+ * column called `(deleted)` produced a diagram that renders as a blank box.
+ *
+ * The answer is the one that was already here, applied to the whole rule rather
+ * than to two cases of it: one leading underscore, and `attribute` puts the true
+ * `type name` in the row's comment because the word changed. ADR 0048.
+ */
+const OPENS_A_WORD = /^[\p{L}_]/u
 
 /**
  * Everything that is not part of a word, for a name and for a type.
