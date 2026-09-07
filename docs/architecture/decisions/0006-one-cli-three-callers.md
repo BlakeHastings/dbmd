@@ -110,3 +110,42 @@ The gap between those two, structured narration while a long-running command is
 still running, is this record's own "Revisit when" about streaming progress:
 line-delimited JSON on stderr. It is a decision rather than a detail and it is
 not taken here.
+
+## Amended by dbmd-d23, once somebody went looking for the third shape
+
+Rule 3 says the shape is documented and versioned. Versioned was true throughout:
+every payload carries `schema: 1`. Documented was true for two of the three. On
+2026-09-07, `dbmd check --json`'s shape was shown in `README.md`, `docs/format.md`
+and `docs/import-format.md`, and `dbmd import --json`'s in
+`docs/import-format.md`. `dbmd export --json`'s was shown in neither `README.md`
+nor anything under `docs/`.
+
+What did exist was a list of its field names, in ADR 0023's consequences, written
+the commit its payload became public API. That is a record of a decision rather
+than documentation of a shape, and this project documents a shape by showing it.
+Six of that payload's eight keys appear in no other command's, so there was
+nothing a reader could infer it from either.
+
+**The shape is now shown in `docs/ci.md`**, and not beside the `check` shape in
+`README.md`. That placement is the part worth writing down. `written` is how a
+caller tells "the diagram changed" from "the diagram was already right", which is
+a question a pipeline asks and which a person at a terminal reads off the
+`Wrote ...` line instead. `docs/ci.md` is the page that caller reads, and it
+already carried a recipe that runs export. Rule 3 has not moved: the shape is
+documented, and which page shows it is a matter of who goes looking. ADR 0043's
+rule that a command owes `README.md` an entry is about the command existing
+rather than about where each of its payloads is shown, and `dbmd export` has its
+entry.
+
+**`refs` and `query` were checked while this was open, and both already take
+`--json`.** dbmd-d23 said neither did. `dbmd refs <table> --json` reports
+`incoming` and `outgoing` whichever direction flag was given, which `README.md`
+describes in prose, and `dbmd query --engine <id> --json` reports the SQL as a
+value on the report. So rule 3's "every command that reports anything" is not
+overstated by those two, and no flag was added to settle anything. Neither of
+those two shapes is shown anywhere, which is the same gap this amendment closed
+for `export`, left open rather than closed by guessing at a page for it.
+
+No new record was taken for any of this. Nothing was decided that ADR 0023 had
+not already decided about the payload, and the one new choice, which page shows
+it, is a correction to this record's own claim and belongs here.

@@ -206,6 +206,83 @@ Two things follow from this that are worth knowing before you debug a job:
   form. It is the shape to reach for if you want to post a comment on the pull
   request rather than send somebody to the log.
 
+## The report `dbmd export --json` writes
+
+The `check` shape is shown in [`README.md`](../README.md#the-commands). This is
+its sibling, and it is on this page because the field worth reading is one only
+a pipeline ever asks about.
+
+`--json` puts a report on stdout in place of the `Wrote ...` line, with the same
+exit code as the text form:
+
+```json
+{
+  "schema": 1,
+  "ok": true,
+  "directory": "examples/shop",
+  "format": "mermaid",
+  "file": "examples/shop/README.md",
+  "written": true,
+  "tables": 8,
+  "relationships": 11
+}
+```
+
+**`written` is the field to read.** Export does not rewrite a file whose diagram
+has not changed, so the same eight keys come back with `written: false` when the
+committed diagram was already current, and `ok` is `true` either way. That is the
+question the `git diff --exit-code` shape above asks with a second command and an
+exit code, asked once and answered as a value.
+
+`file` is the path that was written, relative to the directory the command ran
+in and slash-separated on every platform, so two runners produce the same bytes.
+`tables` and `relationships` count what the diagram drew, which is a cheap thing
+for a job to assert on when a model is not supposed to be losing tables.
+
+This is the writing form of the command and not the `--stdout` one. Asking for
+both is a usage error, exit code 2, because stdout carries one thing per run:
+
+```json
+{
+  "schema": 1,
+  "ok": false,
+  "error": {
+    "code": "usage",
+    "message": "--stdout and --json both write to stdout, so they cannot be used together. Use --stdout for the diagram, or --json for the report."
+  }
+}
+```
+
+So the diagram job in the recipe above cannot have both, and it does not want
+both: it wants the document, and there is nothing a report could tell it that the
+exit code has not. `--json` belongs in the other shape, the one that commits
+`db-model/README.md` and needs to know whether this run changed it.
+
+A model with an error in it is refused rather than drawn, here as everywhere, and
+the report says so on exit code 1:
+
+```json
+{
+  "schema": 1,
+  "ok": false,
+  "directory": "db-model",
+  "counts": {
+    "errors": 1,
+    "warnings": 0
+  },
+  "error": {
+    "code": "model-has-errors",
+    "message": "db-model has 1 error in it"
+  }
+}
+```
+
+The diagnostics themselves are not in there. `dbmd check --json` is what carries
+those, which is one of the reasons the recipe runs both jobs rather than treating
+a failed export as the report. The other way this command fails writes
+`markers-unbalanced` in the same place, for a `db-model/README.md` holding one of
+the two generated markers and not the other.
+
 ## Making it a required check
 
 Neither job is required by anything on its own. Make the check job required in
