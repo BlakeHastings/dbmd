@@ -18,8 +18,12 @@ installed, which is a thing you can do today.
 **Status: in development.** `npx dbmd init` works: it writes a `db-model/`
 directory with a small example model in it, two tables and a sticky note, prose
 and all. `npx dbmd studio` works too: it serves that directory on loopback and
-opens it, and `--port N` and `--no-open` are the two flags it takes. There is
-no `check` and no `export` yet. What is decided is in
+opens it, and `--port N` and `--no-open` are the two flags it takes.
+`npx dbmd check` is the one to put in CI: it reads the model, prints every
+problem grouped by the file it is in, and exits non-zero on an error, or on any
+diagnostic at all with `--strict`. `--json` gives the same answer and the same
+exit code in a shape a script can read. There is no `export` yet. What is
+decided is in
 [`docs/architecture/decisions/`](docs/architecture/decisions/), and why the
 format is shaped this way is
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md).
