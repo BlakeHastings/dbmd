@@ -9,9 +9,11 @@ epic closed.**
 
 ## Where the work is
 
-One hundred and fifty-one pull requests have merged, all through
-`merge-pr.mjs`, and the provenance audit is clean across every commit on `main`.
-**110 items closed, 5 open, and no P1s.** **All eight epics are closed**, the last
+**Do not quote the merged count from arithmetic.** I did, and said 162 when
+`gh pr list --state merged` said 158. Every pull request has merged through
+`merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
+for the number, run the command. As of the last measurement: **158 merged, 114
+items closed, 5 open, and no P1s.** **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 **Two of the five open are the owner's** and neither blocks anything: the visuals
@@ -101,19 +103,28 @@ loaded. `orchestrating.md` carries the general form.
 
 ## In flight, and what is actually left
 
-**Three agents are running**, dispatched from `d872331` after reading the
-machine: 11.5 GB free of 31.9, 64% used, and the largest consumer six `claude`
-sessions rather than anything of this project's.
+**One agent is running**, on the owner's own request rather than on a backlog
+item: adding [`agentation`](https://www.npmjs.com/package/agentation) to the
+studio as a development-only overlay, so the owner can click an element and send
+back a note about it. Their words: _"This is so I can give you realtime feedback
+on the UI/UX"_. ADR 0064 is theirs.
 
-- **`dbmd-dil`**, in `src/studio/`. Nothing wakes the studio when a file stops
-  being unreadable, because a lock being released is not a filesystem event. ADR
-  0061 is theirs.
-- **`dbmd-4mi`**, in `tsconfig.build.json` and ADR 0024. Every JavaScript file in
-  the tarball points at a source map the tarball deliberately excludes. ADR 0062
-  is theirs.
-- **`dbmd-9lm`**, in `scripts/check-commands.mjs`. Its brief says it may not be
-  worth building and that closing it with the reasoning written down is a
-  complete outcome. ADR 0063 is theirs.
+**Three facts about that package the next person should not re-derive.** It is a
+React component and its only exports are React components, so it needs `react`
+and `react-dom` as devDependencies in a repository that has no UI framework at
+all. Its licence is PolyForm Shield 1.0.0, which is not open source; as a
+devDependency it is never distributed and this project stays MIT, and the owner
+was told. And **it builds selectors from `#id`, then a class, then
+`tag:nth-child(n)`, and never reads data attributes**, which matters because
+every object on our canvas carries its name in `data-table`, `data-note` or
+`data-group` and carries no id. Without a change on our side a click on
+`shipments` comes back as a position. `dbmd-sko`.
+
+**The constraint that decides that work is the owner's:** it must not reach the
+tarball. `dist/studio/client/main.js` ships and is a third of the package, and
+esbuild inlines anything reachable from its entry point, so a runtime flag is
+not enough. The guarantee wanted is structural, plus a guard that has been seen
+to fail.
 
 **Both branches that were cancelled on 2026-09-07 have landed.** The
 documentation one had no commits at all: its work survived only as a patch, it

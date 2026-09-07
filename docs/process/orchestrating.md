@@ -609,3 +609,39 @@ one of these three would have been refused at the merge rather than merged on a
 bad reading. That is the fourth constraint doing its job: the prevention held
 while my detection was wrong, and I only noticed because I read the refusal
 instead of retrying past it.
+
+## Asking for a rebase starts one, and the rule counts from the ask
+
+A fourth breach of the hold-every-merge rule, on 2026-09-07, by an orchestrator
+who had read that section hours earlier and written two others about it. The
+mechanism was new, which is the only reason this is worth a heading.
+
+The previous three were the shape that section describes: a branch comes back
+rebased and green, merging it is the obviously correct thing to do with it, and
+another branch is mid-rebase at that moment. This one was different. I sent an
+agent a message asking it to rebase, and then in the same breath ran the merge
+command on a different pull request, and the merge landed while the first agent
+was reading my message.
+
+**The rule says "while any branch is rebasing" and I read that as a state I
+could observe.** It is not. I had just created it. The gap between asking for a
+rebase and a rebase being in progress is zero, and there is nothing to look at
+in between: no branch has moved, no report has arrived, and the agent may not
+have taken its next turn yet. So the state the rule names is invisible at
+exactly the moment it begins.
+
+**Count from the ask, not from the evidence.** The moment you send "please
+rebase", the queue is closed, and it stays closed until that branch lands or the
+agent says it has stopped. Treat the message you send as the event, because it
+is the only part of this you can see.
+
+Two smaller things this cost, both of them avoidable:
+
+- **The list of what moved was wrong in the message I sent.** I told the agent
+  three commits had landed and named them, and one of the three had not merged
+  yet when I wrote it. Then it did. A stale list in a rebase instruction is worse
+  than no list, because the agent checks against it.
+- **The second message had to carry an apology and a correction**, which is a
+  round trip that buys nothing. The rule's own last paragraph is what saved it
+  from being worse: tell them immediately rather than letting them finish,
+  report, and be sent back.
