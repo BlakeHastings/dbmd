@@ -12,7 +12,7 @@ import { parseArgs } from 'node:util'
 import { writeModel } from '../model/write.js'
 import { EXIT_FAILURE, UsageError, type Command } from './command.js'
 import { exampleModel } from './example.js'
-import { writeErr } from './streams.js'
+import { sortedBy, type Output } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The README says so too. */
 const DEFAULT_DIRECTORY = 'db-model'
@@ -38,32 +38,44 @@ somebody's model is not a thing to do by accident.
   run: runInit,
 }
 
-async function runInit(argv: readonly string[]): Promise<number> {
+async function runInit(argv: readonly string[], out: Output): Promise<number> {
   const directory = parseInitArgs(argv)
 
   if (!(await isVacant(directory))) {
-    writeErr(
-      `dbmd: ${directory} already exists and is not empty, so init has left it alone.\n` +
+    return out.report({
+      code: EXIT_FAILURE,
+      text:
+        `${out.style.bad('dbmd:')} ${directory} already exists and is not empty, ` +
+        `so init has left it alone.\n` +
         `Empty it, move it aside, or give init a different directory.\n`,
-    )
-    return EXIT_FAILURE
+      json: {
+        directory,
+        error: {
+          code: 'directory-not-empty',
+          message: `${directory} already exists and is not empty`,
+        },
+      },
+    })
   }
 
   const { written } = await writeModel(directory, exampleModel())
-  writeErr(`Created ${directory}, ${written.length} files:\n`)
-  for (const path of written) writeErr(`  ${path}\n`)
-  writeErr(`\nRead _model.md first. It says what the rest of them are for.\n`)
+  const files = sortedBy(written)
   // The format reference rather than the README, because the next thing this
   // user does is write a file by hand, and the Prettier line is here rather
   // than in a file this command writes: a `.prettierignore` belongs at the root
   // of their repository, which is outside the one directory init was given, and
   // Prettier does not read a nested one.
-  writeErr(
-    `\nThe format is written down at ${FORMAT_REFERENCE}\n` +
+  return out.report({
+    code: 0,
+    text:
+      `Created ${out.style.strong(directory)}, ${files.length} files:\n` +
+      files.map((path) => `  ${out.style.faint(path)}\n`).join('') +
+      `\nRead _model.md first. It says what the rest of them are for.\n` +
+      `\nThe format is written down at ${FORMAT_REFERENCE}\n` +
       `If this repository runs Prettier, add ${directory}/ to its .prettierignore.\n` +
       `Prettier rewrites the prose in these files, and the prose is the point.\n`,
-  )
-  return 0
+    json: { directory, files, format: FORMAT_REFERENCE },
+  })
 }
 
 /**

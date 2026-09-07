@@ -30,6 +30,7 @@ import { spawn } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { narrate } from '../cli/output.js'
 import { Edits, EditRefused } from './edits.js'
 import { resolveWithin } from './safe-path.js'
 import {
@@ -77,7 +78,7 @@ export interface Studio {
 }
 
 export async function startStudio(options: StudioOptions): Promise<Studio> {
-  const log = options.log ?? ((message: string) => process.stderr.write(`${message}\n`))
+  const log = options.log ?? narrate
   const clientDir = options.clientDir ?? fileURLToPath(new URL('client/', import.meta.url))
   const edits = await Edits.open(options.dir, {
     ...(options.debounceMs === undefined ? {} : { debounceMs: options.debounceMs }),
