@@ -487,3 +487,78 @@ The habit that fixes it is not "be careful". It is:
 
 The cost is on record: the seventh red build on `main` was the post-merge run of
 the pull request that reported four, and I did not notice for about an hour.
+
+## `| tail` caused three different failures today, and they did not look related
+
+I pipe commands through `tail` to keep output short. On 2026-09-07 that one
+habit produced three failures that I diagnosed separately, as three unrelated
+mistakes, before noticing they share a cause.
+
+**It cut the answer.** `bd create ... | tail -2` shows the priority and the
+status. The id beads chose is on the first line, so I quoted ids from memory
+twice, into a brief and into two process documents, and both were wrong.
+
+**It replaced the exit code.** `npm run check 2>&1 | tail -30` exits with
+`tail`'s status, not the check's. The check failed with 27 failing tests and I
+reported it as passing, because the harness told me exit code 0 and the harness
+was right about the pipeline.
+
+**It broke a conditional chain.** `git checkout main 2>&1 | tail -1 && git fetch
+&& git reset --hard origin/main`. The checkout refused, because a tracked
+generated file was dirty. `&&` reads the pipeline's status, which is `tail`'s
+zero, so the chain continued and the reset ran on the branch I had failed to
+leave. It moved a branch pointer I meant to keep and discarded the dirty file.
+Nothing was lost, because the commit was already pushed and the file is
+regenerable, and neither of those was something I checked first.
+
+The three look different. One is about content, one is about a status code and
+one is about control flow. **All three are `tail` standing between me and what
+the command actually said**, and none of them announces itself: a truncated
+listing, a substituted exit code and a chain that keeps going are all
+indistinguishable from the thing working.
+
+What to do instead:
+
+- **Never put a pipe between a command and a `&&`.** Run them as separate
+  commands, or chain the unpiped forms. If the output is long, let it be long.
+- **When you need the tail of something you also need the status of**, write the
+  output to a file and read the file. `cmd > out.txt 2>&1; echo $?; tail out.txt`
+  keeps both.
+- **Read the top, not the bottom, of anything that creates something.** `bd
+  create` and most tools that mint an identifier print it first.
+
+This section replaces nothing above it. The listing-is-a-window section and the
+force-flag section are both real and both stand; this is the mechanism two of
+them turned out to share.
+
+## The tracked backlog export conflicts between any two branches that file an item
+
+`.beads/issues.jsonl` is generated and tracked. Beads rewrites it on every write,
+so **any branch on which you file, note or close an item carries a change to it**,
+and any two such branches conflict on merge. Two documentation branches did on
+2026-09-07, which is not a coincidence and will happen every time.
+
+**The resolution is always the same and it is never a text merge.** The database
+under `.beads/embeddeddolt/` holds every item, and it is one database shared by
+every branch in the checkout, so it already has both sides:
+
+```bash
+bd export -o .beads/issues.jsonl --ignore-schema-skew
+git add .beads/issues.jsonl
+git rebase --continue
+```
+
+Reading the conflict markers and picking lines is the wrong move even when it
+looks easy. The file is sorted output from a query, so a hand-merged version can
+be valid JSON, contain every item, and still differ from what the tool would
+write, and the next export produces a diff nobody asked for.
+
+Two consequences worth knowing before you are in the middle of one:
+
+- **It conflicts even when the two branches touch nothing else in common.** The
+  two on 2026-09-07 shared no other file: one was process documents, the other
+  was records and the README. Expect the conflict, and expect it to be the only
+  one.
+- **It is not a reason to stop filing while a branch is open.** Filing is how the
+  loop keeps state, and a mechanical conflict with a one-command resolution is
+  cheaper than a finding that was never written down.

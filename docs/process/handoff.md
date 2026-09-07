@@ -9,12 +9,29 @@ epic closed.**
 
 ## Where the work is
 
-One hundred and thirty-six pull requests have merged, all through
+One hundred and forty-three pull requests have merged, all through
 `merge-pr.mjs`, and the provenance audit is clean across every commit on `main`.
-**100 items closed, 9 open**. **All eight epics are closed**, the last two on
-2026-09-07: import, which closed when re-import landed, and publishing. The one
-P1 is mine rather than the owner's: `dbmd-056`, the flaky watcher test, because
-the publish the owner has been asked to trigger runs the suite it sits in.
+**104 items closed, 10 open**. **All eight epics are closed**, the last two on
+2026-09-07: import, which closed when re-import landed, and publishing.
+
+**One P1, and it is mine rather than the owner's.** `dbmd-rjd`: nothing looks at
+what a merge did to `main`, demonstrated by the merge of the pull request that
+filed it. The other P1, the flaky watcher, closed with #144.
+
+**The watcher flake is fixed and neither half was fixed by waiting longer.** The
+burst case was the test's own assumption: two changes further apart than the
+window are two bursts and are owed a wake-up each, so `expected 2 to be 1` was
+the right answer to a question the case did not mean to ask. The debounce is now
+a class a test drives directly rather than hoping the operating system delivers
+a burst. The checkout case was waiting on the wrong event, because `writeFile`
+truncates before it writes and the empty read moves the revision on the way to
+the checkout.
+
+**The finding worth more than the fix**: both `until` helpers used a 5000ms
+deadline against vitest's 5000ms default, and vitest's clock starts first, so no
+wait in either studio test file has ever been able to name what it was waiting
+for. Every timeout in the CI record for those files has been less informative
+than it needed to be.
 
 **`npm run check` passes on `main` as of 2026-09-07**, run whole and locally:
 typecheck, format, the four content checks, 1,021 tests, the build, the pack
