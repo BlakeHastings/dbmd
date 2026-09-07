@@ -187,3 +187,41 @@ selects holding `on delete` and `on update`. That is the split ADR 0035
 already uses for a group: the box is the overview, the panel is the detail. A
 reader who needs the action selects the table and reads the column, the same
 way they open a table's panel to learn whether it joined a group.
+
+## Amended by dbmd-7s6, once mermaid's own parser was reading the output
+
+Everything above about mermaid's grammar was measured by hand, against mermaid
+11.17, on the day it was written, and then believed. ADR 0048 put
+`mermaid.parse` behind `test/export/mermaid.test.ts`, which turned out to be
+possible without the browser this record's own reasoning assumed, and the first
+run of it corrected three sentences here. The decision is unchanged: quote
+everything mermaid lets us quote, rewrite what it will not. What was wrong was
+the measurement of where the boundary is, and it was wrong in the direction of
+letting invalid text through.
+
+**"Every character tried" was not every character.** A `\` and a `%` are
+refused inside a quoted entity name, however they are written. `a\b` is a legal
+table name on Linux and `%%` opens a comment to mermaid's lexer. Their numeric
+escapes, `#92;` and `#37;`, are accepted where the characters are not, so
+`escaped` now writes those two the way it already wrote `#`, `"`, `<` and `>`.
+An empty entity name, `""`, is a parse error as well: a nameless table draws a
+nameless box, `" "`, which is the same principle as the rest of this record,
+that the picture says what the model says and never quietly says something else.
+
+**"A leading digit" was one case of a rule.** In an attribute row, a word may
+open with a letter of any script or an underscore and with nothing else. `-`,
+`.`, `[`, `]`, `(` and `)` are all fine in the middle of a type or a name and
+all a parse error at the front of one, so the type `[int]`, which is how the SQL
+Server catalogue spells one to itself, and a column called `(deleted)` both
+produced a diagram that renders as nothing. The answer is the one this record
+already chose for a leading digit, applied to the whole rule: one leading
+underscore, and the true `type name` in the row's comment because the word
+changed.
+
+**"A bare entity name may not contain a space" is no longer true, and that is
+worse rather than better.** In mermaid 11.17, `order items {` parses: it is the
+entity `order` carrying the alias `items`. Three bare words are still an error,
+so it is not a general escape hatch, but the failure mode of an unquoted name
+has changed from a blank box somebody eventually reports into a picture of a
+table nobody has. The rule this record wrote is unaffected and now has a second
+reason to exist.
