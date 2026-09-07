@@ -277,6 +277,55 @@ export function locationText(at: DiagnosticLocation): string {
   return at.line === undefined ? at.path : `${at.path}:${at.line}`
 }
 
+/**
+ * What a filesystem error says, in words a reader can act on, with the errno
+ * next to them.
+ *
+ * **Only the errno is taken from the error, and that is the point.** A Node
+ * filesystem error's `message` carries the path the call was made with, which
+ * for a model read is absolute, and ADR 0006 rule 4 forbids an absolute path in
+ * output because it makes two machines disagree about identical input. An errno
+ * is the same eight letters everywhere, so it is the only half of the error
+ * that may be printed, and anything richer has to be written here rather than
+ * lifted from the system.
+ *
+ * The words are here because a bare `EACCES` is not a sentence. `docs/format.md`
+ * tells a reader of `file-unreadable` to check permissions, which is advice
+ * they can only follow once they know that is what they are looking at, and
+ * half the errnos below are not about permissions at all.
+ *
+ * An errno with no entry falls back to itself rather than to a guess, and a
+ * thrown non-`Error` has no errno to fall back to.
+ */
+export function errnoText(error: unknown): string {
+  if (!(error instanceof Error) || !('code' in error)) return 'unknown error'
+  const code = String(error.code)
+  const reason = ERRNO_REASON.get(code)
+  return reason === undefined ? code : `${reason} (${code})`
+}
+
+/**
+ * The errnos a read of a model directory or an import file can actually end at,
+ * each in one clause with no leading capital, so it reads after a colon.
+ *
+ * Deliberately short. This is not a copy of `errno.h`: a code that has never
+ * been seen here would be words invented for a case nobody has met, and the
+ * fallback already prints the code itself.
+ */
+const ERRNO_REASON = new Map<string, string>([
+  ['EACCES', 'permission denied'],
+  ['EPERM', 'the operation is not permitted'],
+  ['ENOENT', 'no such file or directory'],
+  ['EISDIR', 'it is a directory'],
+  ['ENOTDIR', 'a directory in the path is not a directory'],
+  ['ELOOP', 'too many symbolic links'],
+  ['ENAMETOOLONG', 'the path is too long'],
+  ['EMFILE', 'this process has too many files open'],
+  ['ENFILE', 'the system has too many files open'],
+  ['EBUSY', 'the file is in use'],
+  ['EIO', 'the filesystem reported an I/O error'],
+])
+
 /** Byte-order comparison. Never `localeCompare`: ADR 0006 wants the same bytes on every machine. */
 export function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
