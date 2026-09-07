@@ -26,7 +26,7 @@
 
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isMap, isScalar, isSeq, parseDocument, type YAMLMap } from 'yaml'
+import { isMap, isScalar, isSeq, parseDocument, type YAMLMap, type YAMLParseError } from 'yaml'
 // `byText` is `compareCodeUnits` under a name that reads at a sort call. It is
 // aliased rather than redefined because the reader and the import contract have
 // to agree on byte order forever, not only today. ADR 0014.
@@ -448,19 +448,81 @@ function reportSplit(
   })
 }
 
+/**
+ * The one parser complaint worth reporting, out of however many it made.
+ *
+ * A single syntax error cascades: an unterminated `[` swallows the rest of the
+ * document and one tab in place of two spaces derails the parser's state
+ * machine, and either way YAML then has a true and different thing to say about
+ * nearly every remaining line. One tab produced fifteen. Past the first, the
+ * parser is describing the wreckage rather than the mistake, so reporting the
+ * first and stopping is a truer statement than reporting fifteen. ADR 0017
+ * decided that; this function decides *which* one, which turned out to be the
+ * harder half.
+ *
+ * **It is the earliest one in the file, and that is neither the parser's own
+ * order nor the printed order.** `doc.errors` is emission order, and the
+ * composer's complaints are pushed before the lexer's: an unterminated flow
+ * sequence reports `Block collections are not allowed within flow collections`,
+ * the message that names the actual fault, *last*. The printed order is
+ * `compareDiagnostics`, which sorts equal lines by message text, so a tab is
+ * reported by `Implicit keys need to be on a single line` and
+ * `Nested mappings are not allowed in compact mappings` before
+ * `Tabs are not allowed as indentation` ever gets a look in. Taking either
+ * "first" hands the reader a confidently wrong explanation of their file, which
+ * is worse than fifteen true ones. Position is the only order that puts the
+ * mistake before its consequences, because that is what a consequence is.
+ *
+ * Ties keep the parser's order, and there is nothing better available: two
+ * complaints about the same character are one point of failure described twice.
+ */
+function firstFailure(errors: readonly YAMLParseError[]): YAMLParseError | undefined {
+  let first: YAMLParseError | undefined
+  for (const error of errors) {
+    if (first === undefined || error.pos[0] < first.pos[0]) first = error
+  }
+  return first
+}
+
+/**
+ * Say how many were dropped. It costs a clause and it stops a reader believing
+ * a file with fifteen complaints has one, which is the failure mode of a cap
+ * that says nothing: the second `dbmd check` reports a mistake the first hid,
+ * and looks like it moved. The count is in the message rather than in a field
+ * because `message` is the half ADR 0008 leaves free, and a field would be
+ * `--json` API for a number nothing consumes.
+ */
+function withSuppressedCount(message: string, suppressed: number): string {
+  if (suppressed <= 0) return message
+  const plural = suppressed === 1 ? 'error' : 'errors'
+  return `${message} (and ${suppressed} more parse ${plural}, not reported: they follow from this one)`
+}
+
 function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
   // `prettyErrors: false` keeps the message a single line: the source excerpt a
   // pretty error carries is a terminal convenience, and it would be noise in
   // `--json`. The position is recovered from `pos` instead, which is what makes
   // the line number the file's rather than the frontmatter's.
   const doc = parseDocument(ctx.yaml, { prettyErrors: false })
-  for (const error of doc.errors) {
-    report(ctx, 'frontmatter-invalid', 'error', error.message, error.pos[0])
+  const failure = firstFailure(doc.errors)
+  if (failure !== undefined) {
+    // Everything else the parser said, warnings included: the document did not
+    // parse, so a warning about it is describing the wreckage too.
+    const suppressed = doc.errors.length - 1 + doc.warnings.length
+    report(
+      ctx,
+      'frontmatter-invalid',
+      'error',
+      withSuppressedCount(failure.message, suppressed),
+      failure.pos[0],
+    )
+    return undefined
   }
+  // Only reached when the parse succeeded, so there is no cascade to cap: a
+  // warning here is one fact about a document YAML did read.
   for (const warning of doc.warnings) {
     report(ctx, 'frontmatter-invalid', 'warning', warning.message, warning.pos[0])
   }
-  if (doc.errors.length > 0) return undefined
 
   if (doc.contents === null) {
     push(ctx.out, {
