@@ -26,6 +26,14 @@ rather than decoration: it says what the query reads, that it cannot write, and
 how to save its result without cutting it short. The SQL Server one explains the
 2033-character split, which is the way this feature most often goes wrong.
 
+A client can also make the file too long rather than too short, by writing its
+own footer after the value: a row count, a column header, a table frame. The
+JSON in front of it is perfect and the file still does not parse. That is why
+the SQL Server block's sqlcmd route runs `SET NOCOUNT ON` from a second input
+file rather than putting it in the query, and why the query itself carries no
+client-specific statement:
+[ADR 0041](architecture/decisions/0041-a-client-footer-is-the-clients-to-remove.md).
+
 If you are adding an engine, read this and then
 `docs/architecture/decisions/0007-engines-are-providers.md`, which is why the
 seam is shaped this way. The contract was written with the Postgres and the SQL
@@ -562,6 +570,20 @@ comment above the query you ran says how to save its result rather than copy it.
 read as `file-unreadable`. Both are failures of the command rather than
 diagnostics about a document, which is why neither carries the `import/` prefix
 and neither is in the table.
+
+The message says "usually" because there is a second cause and the position
+tells them apart. A position short of the end of your schema is a copy that
+stopped early. A position at the end of the JSON, with something after it, is a
+client footer:
+
+```
+dbmd: model.json is not JSON: Unexpected non-whitespace character after JSON at position 2333
+```
+
+That is sqlcmd's `(1 rows affected)` line, written into the file after a value
+that is byte-for-byte correct. `SET NOCOUNT ON` removes it, from a second input
+file rather than from the query: [ADR
+0041](architecture/decisions/0041-a-client-footer-is-the-clients-to-remove.md).
 
 ### Reading the file
 

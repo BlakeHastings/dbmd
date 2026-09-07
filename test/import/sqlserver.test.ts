@@ -143,6 +143,46 @@ describe('the query', () => {
     expect(sql).toMatch(/Incorrect syntax near 'JSON'/)
   })
 
+  it('gives a sqlcmd recipe that produces a file dbmd import accepts', () => {
+    // The recipe it used to give was `sqlcmd -S server -d yourdb -y 0 -Y 0 -i
+    // query.sql -o model.json`, and running exactly that produced a file
+    // `dbmd import` refused: sqlcmd writes "(1 rows affected)" after the JSON,
+    // so the file is 18 bytes too long rather than truncated, and the error the
+    // user gets talks about a paste that stopped early. ADR 0041.
+    //
+    // Nothing here can run sqlcmd. What it can do is fail the day somebody
+    // simplifies the recipe back to the one-file form, which is exactly how it
+    // will be tempted to go: the extra file looks like clutter until you know
+    // what it is for.
+    const recipe = sql.split('\n').find((line) => line.includes('sqlcmd -S'))
+    expect(recipe).toBeDefined()
+    // Both flags. -y 0 stops the 256-character truncation, and the second input
+    // file is what removes the row count.
+    expect(recipe).toContain('-y 0')
+    expect(recipe).toMatch(/-i\s+\S+\s+-i\s+\S+/)
+    // And the block has to say what the second file holds, or the command is
+    // uncopyable.
+    expect(sql).toMatch(/SET NOCOUNT ON;/)
+    expect(sql).toMatch(/\(1 rows affected\)/)
+    // -h -1 is the obvious alternative and sqlcmd refuses it beside -y 0, which
+    // is worth one sentence so nobody spends an afternoon rediscovering it.
+    expect(sql).toMatch(/-h/)
+
+    // SET NOCOUNT ON is named in the comment block and is not in the query, so
+    // the query is still one statement and the read-only list above is still
+    // true. `contains nothing that could write` asserts the second half; this
+    // is the first.
+    expect(withoutComments).not.toMatch(/NOCOUNT/i)
+  })
+
+  it('tells a footer apart from a truncation, because the position does', () => {
+    // A file that is too long and a file that is too short both arrive as "not
+    // JSON", and until ADR 0041 the block said it was always the second. The
+    // position `dbmd import` prints is what separates them.
+    expect(sql).toMatch(/stopped early/)
+    expect(sql).toMatch(/row count/)
+  })
+
   it('wraps its FOR JSON so the server cannot split the result across rows', () => {
     // Removing this wrapper is what re-opens the 2033-character split, and it
     // looks like a harmless simplification, so it is asserted rather than
