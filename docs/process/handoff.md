@@ -28,9 +28,10 @@ empty directory and it starts, lets you add a table, and warns forever about a
 to do next and that one does not. **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-**Two of the five open are the owner's** and neither blocks anything: the visuals
-epic, which is taste, and the README screenshot, which needs a browser extension
-nothing in a session can connect. The other three are P3s, all dispatched.
+**The screenshot item needs a server rather than a click.** It was one click
+until the browser tool's server stopped connecting at all in this session, and a
+session cannot take a screenshot without it. Do not dispatch an agent at
+`dbmd-joa`: it cannot succeed and the wall is invisible from a brief.
 
 **`main` now tells a pull request what its merge did to `main`.** ADR 0057 and
 `scripts/report-merge-aftermath.mjs`, triggered by
@@ -77,6 +78,15 @@ node dist/cli.js refs     # what points at this table, from which column, and wh
 node dist/cli.js export   # a mermaid diagram GitHub renders in a pull request
 node dist/cli.js studio   # a canvas: drag, edit, rename across files, add and delete tables
 ```
+
+Every one of those takes `--json`, and every one of those shapes is now shown on
+a page and run by `test/docs/payloads.test.ts`. **The canvas is reachable
+without a mouse** since #167: one tab stop, arrows to walk it, `Enter` to select,
+and every object names itself to a screen reader since #162.
+
+`npm run studio:dev` is the same studio with the feedback toolbar on it, which is
+the owner's own channel for design notes. It never ships; ADR 0064 says how that
+is guaranteed rather than argued.
 
 **The journey runs end to end for the first time.** `dbmd query` prints the SQL,
 you run it with the client you already trust, and `dbmd import` reads what came
