@@ -20,6 +20,7 @@ import { EXIT_FAILURE, EXIT_USAGE, UsageError, type Command } from './command.js
 import { exportCommand } from './export.js'
 import { importCommand } from './import.js'
 import { initCommand } from './init.js'
+import { queryCommand } from './query.js'
 import { studioCommand } from './studio.js'
 import {
   createOutput,
@@ -35,13 +36,16 @@ import {
  * Every subcommand. Adding one is writing a `Command` and adding it here.
  *
  * The order is the order the root `--help` lists them in, and it is the order a
- * person meets them rather than alphabetical: `init` makes a model and `import`
- * makes one out of a database that already exists, `check` says whether it is
- * still good, `studio` is where it is edited, and `export` is how everybody else
- * gets to see it.
+ * person meets them rather than alphabetical: `init` makes a model, `query`
+ * prints the SQL that describes a database that already exists and `import`
+ * turns what that printed into a model, `check` says whether it is still good,
+ * `studio` is where it is edited, and `export` is how everybody else gets to see
+ * it. `query` sits in front of `import` because that is the order they are run
+ * in, and a reader of this list should not have to find that out later.
  */
 const COMMANDS: readonly Command[] = [
   initCommand,
+  queryCommand,
   importCommand,
   checkCommand,
   studioCommand,

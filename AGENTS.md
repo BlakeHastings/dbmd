@@ -38,10 +38,12 @@ Four pieces. `src/model/` turns a `db-model/` directory into a typed
 model plus a list of diagnostics, says where that model disagrees with itself,
 writes one back canonically, and `src/index.ts` exports all three. `src/import/` holds the introspection contract, the provider
 seam, the PostgreSQL and SQL Server providers behind it, and the pure function
-that turns a canonical document into a model. `dbmd query`, which prints the SQL
-a person runs, is still an open item. `src/cli.ts` and `src/cli/` are the entry
-point, and it has five commands: `dbmd init`, `dbmd import`, `dbmd check`,
-`dbmd studio` and `dbmd export`. `src/studio/` is the studio server and the page it serves,
+that turns a canonical document into a model. `src/cli.ts` and `src/cli/` are the entry
+point, and it has six commands: `dbmd init`, `dbmd query`, `dbmd import`,
+`dbmd check`, `dbmd studio` and `dbmd export`. `dbmd query --engine <id>` prints
+that engine's introspection SQL on stdout and nothing else, which is the first
+step of the journey `dbmd import` finishes; it connects to nothing and takes no
+model directory. `src/studio/` is the studio server and the page it serves,
 reachable either by importing `startStudio` or through that subcommand.
 `src/export/` renders a model as a mermaid `erDiagram` for that last command.
 Everything else in this file is either about the repository or about a decision
