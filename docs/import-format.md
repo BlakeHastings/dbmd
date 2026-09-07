@@ -23,16 +23,36 @@ which engine produced it and at query time there is no file yet.
 
 The SQL it prints carries a comment block, and that block is the instructions
 rather than decoration: it says what the query reads, that it cannot write, and
-how to save its result without cutting it short. The SQL Server one explains the
-2033-character split, which is the way this feature most often goes wrong.
+how to save its result. The SQL Server one explains the 2033-character split,
+which is the way this feature most often goes wrong.
 
-A client can also make the file too long rather than too short, by writing its
-own footer after the value: a row count, a column header, a table frame. The
-JSON in front of it is perfect and the file still does not parse. That is why
-the SQL Server block's sqlcmd route runs `SET NOCOUNT ON` from a second input
-file rather than putting it in the query, and why the query itself carries no
-client-specific statement:
+A client can also make the file too long rather than too short, by writing
+something of its own round the value: a row count, a column header, a rule of
+dashes, alignment padding. The JSON in the middle is byte-for-byte correct and
+the file still does not parse. That is why the SQL Server block's sqlcmd route
+runs `SET NOCOUNT ON` from a second input file rather than putting it in the
+query, and why the query itself carries no client-specific statement:
 [ADR 0041](architecture/decisions/0041-a-client-footer-is-the-clients-to-remove.md).
+
+The Postgres block gives `psql` the same treatment. Its default output puts a
+column header and a rule of dashes above the value, pads the value into the
+column and writes a `(1 row)` footer under it, so the file fails on the header
+before the parser has reached any JSON at all:
+
+```bash
+psql -X -t -A -d yourdb -f introspect.sql -o introspection.json
+```
+
+`-t` drops the header, the dashes and the row count; `-A` stops the padding; and
+`-X` stops `~/.psqlrc` from putting either back, because psql reads that file
+after the command line rather than before. Measured on PostgreSQL 16.15, and the
+same as for sqlcmd, none of it goes in the SQL: those flags belong to one client
+and the query has to paste whole into the others.
+
+For pgAdmin, DBeaver and the other grids, the block gives the shape of a correct
+file rather than an invocation, because no invocation for them has been measured.
+The file holds the one value and nothing else: one line beginning `{` and ending
+`}`.
 
 If you are adding an engine, read this and then
 `docs/architecture/decisions/0007-engines-are-providers.md`, which is why the
