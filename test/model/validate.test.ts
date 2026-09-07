@@ -173,6 +173,199 @@ describe('the ref-target warning, which is the one dbmd-14 made computable', () 
   })
 })
 
+describe('a composite foreign key, which is one constraint written one ref per column', () => {
+  /** `orders`, keyed on `id` and unique on the pair a tenant scopes. */
+  function orders(): Table {
+    return aTable('orders', {
+      columns: [column('id', { pk: true }), column('tenant_id'), column('code'), column('status')],
+      indexes: [{ name: 'orders_tenant_code_key', columns: ['tenant_id', 'code'], unique: true }],
+    })
+  }
+
+  test('refs that cover the whole unique index say nothing at all', () => {
+    const diagnostics = validate(
+      aModel([
+        orders(),
+        aTable('order_lines', {
+          columns: [
+            column('id', { pk: true }),
+            column('tenant_id', { ref: 'orders.tenant_id' }),
+            column('order_code', { ref: 'orders.code' }),
+          ],
+        }),
+      ]),
+    )
+
+    // This is what every import of a composite foreign key produces, and before
+    // dbmd-nxb it produced two warnings a person could do nothing about. Both
+    // were true about a column and neither was true about the constraint.
+    expect(formatDiagnostics(diagnostics)).toEqual([])
+  })
+
+  test('refs that cover only part of it still warn, and name the rest', () => {
+    const diagnostics = validate(
+      aModel([
+        orders(),
+        aTable('order_lines', {
+          columns: [column('id', { pk: true }), column('tenant_id', { ref: 'orders.tenant_id' })],
+        }),
+      ]),
+    )
+
+    // The case a covering-set rule gets wrong by being generous. `tenant_id`
+    // alone genuinely does not identify a row, so the warning has to survive,
+    // and the message names the column that would finish the set rather than
+    // repeating that this one is not unique.
+    expect(formatDiagnostics(diagnostics)).toEqual([
+      "warning tables/order_lines.md [ref-target-not-unique] `ref: orders.tenant_id` on column `tenant_id` points at one column of `orders`'s unique index `orders_tenant_code_key`, and nothing in `order_lines` refs `code`, so the set does not identify one row",
+    ])
+  })
+
+  test('a composite primary key is covered the same way, and named as one', () => {
+    const items = aTable('order_items', {
+      columns: [column('order_id', { pk: true }), column('line_no', { pk: true })],
+    })
+
+    expect(
+      formatDiagnostics(
+        validate(
+          aModel([
+            items,
+            aTable('picks', {
+              columns: [
+                column('order_id', { ref: 'order_items.order_id' }),
+                column('line_no', { ref: 'order_items.line_no' }),
+              ],
+            }),
+          ]),
+        ).filter(about('ref-target-not-unique')),
+      ),
+    ).toEqual([])
+
+    // A primary key has no name in this format, so the message says what it is
+    // rather than inventing one.
+    expect(
+      formatDiagnostics(
+        validate(
+          aModel([
+            items,
+            aTable('picks', { columns: [column('order_id', { ref: 'order_items.order_id' })] }),
+          ]),
+        ).filter(about('ref-target-not-unique')),
+      ),
+    ).toEqual([
+      "warning tables/picks.md [ref-target-not-unique] `ref: order_items.order_id` on column `order_id` points at one column of `order_items`'s composite primary key, and nothing in `picks` refs `line_no`, so the set does not identify one row",
+    ])
+  })
+
+  test('refs into two different tables are two facts and never pool into one set', () => {
+    const diagnostics = validate(
+      aModel([
+        orders(),
+        aTable('archived_orders', {
+          columns: [column('id', { pk: true }), column('tenant_id'), column('code')],
+          indexes: [
+            {
+              name: 'archived_orders_tenant_code_key',
+              columns: ['tenant_id', 'code'],
+              unique: true,
+            },
+          ],
+        }),
+        aTable('order_lines', {
+          columns: [
+            column('id', { pk: true }),
+            column('tenant_id', { ref: 'orders.tenant_id' }),
+            column('order_code', { ref: 'archived_orders.code' }),
+          ],
+        }),
+      ]),
+    )
+
+    // Pooling by referring table alone would see `{tenant_id, code}` and call
+    // both covered. They are halves of two different constraints and neither
+    // one identifies a row, so the covering set is per target table.
+    expect(formatDiagnostics(diagnostics)).toEqual([
+      "warning tables/order_lines.md [ref-target-not-unique] `ref: archived_orders.code` on column `order_code` points at one column of `archived_orders`'s unique index `archived_orders_tenant_code_key`, and nothing in `order_lines` refs `tenant_id`, so the set does not identify one row",
+      "warning tables/order_lines.md [ref-target-not-unique] `ref: orders.tenant_id` on column `tenant_id` points at one column of `orders`'s unique index `orders_tenant_code_key`, and nothing in `order_lines` refs `code`, so the set does not identify one row",
+    ])
+  })
+
+  test('covering one key does not launder a ref at a column no key holds', () => {
+    const diagnostics = validate(
+      aModel([
+        orders(),
+        aTable('order_lines', {
+          columns: [
+            column('id', { pk: true }),
+            column('tenant_id', { ref: 'orders.tenant_id' }),
+            column('order_code', { ref: 'orders.code' }),
+            column('order_status', { ref: 'orders.status' }),
+          ],
+        }),
+      ]),
+    )
+
+    // The regression that matters. A set that covers a key is silent; a ref at
+    // `status`, which is in no key at all, is the ordinary single-column case
+    // and keeps the ordinary single-column message.
+    expect(formatDiagnostics(diagnostics)).toEqual([
+      "warning tables/order_lines.md [ref-target-not-unique] `ref: orders.status` on column `order_status` points at a column that is neither `orders`'s whole primary key nor covered by a single-column unique index, so it does not identify one row",
+    ])
+  })
+
+  test('a unique index with an expression in it is not a key any ref can cover', () => {
+    const diagnostics = validate(
+      aModel([
+        aTable('people', {
+          columns: [column('id', { pk: true }), column('tenant_id'), column('email')],
+          indexes: [
+            {
+              name: 'people_tenant_email_key',
+              columns: ['tenant_id', { expression: 'lower(email)' }],
+              unique: true,
+            },
+          ],
+        }),
+        aTable('logins', {
+          columns: [
+            column('id', { pk: true }),
+            column('tenant_id', { ref: 'people.tenant_id' }),
+            column('email', { ref: 'people.email' }),
+          ],
+        }),
+      ]),
+    )
+
+    // dbmd does not read SQL (ADR 0022), so no ref anybody can write covers
+    // `lower(email)`, and the index is dropped whole rather than reduced to
+    // `[tenant_id]`. Reducing it would have silently approved both of these.
+    expect(formatDiagnostics(diagnostics)).toEqual([
+      "warning tables/logins.md [ref-target-not-unique] `ref: people.email` on column `email` points at a column that is neither `people`'s whole primary key nor covered by a single-column unique index, so it does not identify one row",
+      "warning tables/logins.md [ref-target-not-unique] `ref: people.tenant_id` on column `tenant_id` points at a column that is neither `people`'s whole primary key nor covered by a single-column unique index, so it does not identify one row",
+    ])
+  })
+
+  test('a three-column key names every column of it that is still missing', () => {
+    const diagnostics = validate(
+      aModel([
+        aTable('slots', {
+          columns: [
+            column('room', { pk: true }),
+            column('day', { pk: true }),
+            column('starts_at', { pk: true }),
+          ],
+        }),
+        aTable('bookings', { columns: [column('room', { ref: 'slots.room' })] }),
+      ]),
+    )
+
+    expect(formatDiagnostics(diagnostics.filter(about('ref-target-not-unique')))).toEqual([
+      "warning tables/bookings.md [ref-target-not-unique] `ref: slots.room` on column `room` points at one column of `slots`'s composite primary key, and nothing in `bookings` refs `day` or `starts_at`, so the set does not identify one row",
+    ])
+  })
+})
+
 describe('what the validator refuses to say', () => {
   test('nothing that depends on what an incomplete object does not have', () => {
     const diagnostics = validate(
