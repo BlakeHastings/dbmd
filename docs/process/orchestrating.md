@@ -288,8 +288,9 @@ reads the orchestrator's handoff. Two agents found the same stylesheet
 collision on the same day without knowing about each other, which is that gap
 showing up as duplicated work.
 
-They now live in `docs/process/gotchas.md`, and `working-an-issue.md` sends
-every agent there before they start. The split is the point:
+They went into a new `docs/process/gotchas.md`, and that file no longer
+exists: three paragraphs down is where an agent caught the mistake and where the
+list ended up instead. The split is still the point:
 
 - **The handoff answers "where did this stop".** In flight, waiting on the
   owner, what a successor would otherwise reconstruct. It decays fast and is
