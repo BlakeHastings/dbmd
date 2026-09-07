@@ -75,6 +75,14 @@ is the only thing that reads it. In particular a raw file's `tables` is not the
 canonical `tables`: they share a name and nothing else. Normalisation is
 TypeScript rather than SQL, and ADR 0007 says why.
 
+How natural that is differs more than you would guess. The Postgres file spells a
+list of column names `["tenant_id", "code"]`, and the SQL Server file spells the
+same list `[{ "name": "TenantId" }, { "name": "Code" }]`, because `FOR JSON` has
+no way to emit an array of bare strings and a query that built one by
+concatenating text would have to escape the text itself. Neither shape is the
+format. Both providers hand the canonical validator a list of strings, and that
+is the only place the two files have to agree.
+
 ## The canonical document
 
 What `parse` produces and what the rest of dbmd consumes. The envelope is carried
@@ -185,6 +193,15 @@ be *called* `lower(ledger_code)`. A key that reported the expression under
 same output for two different schemas, with no way back. ADR 0022 is
 the argument, and it holds for the markdown format too.
 
+Only one of the two engines ever emits `expression`. SQL Server has no functional
+index: an index over an expression there is an index over a computed column, so
+the key is a column and the expression sits on the column in `generated`. That is
+not a hole in the SQL Server provider. It is the same fact reached by the other
+route, and the pair of indexes in
+`test/import/fixtures/sqlserver-provider-raw.json`, one over a computed column
+and one over a column literally named `lower(ledger_code)`, is where it is
+checked.
+
 ## Rules that apply everywhere
 
 **Null and absent are the same thing.** SQL Server's `FOR JSON` omits null
@@ -220,6 +237,13 @@ here. Binary types keep bytes, because that is what they are measured in. The
 string `"max"` is the only non-numeric value, and it exists because
 `nvarchar(max)`, `varchar(max)` and `varbinary(max)` all report `max_length` as
 -1. A raw -1 is rejected, since it is what an untranslated file looks like.
+
+**Length is absent where the engine's number is not a length.** The same
+`max_length` column says 16 for `text`, `ntext` and `image`, which is the size of
+the pointer rather than of the data, and -1 for `xml`, `geography` and the other
+types that are not sized at all. Neither is a length and neither is `"max"`, so
+neither is carried: the column has a `native` type that says what it is, and a
+number that means something else would be worse than no number.
 
 **Precision and scale only where a person chose them.** Both engines report a
 precision for every numeric type, so `bigint` arrives as precision 64 in Postgres
@@ -292,7 +316,7 @@ schemas, the included column and the filtered index:
     { "name": "OrderId", "type": { "native": "bigint", "normalised": "integer" }, "nullable": false },
     { "name": "LineNo", "type": { "native": "int", "normalised": "integer" }, "nullable": false },
     { "name": "TenantId", "type": { "native": "int", "normalised": "integer" }, "nullable": false },
-    { "name": "OrderCode", "type": { "native": "nvarchar", "normalised": "string", "length": 32 }, "nullable": false, "collation": "Latin1_General_BIN2" },
+    { "name": "OrderCode", "type": { "native": "nvarchar", "normalised": "string", "length": 32 }, "nullable": false, "collation": "SQL_Latin1_General_CP1_CI_AS" },
     {
       "name": "Quantity",
       "type": { "native": "int", "normalised": "integer" },
@@ -302,11 +326,11 @@ schemas, the included column and the filtered index:
     { "name": "UnitPrice", "type": { "native": "decimal", "normalised": "decimal", "precision": 12, "scale": 2 }, "nullable": false },
     {
       "name": "LineTotal",
-      "type": { "native": "decimal", "normalised": "decimal", "precision": 12, "scale": 2 },
-      "nullable": false,
+      "type": { "native": "decimal", "normalised": "decimal", "precision": 23, "scale": 2 },
+      "nullable": true,
       "generated": { "expression": "([Quantity]*[UnitPrice])", "persisted": true }
     },
-    { "name": "Notes", "type": { "native": "nvarchar", "normalised": "string", "length": "max" }, "nullable": true, "collation": "SQL_Latin1_General_CP1_CI_AS" }
+    { "name": "Notes", "type": { "native": "nvarchar", "normalised": "string", "length": "max" }, "nullable": true, "collation": "Latin1_General_BIN2" }
   ],
   "primaryKey": { "name": "PK_OrderLine", "columns": ["OrderId", "LineNo"], "isClustered": true },
   "indexes": [
@@ -343,6 +367,15 @@ schemas, the included column and the filtered index:
 }
 ```
 
+Two values in there are worth stopping on, because both look like mistakes and
+neither is. `LineTotal` was declared `AS ([Quantity]*[UnitPrice]) PERSISTED` over
+an `int` and a `decimal(12,2)`, and the catalog reports it as `decimal(23,2)` and
+as nullable: SQL Server derives the type of a computed column itself, and will
+not promise the multiplication cannot overflow. A provider reports what the
+catalog says rather than what the DDL looked like, so a person reading a diff of
+their first import is looking at their database rather than at dbmd's opinion of
+it.
+
 `test/import/fixtures/postgres-raw.json` is the same logical schema in Postgres
 spelling, and the canonical documents differ only where the engines do: the
 names, the native types, `restrict` on a foreign key that SQL Server could not
@@ -376,7 +409,14 @@ revisit condition covers adding it.
 
 - **Views, sequences, routines and user-defined types.** dbmd models tables.
 - **The index access method** (`btree`, `gin`, columnstore). It is physical, it
-  has no cross-engine meaning, and nothing in the model would read it.
+  has no cross-engine meaning, and nothing in the model would read it. The
+  consequence, found by the SQL Server provider rather than designed: an index
+  whose access method has no ordered key list (a columnstore, spatial, XML or
+  hash index) has nothing this format can say about it beyond its name, so the
+  query does not report it at all. Reporting it would produce an index with no
+  key columns, which is `import/empty-value` and would fail the whole file over
+  an index the model could not hold either way. A provider whose engine has such
+  a thing should leave it out and say so in a comment where the filter is.
 - **Whether a constraint is trusted, enabled or validated.** Postgres `NOT VALID`
   and SQL Server `is_not_trusted` are close but not the same, and mapping them
   onto one field would be a claim neither engine makes.
@@ -411,6 +451,17 @@ interface EngineProvider {
   envelope shape. It is going to be run against production by somebody who wants
   to satisfy themselves by reading it that it cannot write, so it is read more
   often than it is executed.
+- **Whatever your engine's clients do to a long result, say it above the SQL.**
+  The comment block on top of the query is the only text you can be sure the
+  person about to copy a result out of a grid has in front of them, and a note in
+  this file is not. SQL Server hands a `FOR JSON` result back in 2033-character
+  pieces, one grid row each, splitting mid-word, and a paste of "the row" is then
+  JSON that looks finished and is not, so `sqlserver.ts` wraps its `FOR JSON` in
+  a scalar subquery to stop the splitting, says in the header why not to copy
+  from the grid anyway, says what an engine too old for the feature does instead
+  of leaving a bare syntax error, and repeats the cause in the diagnostic its
+  `parse` raises. That is one trap answered in three places on purpose, and it is
+  the shape to copy.
 - `parse` is pure: no I/O, no clock, no database. That is what lets your provider
   be developed and tested against a committed fixture by somebody who has never
   run your engine. It is also the honest limit: a fixture proves the
