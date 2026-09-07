@@ -28,9 +28,13 @@ one call, and it is the only entry point `dbmd import` needs.
 
 Every stage returns the same thing: either a value, or a list of diagnostics.
 Diagnostics carry a `code` a program reads, a `message` a person reads, a
-`severity`, and a `path` into the document written as JSONPath (`$.tables[3]
-.columns[1].name`). They sort deterministically before anything prints them, as
-everything emitted here does. ADR 0006.
+`severity`, and an `at` saying where in the document the problem is. Import
+diagnostics are always `at: { in: 'document', jsonPath: '$.tables[3].columns[1]
+.name' }`, and never carry a line, because the input is a JSON value dbmd was
+handed rather than a file dbmd read. The model reader raises the same type with
+`at: { in: 'file', path, line }`, and ADR 0014 says why there is one type and
+what a consumer does with the difference. They sort deterministically before
+anything prints them, as everything emitted here does. ADR 0006.
 
 ## The envelope
 

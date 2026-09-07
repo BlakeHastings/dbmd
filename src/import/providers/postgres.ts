@@ -25,6 +25,7 @@ import type {
   Table,
 } from '../contract.js'
 import { INTROSPECTION_VERSION } from '../contract.js'
+import { inDocument } from '../diagnostics.js'
 import type { EngineProvider, ParseResult } from '../provider.js'
 
 // ---------------------------------------------------------------------------
@@ -493,7 +494,7 @@ export const postgresProvider: EngineProvider = {
           {
             code: 'import/not-an-object',
             severity: 'error',
-            path: '$',
+            at: inDocument('$'),
             message:
               'the Postgres query returns one JSON object and this file is not one; save the whole value of the single result cell, without the table frame a client draws around it',
           },
@@ -508,7 +509,7 @@ export const postgresProvider: EngineProvider = {
           {
             code: 'import/wrong-type',
             severity: 'error',
-            path: '$.tables',
+            at: inDocument('$.tables'),
             message: '`tables` is not a list, so this is not what the Postgres query prints',
           },
         ],

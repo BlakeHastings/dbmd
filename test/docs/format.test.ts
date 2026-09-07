@@ -24,11 +24,12 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
-import type { DiagnosticCode } from '../../src/model/types.js'
+import { locationText } from '../../src/diagnostics.js'
+import type { ModelDiagnosticCode } from '../../src/diagnostics.js'
 import { withModel } from '../model/helpers.js'
 
 const formatPage = fileURLToPath(new URL('../../docs/format.md', import.meta.url))
-const typesFile = fileURLToPath(new URL('../../src/model/types.ts', import.meta.url))
+const codesFile = fileURLToPath(new URL('../../src/diagnostics.ts', import.meta.url))
 
 interface Block {
   /** Where in the model directory the block's text belongs. */
@@ -92,7 +93,7 @@ describe('the examples in docs/format.md are a model dbmd reads', () => {
     const { diagnostics } = await withModel(files)
 
     expect(
-      diagnostics.map((d) => `${d.path}${d.line === undefined ? '' : `:${d.line}`} ${d.code}`),
+      diagnostics.map((d) => `${locationText(d.at)} ${d.code}`),
     ).toEqual([])
   })
 
@@ -138,14 +139,21 @@ describe('docs/format.md is right about what goes wrong', () => {
 describe('docs/format.md keeps up with the reader', () => {
   test('every diagnostic code has a row in the page', async () => {
     // Read out of the source rather than duplicated here, so that adding a code
-    // to `DiagnosticCode` and forgetting the reference is a red build rather
+    // to `ModelDiagnosticCode` and forgetting the reference is a red build rather
     // than a gap somebody finds a year later. The union is a run of `| 'code'`
     // lines with no blank line in it, which is what the slice below relies on.
-    const types = await readFile(typesFile, 'utf8')
-    const start = types.indexOf('export type DiagnosticCode =')
+    //
+    // It lives in `src/diagnostics.ts` rather than in `src/model/types.ts`
+    // since dbmd-13 made the model reader and the import contract share one
+    // `Diagnostic`. This page documents the model half, so it is the model half
+    // that is read: the import codes are `docs/import-format.md`'s.
+    const source = await readFile(codesFile, 'utf8')
+    const start = source.indexOf('export type ModelDiagnosticCode =')
     expect(start).toBeGreaterThan(-1)
-    const union = types.slice(start, types.indexOf('\n\n', start))
-    const codes = [...union.matchAll(/\|\s*'([a-z-]+)'/g)].map((match) => match[1] as DiagnosticCode)
+    const union = source.slice(start, source.indexOf('\n\n', start))
+    const codes = [...union.matchAll(/\|\s*'([a-z-]+)'/g)].map(
+      (match) => match[1] as ModelDiagnosticCode,
+    )
 
     expect(codes.length).toBeGreaterThan(10)
     expect(codes.filter((code) => !page.includes(`\`${code}\``))).toEqual([])

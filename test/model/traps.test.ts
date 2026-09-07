@@ -13,7 +13,14 @@
  */
 
 import { describe, expect, test } from 'vitest'
+import type { Diagnostic } from '../../src/model/types.js'
 import { withModel } from './helpers.js'
+
+/** The 1-based file line, which only a file location has. */
+function lineOf(diagnostic: Diagnostic | undefined): number | undefined {
+  if (diagnostic?.at.in !== 'file') throw new Error('not a file location')
+  return diagnostic.at.line
+}
 
 describe('nullability', () => {
   test('`nullable: false` is an ordinary key with no trap in it', async () => {
@@ -115,7 +122,7 @@ columns:
     })
 
     expect(diagnostics.map((d) => `${d.severity} ${d.code}: ${d.message}`)).toEqual([
-      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one. Write it as an `indexes:` entry with `columns: [email]` and `unique: true`',
+      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an `indexes:` entry with `columns: [email]` and `unique: true`',
     ])
     expect(model.tables[0]?.complete).toBe(false)
   })
@@ -183,7 +190,7 @@ columns:
 
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]?.code).toBe('field-wrong-type')
-    expect(diagnostics[0]?.line).toBe(7)
+    expect(lineOf(diagnostics[0])).toBe(7)
     expect(diagnostics[0]?.message).toContain('`default` must be a string')
     expect(model.tables[0]?.columns[0]?.default).toBeUndefined()
   })
@@ -228,9 +235,9 @@ columns:
 `,
     })
 
-    expect(diagnostics.map((diagnostic) => [diagnostic.line, diagnostic.message])).toEqual([
-      [7, '`name` must be a string, but YAML read `null` as null. Quote it.'],
-      [10, '`type` must be a string, but YAML read `true` as a boolean. Quote it.'],
+    expect(diagnostics.map((diagnostic) => [lineOf(diagnostic), diagnostic.message])).toEqual([
+      [7, '`name` must be a string, but YAML read `null` as null; quote it'],
+      [10, '`type` must be a string, but YAML read `true` as a boolean; quote it'],
     ])
     // The two columns dbmd could not read are absent rather than invented.
     expect(model.tables[0]?.columns).toEqual([{ name: 'id', type: 'uuid' }])

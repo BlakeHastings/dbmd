@@ -69,3 +69,15 @@ has to report every problem in one run.
   keys dbmd does not know rather than a quieter default.
 - **Somebody wants `readModel` to repair a file.** That is a `dbmd fix` command
   writing a diff a human approves, not a reader that guesses.
+
+## Amended by 0014
+
+The clause above that fixes the diagnostic's shape as `code`, `severity`,
+`path`, an optional 1-based `line` and `message` is superseded. The fields are
+now `code`, `severity`, `at` and `message`, where `at` is a discriminated
+location: a file with an optional line, or a JSONPath into a document. The
+reason is that the import contract diagnoses a JSON value that has no lines to
+point at, and one `path` field covering both would be a field that means two
+things. Everything else here stands, including that the shape is a contract,
+that a list of them sorts deterministically, and that `message` is the half free
+to be reworded. ADR 0014 has the argument.

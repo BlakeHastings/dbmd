@@ -27,15 +27,19 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMap, isScalar, isSeq, parseDocument, type YAMLMap } from 'yaml'
+// `byText` is `compareCodeUnits` under a name that reads at a sort call. It is
+// aliased rather than redefined because the reader and the import contract have
+// to agree on byte order forever, not only today. ADR 0014.
+import { compareCodeUnits as byText, compareDiagnostics, inFile } from '../diagnostics.js'
 import { KIND_DIRECTORIES, MODEL_FILE } from './paths.js'
 import type {
   Column,
   Diagnostic,
-  DiagnosticCode,
   Group,
   Index,
   Layout,
   Model,
+  ModelDiagnosticCode,
   Note,
   ObjectKind,
   ReadResult,
@@ -64,7 +68,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
     push(diagnostics, {
       code: 'model-directory-unreadable',
       severity: 'error',
-      path: '.',
+      at: inFile('.'),
       message: `cannot read the model directory: ${messageOf(error)}`,
     })
     return { model: emptyModel(), diagnostics }
@@ -95,7 +99,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
     push(diagnostics, {
       code: 'model-file-missing',
       severity: 'warning',
-      path: MODEL_FILE,
+      at: inFile(MODEL_FILE),
       message: `no ${MODEL_FILE}, so the model has no name and no engine`,
     })
   }
@@ -107,7 +111,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
       push(diagnostics, {
         code: 'unknown-kind-directory',
         severity: 'warning',
-        path: entryName,
+        at: inFile(entryName),
         message: `\`${entryName}/\` is not a kind of object dbmd knows; its files are ignored`,
       })
       continue
@@ -147,8 +151,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
     push(diagnostics, {
       code: 'group-unknown',
       severity: 'error',
-      path: declared.path,
-      ...(declared.line === undefined ? {} : { line: declared.line }),
+      at: inFile(declared.path, declared.line),
       message: `\`group: ${declared.group}\` names no file at groups/${declared.group}.md`,
     })
   }
@@ -304,7 +307,7 @@ function lineAt(ctx: Ctx, offset: number | null | undefined): number | undefined
 
 function report(
   ctx: Ctx,
-  code: DiagnosticCode,
+  code: ModelDiagnosticCode,
   severity: Severity,
   message: string,
   offset?: number | null,
@@ -313,8 +316,7 @@ function report(
   push(ctx.out, {
     code,
     severity,
-    path: ctx.path,
-    ...(line === undefined ? {} : { line }),
+    at: inFile(ctx.path, line),
     message,
   })
 }
@@ -437,7 +439,12 @@ function reportSplit(
     unterminated: 'frontmatter-unterminated',
     empty: 'frontmatter-empty',
   } as const
-  push(out, { code: codes[outcome], severity: 'error', path, message: messages[outcome] })
+  push(out, {
+    code: codes[outcome],
+    severity: 'error',
+    at: inFile(path),
+    message: messages[outcome],
+  })
 }
 
 function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
@@ -458,7 +465,7 @@ function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
     push(ctx.out, {
       code: 'frontmatter-empty',
       severity: 'error',
-      path: ctx.path,
+      at: inFile(ctx.path),
       message: 'the frontmatter is empty, so the file declares nothing',
     })
     return undefined
@@ -488,7 +495,7 @@ function checkKind(ctx: Ctx, fields: FieldSet, expected: ObjectKind | 'model'): 
     push(ctx.out, {
       code: 'kind-missing',
       severity: 'error',
-      path: ctx.path,
+      at: inFile(ctx.path),
       message: `no \`kind:\` key; the directory says this is a ${expected}`,
     })
     return true
@@ -517,7 +524,7 @@ function readTable(
     push(ctx.out, {
       code: 'name-missing',
       severity: 'error',
-      path: ctx.path,
+      at: inFile(ctx.path),
       message: `no \`table:\` key; the file name says this table is \`${name}\``,
     })
   } else {
@@ -587,7 +594,7 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
   )
   fields.reject(
     'unique',
-    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one. Write it as an \`indexes:\` entry with \`columns: [${name ?? 'this column'}]\` and \`unique: true\``,
+    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an \`indexes:\` entry with \`columns: [${name ?? 'this column'}]\` and \`unique: true\``,
   )
   const defaultField = fields.take('default')
   const columnDefault =
@@ -597,7 +604,7 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
           ctx,
           'default',
           defaultField,
-          'A SQL default must be a string so that it survives as SQL text. Quote it, and quote it twice if it is a SQL string literal: `default: "\'pending\'"`.',
+          'quote it so that it survives as SQL text, and quote it twice if it is a SQL string literal: `default: "\'pending\'"`',
         )
   const refField = fields.take('ref')
   const ref = refField === undefined ? undefined : readRef(ctx, refField)
@@ -843,6 +850,11 @@ function stringValue(node: unknown): string | undefined {
   return typeof node.value === 'string' ? node.value : undefined
 }
 
+/**
+ * `hint` is a clause and not a sentence: a diagnostic message is one sentence,
+ * lower case, with no trailing full stop, so that a caller can paste it after a
+ * location. `src/diagnostics.ts` states that convention once for all of dbmd.
+ */
 function stringOf(ctx: Ctx, key: string, field: Field, hint?: string): string | undefined {
   const value = stringValue(field.node)
   if (value !== undefined) return value
@@ -850,7 +862,7 @@ function stringOf(ctx: Ctx, key: string, field: Field, hint?: string): string | 
     ctx,
     'field-wrong-type',
     'error',
-    `\`${key}\` must be a string, but YAML read \`${rawOf(ctx, field.node)}\` as ${describe(field.node)}. ${hint ?? 'Quote it.'}`,
+    `\`${key}\` must be a string, but YAML read \`${rawOf(ctx, field.node)}\` as ${describe(field.node)}; ${hint ?? 'quote it'}`,
     field.valueOffset,
   )
   return undefined
@@ -976,7 +988,7 @@ async function markdownFiles(
     push(out, {
       code: 'file-unreadable',
       severity: 'error',
-      path: relative,
+      at: inFile(relative),
       message: `cannot list the directory: ${messageOf(error)}`,
     })
     return []
@@ -994,7 +1006,7 @@ async function readText(
     push(out, {
       code: 'file-unreadable',
       severity: 'error',
-      path: relative,
+      at: inFile(relative),
       message: `cannot read the file: ${messageOf(error)}`,
     })
     return undefined
@@ -1021,18 +1033,4 @@ function emptyModel(): Model {
     referencesTo: new Map(),
     groupMembers: new Map(),
   }
-}
-
-/** Code-unit order, not locale order, so the sort is the same everywhere. */
-function byText(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
-
-export function compareDiagnostics(a: Diagnostic, b: Diagnostic): number {
-  return (
-    byText(a.path, b.path) ||
-    (a.line ?? 0) - (b.line ?? 0) ||
-    byText(a.code, b.code) ||
-    byText(a.message, b.message)
-  )
 }

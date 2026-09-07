@@ -1,0 +1,249 @@
+/**
+ * The diagnostic contract. One type, for every part of dbmd that complains.
+ *
+ * ADR 0008 made a diagnostic structured output, and ADR 0006 makes structured
+ * output public the moment `--json` prints it, so this shape is a contract:
+ * adding a `DiagnosticCode` is additive, renaming one is breaking, and
+ * `message` is the half that stays free to be reworded. ADR 0014 is why the two
+ * types that used to live in `model/types.ts` and `import/diagnostics.ts` are
+ * one type here instead.
+ *
+ * **Where a diagnostic points is a discriminated union, not a string.** The
+ * model reader points at a file, by a slash-separated path relative to the model
+ * directory, usually with a 1-based line. The import contract points into a JSON
+ * document, by a JSONPath rooted at `$`, and its input has no lines to point at.
+ * Those are different things and `at.in` says which you are holding, so a
+ * consumer that wants to open an editor at a line has to ask, and a consumer
+ * that only wants to print a location calls `locationText` and never asks.
+ *
+ * **Message convention, stated once: one sentence, no leading capital, no
+ * trailing full stop, legible without the file open.** A caller pastes it after
+ * a location, so it is a clause rather than a paragraph, and a caller that
+ * switches on prose rather than on `code` is holding it wrong.
+ */
+
+/**
+ * `error` means something did not make it through: a file did not load as
+ * declared, or an import stops here. `warning` means it loaded and is likely
+ * wrong anyway.
+ */
+export type Severity = 'error' | 'warning'
+
+/**
+ * The closed set of things reading a model directory can complain about.
+ *
+ * `docs/format.md` has a row for every member and `test/docs/format.test.ts`
+ * reads this union out of this file to prove it, so adding a member here
+ * without adding a row there is a red build. Keep it one unbroken run of
+ * `| 'code'` lines: that test slices the union at the first blank line.
+ */
+export type ModelDiagnosticCode =
+  /** `readModel` was pointed at something that is not a readable directory. */
+  | 'model-directory-unreadable'
+  /** A file under the model directory could not be read at all. */
+  | 'file-unreadable'
+  /** There is no `_model.md`, so the model has no name and no engine. */
+  | 'model-file-missing'
+  /** A directory under the model root that is not a known kind. */
+  | 'unknown-kind-directory'
+  /** The file does not begin with a `---` line. */
+  | 'frontmatter-absent'
+  /** `---` on the first line and no closing `---` anywhere after it. */
+  | 'frontmatter-unterminated'
+  /** The delimiters are there with nothing but whitespace between them. */
+  | 'frontmatter-empty'
+  /** The YAML parser rejected the frontmatter. */
+  | 'frontmatter-invalid'
+  /** The frontmatter parsed, but to a scalar or a list rather than to keys. */
+  | 'frontmatter-not-a-map'
+  /** Two keys in one mapping resolve to the same name. */
+  | 'duplicate-key'
+  /** A `kind:` that disagrees with the directory the file is in. */
+  | 'kind-mismatch'
+  /** No `kind:` key at all. */
+  | 'kind-missing'
+  /** A `table:` that disagrees with the file's own name. */
+  | 'name-mismatch'
+  /** A table file with no `table:` key. */
+  | 'name-missing'
+  /** A required key is absent. */
+  | 'field-missing'
+  /** A key holds the wrong sort of value: a boolean where a string was wanted. */
+  | 'field-wrong-type'
+  /** A key that means nothing to this kind of file. */
+  | 'unknown-key'
+  /**
+   * A key dbmd recognises but does not accept, because the format spells that
+   * fact under another name or in another place. The message says which.
+   *
+   * It is an error rather than a warning, and that is the whole point of having
+   * it: the fact the author wrote is a real one, and a warning would leave the
+   * object complete, so the next save would write the file back without it.
+   */
+  | 'superseded-key'
+  /** A `ref:` that is not `table.column`. */
+  | 'ref-malformed'
+  /** A `group:` naming a group file that does not exist. */
+  | 'group-unknown'
+
+/**
+ * The closed set of things reading an introspection file can complain about.
+ * Prefixed, because these travel in the same array as the model's in a mixed
+ * run and a reader should not have to know which module owns a bare name.
+ */
+export type ImportDiagnosticCode =
+  /** The value, or the value at the location, is not a JSON object. */
+  | 'import/not-an-object'
+  /** A required field is absent, or present and null. */
+  | 'import/missing-field'
+  /** A field is present but is the wrong JSON type. */
+  | 'import/wrong-type'
+  /** A string or list is present but empty where emptiness cannot be meant. */
+  | 'import/empty-value'
+  /** `dbmdIntrospection` names a version this build does not read. */
+  | 'import/unsupported-version'
+  /** `engine` names an engine no provider in this build claims. */
+  | 'import/unknown-engine'
+  /** `--engine` disagreed with the envelope and won. Never silent: ADR 0007. */
+  | 'import/engine-overridden'
+  /** A field nothing in this version reads. Kept as a warning, never fatal. */
+  | 'import/unknown-field'
+  /** Two things that must be distinguishable are byte-identical. */
+  | 'import/duplicate'
+  /** A foreign key's local and referenced column lists are different lengths. */
+  | 'import/mismatched-columns'
+  /** A value is outside a closed vocabulary the contract defines. */
+  | 'import/not-in-vocabulary'
+
+/**
+ * Every code dbmd can emit. `dbmd check --json` prints diagnostics from both
+ * halves into one array, so the two unions meet here rather than at the point
+ * of printing.
+ */
+export type DiagnosticCode = ModelDiagnosticCode | ImportDiagnosticCode
+
+/**
+ * Where the problem is.
+ *
+ * `in` is the discriminant and it is the whole reason this is not a string.
+ * A file location can be opened in an editor at a line; a document location
+ * cannot, because the input is a JSON file whose lines dbmd never saw. Nothing
+ * derives one from the other and nothing guesses.
+ */
+export type DiagnosticLocation =
+  | {
+      readonly in: 'file'
+      /** Slash-separated, relative to the model directory. Never absolute: ADR 0006. */
+      readonly path: string
+      /**
+       * 1-based, counting lines of the file rather than of the frontmatter.
+       * Present only where it is honestly derivable: a problem with the file as
+       * a whole, such as absent frontmatter, does not get one.
+       */
+      readonly line?: number
+    }
+  | {
+      readonly in: 'document'
+      /**
+       * A JSONPath-style expression rooted at `$`, such as
+       * `$.tables[3].columns[1].name`. Paths from a provider's `parse` point
+       * into the engine's file; paths from the contract validator point into
+       * the canonical document.
+       */
+      readonly jsonPath: string
+    }
+
+/**
+ * One problem, from anywhere in dbmd.
+ *
+ * A type alias rather than an `interface`, and that is load-bearing rather than
+ * a style choice: TypeScript gives an object type alias an implicit index
+ * signature and never gives one to an interface, so an interface with exactly
+ * these fields is not assignable to `Payload` in `src/cli/output.ts` and cannot
+ * be handed to `report({ json })`. A diagnostic is a thing that goes in the
+ * `--json` envelope, so it has to be a type the envelope accepts.
+ * `test/diagnostics.test.ts` is what stops that regressing.
+ */
+export type Diagnostic = {
+  readonly code: DiagnosticCode
+  readonly severity: Severity
+  readonly at: DiagnosticLocation
+  readonly message: string
+}
+
+/** A file location, with the optional line handled once rather than at every call. */
+export function inFile(path: string, line?: number): DiagnosticLocation {
+  // Spread rather than `line` directly: `exactOptionalPropertyTypes` makes
+  // `line: undefined` a different thing from an absent `line`, and an absent one
+  // is what `JSON.stringify` should see.
+  return { in: 'file', path, ...(line === undefined ? {} : { line }) }
+}
+
+/** A location inside a JSON document, written as a JSONPath rooted at `$`. */
+export function inDocument(jsonPath: string): DiagnosticLocation {
+  return { in: 'document', jsonPath }
+}
+
+/**
+ * The location as one printable string: `tables/orders.md:4`, or `$.tables[0]`.
+ *
+ * This is the consumer that does not care which it has. One that does care asks
+ * `at.in` and gets a typed answer; there is deliberately no way to reach `line`
+ * without asking.
+ */
+export function locationText(at: DiagnosticLocation): string {
+  if (at.in === 'document') return at.jsonPath
+  return at.line === undefined ? at.path : `${at.path}:${at.line}`
+}
+
+/** Byte-order comparison. Never `localeCompare`: ADR 0006 wants the same bytes on every machine. */
+export function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/**
+ * Deterministic order: by location, then line, then code, then message.
+ *
+ * The line is compared as a number and never as text, so line 9 comes before
+ * line 10, which is why this does not sort on `locationText`. It orders a mixed
+ * array too: a JSONPath starts with `$` and a model path starts with a file
+ * name, so the two halves of a mixed run land in blocks without the comparator
+ * having to say so.
+ */
+export function compareDiagnostics(a: Diagnostic, b: Diagnostic): number {
+  return (
+    compareCodeUnits(pathOf(a.at), pathOf(b.at)) ||
+    lineOf(a.at) - lineOf(b.at) ||
+    compareCodeUnits(a.code, b.code) ||
+    compareCodeUnits(a.message, b.message)
+  )
+}
+
+function pathOf(at: DiagnosticLocation): string {
+  return at.in === 'file' ? at.path : at.jsonPath
+}
+
+function lineOf(at: DiagnosticLocation): number {
+  return at.in === 'file' ? (at.line ?? 0) : 0
+}
+
+/** Sorted, in a new array, so a caller's accumulator is not reordered under it. */
+export function sortDiagnostics(diagnostics: readonly Diagnostic[]): Diagnostic[] {
+  return [...diagnostics].sort(compareDiagnostics)
+}
+
+/** True when anything in the list is fatal to whatever produced it. */
+export function hasErrors(diagnostics: readonly Diagnostic[]): boolean {
+  return diagnostics.some((d) => d.severity === 'error')
+}
+
+/**
+ * One line per diagnostic, sorted, with no colour and no stream opinion. Choosing
+ * a stream and colouring the result belongs to the output contract (dbmd-70);
+ * this is only the text.
+ */
+export function formatDiagnostics(diagnostics: readonly Diagnostic[]): string[] {
+  return sortDiagnostics(diagnostics).map(
+    (d) => `${d.severity} ${locationText(d.at)} [${d.code}] ${d.message}`,
+  )
+}
