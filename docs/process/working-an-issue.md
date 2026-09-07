@@ -135,6 +135,27 @@ own* pull request, which is why the layers below still exist:
    *Not covered:* prevention. It notices afterwards, which is why it cannot be
    bypassed. It is kept despite the ruleset because the ruleset is an API object
    that the token agents run under can delete. ADR 0001 has that argument.
+4. **`scripts/report-merge-aftermath.mjs`**, run by
+   [`.github/workflows/aftermath.yml`](../../.github/workflows/aftermath.yml)
+   when a workflow finishes on `main` without going green. It comments on the
+   pull request the commit came through, so the person who merged is told rather
+   than left to look. Everything above is about the branch; this is the only one
+   about the merge result, which is a combination that did not exist until the
+   merge made it.
+   *Not covered:* prevention, again, and deliberately. The run starts after the
+   merge, so waiting for it would stall every merge for a verdict that arrives
+   too late to act on. Seven merges left `main` red before this existed and
+   nobody noticed one of them.
+   [ADR 0057](../architecture/decisions/0057-a-merge-that-leaves-main-red-says-so-on-the-pull-request.md).
+
+To ask what `main` looks like right now, across every workflow that runs on it:
+
+```bash
+node scripts/report-merge-aftermath.mjs
+```
+
+That form writes nothing anywhere. A run that has not appeared yet is reported
+as such rather than as a failure, which matters in the minute after a merge.
 
 Landing a PR:
 
