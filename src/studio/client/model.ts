@@ -22,6 +22,7 @@
  * break.
  */
 
+import { MODEL_FILE } from '../../model/paths.js'
 import type { Column, Model, Table } from '../../model/types.js'
 import type { WireModel } from '../wire.js'
 import { clashFor } from './tables.js'
@@ -87,6 +88,79 @@ export function agreeing(count: number, one: string, more: string): string {
   return count === 1 ? one : more
 }
 
+/**
+ * Everything a rename has to look at: the refs it moves, and the prose it does not.
+ *
+ * Wider than `referrersTo`'s `tables` on purpose. A group's body is prose and a
+ * note's body is the whole note (ADR 0005), so a plan built from the tables
+ * alone would be quietly right about the files it edits and quietly wrong about
+ * the files it leaves saying the old name.
+ */
+export type RenameSubject = Pick<WireModel, 'body' | 'tables' | 'notes' | 'groups'>
+
+/** One body whose prose names a table inside backticks, and how often. */
+export interface Mention {
+  /** Where the prose is: slash-separated, relative to the model root. */
+  readonly path: string
+  /** How many backticked spans in that body name the table. */
+  readonly count: number
+}
+
+/**
+ * A backtick span, and it is the only thing in a body that is read at all.
+ *
+ * ADR 0036 is the precedent and the reasoning is the same one word along:
+ * `orders` in a sentence is an English word, and `` `orders` `` is a claim about
+ * a table. Bounded to a single line because a span is, which is also what keeps
+ * a fenced block from being read as one enormous span.
+ */
+const CODE_SPAN = /`([^`\n]+)`/g
+
+/**
+ * Whether one span is a claim about `table`.
+ *
+ * `subscriptions` is, and so is `subscriptions.plan_id`, because a qualified
+ * column is a claim about the table it is qualified by. `subscriptions_due_idx`
+ * is not: it is an index, an index is not renamed by a table rename, and it is
+ * the case `examples/shop` actually contains. Nothing else counts, and in
+ * particular a span is never searched inside: substring matching would make
+ * every rename of `order` a warning about `order_items`.
+ */
+function namesTable(span: string, table: string): boolean {
+  return span === table || span.startsWith(`${table}.`)
+}
+
+function mentionsIn(body: string, table: string): number {
+  let found = 0
+  for (const match of body.matchAll(CODE_SPAN)) {
+    const span = match[1]
+    if (span !== undefined && namesTable(span, table)) found += 1
+  }
+  return found
+}
+
+/**
+ * Every body that names `table` in backticks, in the order the reader walks them.
+ *
+ * **This is not a check over the model and must not become one.** ADR 0003 makes
+ * a body opaque to everything, which is what lets the prose be the part of this
+ * format a schema dump cannot hold, and dbmd-x82 leaves whether the tool reads
+ * prose at all as the owner's question. What this answers is narrower and is a
+ * question about one moment: a rename is about to change a name, and these are
+ * the files that say the old one.
+ */
+export function mentionsOf(model: RenameSubject, table: string): Mention[] {
+  const bodies: readonly { readonly path: string; readonly body: string }[] = [
+    { path: MODEL_FILE, body: model.body },
+    ...model.tables,
+    ...model.notes,
+    ...model.groups,
+  ]
+  return bodies
+    .map(({ path, body }) => ({ path, count: mentionsIn(body, table) }))
+    .filter((mention) => mention.count > 0)
+}
+
 /** What the panel does about a rename, worked out before it draws anything. */
 export type RenamePlan =
   /**
@@ -110,8 +184,20 @@ export type RenamePlan =
  * wrong are both about accuracy at that moment: it offered the decision for a
  * name that was already taken, and it counted the file it is deleting among the
  * other files it would edit.
+ *
+ * **The last paragraph is about the files this rename will not touch**, and it
+ * is here rather than in the line said afterwards because of what the rest of
+ * the confirmation is: a list of what a rename does to the directory, read while
+ * it can still be declined. Stale prose belongs on that list. A rename is undone
+ * with `git checkout` and nothing else, so the moment to learn that three
+ * paragraphs are about to start lying is the moment before, not the moment
+ * after, and a to-do list posted into the status line would be one sentence
+ * competing with the sentence that says whether the rename finished. It is a
+ * warning and never a refusal: prose that has gone stale is not a broken model,
+ * and a tool that will not write until the paragraphs agree is one people stop
+ * writing paragraphs for. dbmd-x82, ADR 0044.
  */
-export function renamePlan(model: Pick<WireModel, 'tables'>, from: string, to: string): RenamePlan {
+export function renamePlan(model: RenameSubject, from: string, to: string): RenamePlan {
   const others = model.tables.map((table) => table.name).filter((name) => name !== from)
   const clash = clashFor(to, others)
   if (clash?.kind === 'same') {
@@ -130,6 +216,18 @@ export function renamePlan(model: Pick<WireModel, 'tables'>, from: string, to: s
   const elsewhere = referrers.filter((referrer) => referrer.table !== from)
   const files = [...new Set(elsewhere.map((referrer) => referrer.table))]
   const count = referrers.length
+
+  const mentions = mentionsOf(model, from)
+  const said = mentions.reduce((total, mention) => total + mention.count, 0)
+  // The renamed table's own body is copied into the new file byte for byte, so
+  // the sentence to go and fix is in the file this rename is about to write and
+  // not in the one it is about to delete. Naming the old path here would send
+  // somebody to a file the line above has just said is going away.
+  const renamed = model.tables.find((table) => table.name === from)
+  const where = mentions.map((mention) =>
+    mention.path === renamed?.path ? `tables/${to}.md` : mention.path,
+  )
+
   return {
     kind: 'confirm',
     lines: [
@@ -145,6 +243,11 @@ export function renamePlan(model: Pick<WireModel, 'tables'>, from: string, to: s
         : files.length === 0
           ? `${count} ${agreeing(count, 'ref points', 'refs point')} here, from this table itself, and ${agreeing(count, 'moves', 'move')} into the new file with it, so no other file changes (${referrerText(referrers)}).`
           : `${count} ${agreeing(count, 'ref points', 'refs point')} here and will be moved with it, which edits ${files.length} other ${agreeing(files.length, 'file', 'files')}: ${files.map((file) => `tables/${file}.md`).join(', ')} (${referrerText(referrers)}).`,
+      ...(said === 0
+        ? []
+        : [
+            `${said} ${agreeing(said, 'mention', 'mentions')} of \`${from}\` in backticks ${agreeing(said, 'stays as it is', 'stay as they are')}, in ${where.join(', ')}. A rename moves refs and never prose, and no check reads a body, so nothing else will tell you.`,
+          ]),
     ],
   }
 }
