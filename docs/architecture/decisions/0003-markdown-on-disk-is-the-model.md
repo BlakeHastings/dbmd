@@ -225,3 +225,64 @@ The canonical spelling of an index entry is `name`, `columns`, `unique`, and
 `unique` is absent rather than `false` on a plain index, for the same reason an
 empty list is no key. `examples/shop` is now byte-canonical: reading it and
 writing it back produces no diff at all.
+
+## Not amended by dbmd-19, and why, so it is not asked a third time
+
+Appended because the section above appears to settle a question it does not, and
+the next reader would file it again.
+
+That section says the `nullable:` rename "makes the markdown key and the
+introspection field the same word". `src/import/contract.ts` calls uniqueness
+`Index.isUnique`, and the markdown key added in the same pull request is
+`unique`, so the same reasoning applied to the same diff looks like it produced
+two answers. It did not. Neither key moves.
+
+**The argument that settled `nullable` was about polarity, not spelling.**
+`required: true` lost because it inverts the sense against `NOT NULL`, against
+`is_nullable` in both catalogues and against `Column.nullable`, so every trip
+between a database and a file would have been a negation somebody has to get
+right. The same word was the result of choosing correctly, not the reason.
+`unique` and `isUnique` already share a polarity, so mapping one to the other is
+a rename a compiler checks and never a negation a person can get backwards.
+There is nothing here of the kind that argument was about.
+
+Three things follow, and they are worth as much as the sentence:
+
+- **The contract is a wire format and a model file is written by a person.**
+  ADR 0022 made exactly this asymmetry deliberate for an index key, where the
+  markdown's `columns: [email]` is the contract's `{ column: 'email' }`, and
+  gave the reason: an unlabelled string is a bug in a document a machine writes
+  and the obvious spelling in one a person writes. `isUnique` reads as a boolean
+  accessor because it is one, and a frontmatter key should not.
+- **The contract would have to move as a set or not at all.** It also has
+  `Index.isClustered`, `Index.isUniqueConstraint` and `PrimaryKey.isClustered`,
+  so renaming only the field the item names leaves the wire format with two
+  spellings for its own booleans: the same entropy, relocated. Renaming all four
+  also rewrites the SQL Server query, which aliases `i.is_unique AS isUnique`,
+  and a query's proof is a run against a real database (ADR 0007) rather than a
+  fixture.
+- **It would buy nothing at the one place it is paid.** dbmd-41 maps two
+  contract fields onto one markdown key, so the mapping is a decision whichever
+  spelling is used. Identical words would have made it *look* like a rename
+  while still being a decision, which is worse than the mismatch.
+
+### What an import writes, decided here so it is not decided twice
+
+`unique: true` when `isUnique` is true, and no key at all when it is false,
+which is the canonical spelling this record already fixed.
+
+**`isUniqueConstraint` is dropped, and the format keeps no room for it.** A
+unique constraint and a unique index are different objects in both engines, and
+dbmd-44 confirmed SQL Server reports them apart. The difference is in how the
+uniqueness was *declared*, not in what is true of the rows, which makes it the
+same question as the `on delete` gap named above and it gets the same answer:
+the line "this is a model, not a migration" is the thing that would have to be
+revisited to carry it. Nothing in dbmd reads it either. The validator's
+`ref-target-not-unique` asks only whether something makes the column unique, so
+the key would be a fact written, diffed and reviewed by people in exchange for
+nothing at all that reads it.
+
+The cost is real and is named in `docs/format.md` under what the format does not
+have: a model imported from a database cannot tell you whether dropping an index
+would drop a constraint with it. If somebody wants it, the way out is a second
+key on the index entry, never a second meaning for `unique`.

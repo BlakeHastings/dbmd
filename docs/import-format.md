@@ -181,6 +181,16 @@ key is the modelling truth and one fact belongs in one place. An index backing a
 `UNIQUE` constraint does appear, with `isUniqueConstraint` true, because dropping
 it means dropping the constraint and that is worth being able to see.
 
+**A model file has no room for that distinction and an import drops it.**
+`unique: true` is written from `isUnique` alone, and omitted when it is false.
+Whether a `UNIQUE` constraint or a `CREATE UNIQUE INDEX` put the index there is
+how the uniqueness was *declared* rather than what is true of the rows, which
+makes it the same question as `on delete` and gives it the same answer in a tool
+that describes a schema and never generates DDL. The appendix to
+[ADR 0003](architecture/decisions/0003-markdown-on-disk-is-the-model.md) is the
+argument, and `docs/format.md` names the loss under what the format does not
+have.
+
 **An index key is a column or an expression, and exactly one of the two.** An
 `IndexKey` carries `column`, naming a column of the table, or `expression`,
 carrying the engine's own text for a functional or computed key. Neither is
@@ -268,6 +278,18 @@ whatever order the engine happened to return its rows in. ADR 0006.
 **A field nothing reads is a warning, not an error.** It is dropped, and the
 warning names it. Rejecting the file instead would make every additive change to
 the format a breaking one.
+
+**A key here is not always spelled the way a model file spells it.** The
+markdown's `unique:` is this document's `isUnique`, and its `columns: [email]`
+is this document's `columns: [{ "column": "email" }]`. Both differences are
+deliberate and both have one reason: this is written by a provider and read by a
+machine, where an unlabelled string is ambiguous and a boolean reads as the
+accessor it is, and a model file is written by a person. What must never differ
+is the *sense* of a fact, which is why `Column.nullable` and the markdown's
+`nullable:` are the same word: a rename is a mapping a compiler checks, and a
+negation is one somebody gets backwards. ADR 0022 settled the index key and the
+appendix to ADR 0003 settled the boolean, after dbmd-19 asked whether they
+contradicted each other.
 
 ## A worked example
 

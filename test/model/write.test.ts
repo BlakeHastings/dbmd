@@ -443,6 +443,82 @@ describe('where a file goes', () => {
       expect(result.written).toEqual(['_model.md'])
     })
   })
+
+  /**
+   * dbmd-23. A table called `a:b` used to pass the writer's own name check and
+   * fail at the filesystem, so the caller got an `EINVAL` naming no object
+   * instead of a skip naming the table. Which is the one thing `writeModel`
+   * promised not to do: a problem with the model is a `WriteSkip`, and only a
+   * filesystem that will not accept a write is an exception (ADR 0010, 0026).
+   */
+  test('a table called `a:b` is skipped by name rather than thrown out of the filesystem', async () => {
+    await inEmptyDirectory(async (dir) => {
+      const result = await writeModel(dir, model([table({ name: 'a:b' })]))
+
+      expect(result.skipped).toContainEqual({ path: 'tables/a:b', reason: 'unsafe-name' })
+      expect(result.written).toEqual(['_model.md'])
+      // The old failure was on the rename, after a temporary file had been
+      // opened. On Windows `.a:b.md.<uuid>.tmp` is an alternate data stream on a
+      // file called `.a`, and removing the stream leaves the host behind, so a
+      // stray dotfile in `tables/` is the tell that this regressed.
+      expect(await readdir(dir)).toEqual(['_model.md'])
+    })
+  })
+
+  test.each([
+    ['a colon, which on Windows opens an alternate data stream', 'a:b'],
+    ['a wildcard', 'a*b'],
+    ['a question mark', 'a?b'],
+    ['a quote', 'a"b'],
+    ['an angle bracket', 'a<b'],
+    ['a pipe', 'a|b'],
+    ['a control character', `a${String.fromCharCode(1)}b`],
+    ['a newline', 'a\nb'],
+    ['a name whose temporary file would be 256 characters', 'x'.repeat(211)],
+  ])('%s is a skip and not a throw', async (_what, name) => {
+    await inEmptyDirectory(async (dir) => {
+      const result = await writeModel(dir, model([table({ name })]))
+      expect(result.skipped).toContainEqual({ path: `tables/${name}`, reason: 'unsafe-name' })
+      expect(result.written).toEqual(['_model.md'])
+    })
+  })
+
+  /**
+   * The other half, and the half a check written in fear gets wrong. Square
+   * brackets are legal in a file name on every platform, and `Ledger [Entry]`
+   * is a real table dbmd-44 imported from a real catalogue. A writer that
+   * refused it because it looks alarming would drop a table on import.
+   */
+  test('a name that only looks dangerous is written, and read back under that name', async () => {
+    await inEmptyDirectory(async (dir) => {
+      const result = await writeModel(dir, model([table({ name: 'Ledger [Entry]' })]))
+      expect(result.skipped).not.toContainEqual(expect.objectContaining({ reason: 'unsafe-name' }))
+      expect(result.written).toContain('tables/Ledger [Entry].md')
+
+      const { model: back, diagnostics } = await readModel(dir)
+      expect(diagnostics).toEqual([])
+      expect(back.tables.map((each) => each.name)).toEqual(['Ledger [Entry]'])
+    })
+  })
+
+  test('a name at the longest the writer can carry is written', async () => {
+    await inEmptyDirectory(async (dir) => {
+      const name = 'x'.repeat(210)
+      const result = await writeModel(dir, model([table({ name })]))
+      expect(result.written).toContain(`tables/${name}.md`)
+    })
+  })
+
+  test('one unwritable name does not stop the tables either side of it', async () => {
+    await inEmptyDirectory(async (dir) => {
+      const result = await writeModel(
+        dir,
+        model([table({ name: 'customers' }), table({ name: 'a:b' }), table({ name: 'invoices' })]),
+      )
+      expect(result.written).toEqual(['_model.md', 'tables/customers.md', 'tables/invoices.md'])
+      expect(result.skipped).toEqual([{ path: 'tables/a:b', reason: 'unsafe-name' }])
+    })
+  })
 })
 
 describe('the write is atomic', () => {

@@ -42,7 +42,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { MODEL_FILE, directoryOfKind } from './paths.js'
+import { MODEL_FILE, directoryOfKind, isFileName } from './paths.js'
 import type { CanvasObject, Column, Index, IndexKey, Layout, Model, Table } from './types.js'
 
 // --------------------------------------------------------------------------
@@ -287,11 +287,26 @@ export type SkipReason =
   | 'unchanged'
   /** The object says the reader could not build all of it from its file. */
   | 'incomplete'
-  /** The object's name cannot be a file name, so it has nowhere to be written. */
+  /**
+   * The object's name cannot be a file name, so it has nowhere to be written.
+   *
+   * `isFileName` in `./paths.js` is the rule, and it answers exactly the
+   * question of whether the write would otherwise have thrown. That is the
+   * point of it being here: a name is a fact about the model, and a fact about
+   * the model becomes a skip the caller can report with the object named, never
+   * an `EINVAL` from three frames down with nothing in it but a path. ADR 0026.
+   */
   | 'unsafe-name'
 
 export interface WriteSkip {
-  /** Relative to the model directory and slash-separated, as diagnostics are. */
+  /**
+   * Relative to the model directory and slash-separated, as diagnostics are.
+   *
+   * For `unsafe-name` it is where the file would have gone rather than a file
+   * that exists, and it carries no `.md`, because there is no such file and
+   * saying there is would send the reader looking for it. It still names the
+   * kind and the object, which is the whole reason this is a skip.
+   */
   readonly path: string
   readonly reason: SkipReason
 }
@@ -346,6 +361,12 @@ export interface WriteOptions {
  * Unlike `readModel`, this throws: a filesystem that will not accept a write is
  * not a diagnostic about the model, and a caller that carries on regardless has
  * told the user their work is saved when it is not.
+ *
+ * The line is between the filesystem and the model, and not between "hard" and
+ * "easy". A full disk, a read-only directory and a permission denied are the
+ * filesystem's and they throw. A name no filesystem would accept is the model's,
+ * however far down the stack it happens to surface, and it is a `WriteSkip` with
+ * the object named. ADR 0026, and dbmd-23 is the report that it was not.
  */
 export async function writeModel(
   dir: string,
@@ -398,15 +419,6 @@ export async function writeModel(
   }
 
   return { written, skipped }
-}
-
-/**
- * A name that is exactly one path segment, and not one of the two that mean a
- * directory. Names that came from the reader are file names already; names that
- * came from an import are whatever the database called the table.
- */
-function isFileName(name: string): boolean {
-  return name !== '' && name !== '.' && name !== '..' && !/[/\\]/.test(name)
 }
 
 async function currentText(target: string): Promise<string | undefined> {
