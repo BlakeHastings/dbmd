@@ -9,10 +9,12 @@ columns:
     type: uuid
     nullable: false
     ref: products.id
+    on delete: restrict
   - name: shipment_id
     type: uuid
     nullable: true
     ref: shipments.id
+    on delete: restrict
   - name: delta_grams
     type: integer
     nullable: false

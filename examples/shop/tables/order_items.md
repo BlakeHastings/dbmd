@@ -6,6 +6,7 @@ columns:
     type: uuid
     pk: true
     ref: orders.id
+    on delete: cascade
   - name: line_no
     type: integer
     pk: true
@@ -13,6 +14,7 @@ columns:
     type: uuid
     nullable: false
     ref: products.id
+    on delete: restrict
   - name: product_name
     type: text
     nullable: false
@@ -44,6 +46,13 @@ order at render time; a query somewhere lost its `order by` and a packing slip
 came out with the lines in a different order from the invoice the customer was
 holding. A natural key that the paperwork already agrees on is cheaper than
 remembering to sort.
+
+**`order_id` is the one `ref` in this model that says `on delete: cascade`**,
+and it is not a change of heart about deleting orders. A line number is a line
+number *of* something: `line_no` means nothing away from the order it counts
+within, so a line that outlived its order would be a row nobody could read. As
+nothing deletes an order, the clause never fires, and writing it down is
+describing the constraint rather than asking for it.
 
 `line_no` starts at 1 and is never reused within an order. Removing a line
 before payment leaves a gap, which is fine and is better than renumbering rows

@@ -651,6 +651,7 @@
         box-sizing: border-box;
       }
       #inspector ol > li .ref,
+      #inspector ol > li .actions,
       #inspector ol > li .notes,
       #inspector ol > li .confirm-host {
         grid-column: 1 / -1;
@@ -659,6 +660,13 @@
         display: flex;
         align-items: center;
         gap: 8px;
+      }
+      /* The referential actions are hidden until the column has a ref for them
+         to be about, and `display: flex` above beats the browser's own
+         `[hidden] { display: none }`, so hiding one needs saying here. Found by
+         driving the studio: the panel showed two selects on every column. */
+      #inspector ol > li .actions[hidden] {
+        display: none;
       }
       #inspector .flag {
         white-space: nowrap;

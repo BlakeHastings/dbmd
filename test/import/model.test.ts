@@ -21,7 +21,7 @@ import { readIntrospection } from '../../src/import/read.js'
 import { readModel } from '../../src/model/read.js'
 import type { Table } from '../../src/model/types.js'
 import { validate } from '../../src/model/validate.js'
-import { writeModel } from '../../src/model/write.js'
+import { serialiseObject, writeModel } from '../../src/model/write.js'
 
 const temporaries: string[] = []
 
@@ -166,6 +166,59 @@ describe('a foreign key becomes a ref, or a diagnostic saying why it did not', (
         .filter((c) => c.ref !== undefined)
         .map((c) => `${c.name} -> ${c.ref?.table}.${c.ref?.column}`),
     ).toEqual(['tenant_id -> Order.TenantId', 'order_code -> Order.Code'])
+  })
+
+  test('the referential actions come across, in the words a file spells them with', () => {
+    const model = modelFromIntrospection(fixture('postgres-provider-raw')).model
+    const line = tableNamed(model.tables, 'order_line')
+
+    // `on_delete: "n"` in the fixture, which is Postgres for SET NULL, on both
+    // columns of the composite key, because one constraint carries one action.
+    expect(line.columns.filter((c) => c.ref !== undefined).map((c) => c.ref)).toEqual([
+      { table: 'Order', column: 'TenantId', onDelete: 'set null', onUpdate: 'no action' },
+      { table: 'Order', column: 'Code', onDelete: 'set null', onUpdate: 'no action' },
+    ])
+
+    // And `no action` is written rather than dropped, because a catalogue that
+    // reports NO ACTION and a provider that reports nothing are two different
+    // statements. ADR 0046.
+    expect(serialiseObject(line)).toContain('    on update: no action\n')
+  })
+
+  test('a provider that reports no action at all writes no key at all', () => {
+    const { model } = modelFromIntrospection(
+      document([
+        {
+          name: 'customers',
+          columns: [
+            { name: 'id', type: { native: 'text', normalised: 'string' }, nullable: false },
+          ],
+        },
+        {
+          name: 'orders',
+          columns: [
+            {
+              name: 'customer_id',
+              type: { native: 'text', normalised: 'string' },
+              nullable: false,
+            },
+          ],
+          foreignKeys: [
+            {
+              columns: ['customer_id'],
+              referencedSchema: 'public',
+              referencedTable: 'customers',
+              referencedColumns: ['id'],
+            },
+          ],
+        },
+      ]),
+    )
+
+    expect(tableNamed(model.tables, 'orders').columns[0]?.ref).toEqual({
+      table: 'customers',
+      column: 'id',
+    })
   })
 
   test('a table the file does not contain is a warning and no ref at all', () => {

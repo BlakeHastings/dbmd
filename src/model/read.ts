@@ -43,6 +43,7 @@ import {
   inFile,
 } from '../diagnostics.js'
 import { KIND_DIRECTORIES, MODEL_FILE } from './paths.js'
+import { REFERENTIAL_ACTIONS } from './types.js'
 import type {
   Column,
   Diagnostic,
@@ -57,6 +58,7 @@ import type {
   ReadResult,
   Ref,
   RefEdge,
+  ReferentialAction,
   Severity,
   Table,
 } from './types.js'
@@ -735,6 +737,7 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
         )
   const refField = fields.take('ref')
   const ref = refField === undefined ? undefined : readRef(ctx, refField)
+  const actions = readActions(ctx, fields, refField)
   fields.reportUnknown('a column')
 
   if (name === undefined || type === undefined) return undefined
@@ -744,8 +747,83 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
     ...(pk === undefined ? {} : { pk }),
     ...(nullable === undefined ? {} : { nullable }),
     ...(columnDefault === undefined ? {} : { default: columnDefault }),
-    ...(ref === undefined ? {} : { ref }),
+    ...(ref === undefined ? {} : { ref: { ...ref, ...actions } }),
   }
+}
+
+/**
+ * `on delete:` and `on update:`, which are facts about the `ref:` beside them.
+ *
+ * Two keys and not one, because they are two clauses of one constraint and both
+ * catalogues report both; answering only the first would have left the import
+ * dropping half of what the contract already holds. ADR 0046.
+ *
+ * They are read whether or not there is a `ref:` to hang them on, so that a
+ * column with an action and no reference is reported rather than quietly
+ * losing the line: an action with nothing to be about is a fact the object
+ * cannot hold, which is what makes it an error and the file unwritable.
+ */
+function readActions(
+  ctx: Ctx,
+  fields: FieldSet,
+  refField: Field | undefined,
+): { onDelete?: ReferentialAction; onUpdate?: ReferentialAction } {
+  const read = (key: 'on delete' | 'on update', when: string) => {
+    const field = fields.take(key)
+    if (field === undefined) return undefined
+    // Asked before the value is looked at, because without a `ref:` the value
+    // cannot matter, and a word this reader does not know is not worth a second
+    // sentence about a key that is about nothing.
+    if (refField === undefined) {
+      report(
+        ctx,
+        'field-missing',
+        'error',
+        `\`${key}\` says what happens to this row when ${when}, and this column has no \`ref:\` for it to be about; add the \`ref:\`, or delete this key`,
+        field.keyOffset,
+      )
+      return undefined
+    }
+    // Whether the action makes sense on this column is deliberately not asked.
+    // `on delete: set null` on a `nullable: false` column is a database that
+    // fails at the first delete, and Postgres creates it without complaint, so
+    // the file is describing something real; saying otherwise would be dbmd
+    // ruling on engine behaviour, which is the half of a migration tool ADR
+    // 0046 refuses. It carries `type: banana` for the same reason.
+    return actionOf(ctx, key, field)
+  }
+
+  const onDelete = read('on delete', 'the row it points at is deleted')
+  const onUpdate = read('on update', 'the key it points at changes')
+  return {
+    ...(onDelete === undefined ? {} : { onDelete }),
+    ...(onUpdate === undefined ? {} : { onUpdate }),
+  }
+}
+
+/**
+ * One of the five referential actions, or a diagnostic naming all five.
+ *
+ * The one closed vocabulary in the format, and the reader refuses a word outside
+ * it rather than carrying it. A column type is the opposite case and is carried
+ * untouched, because the set of types is the engine's and dbmd does not know it;
+ * these five are the standard's, are the same in both catalogues, and a sixth is
+ * something nothing downstream could map. ADR 0046.
+ */
+function actionOf(ctx: Ctx, key: string, field: Field): ReferentialAction | undefined {
+  const known = REFERENTIAL_ACTIONS.map((action) => `\`${action}\``).join(', ')
+  const value = stringOf(ctx, key, field, `write one of ${known}`)
+  if (value === undefined) return undefined
+  const action = REFERENTIAL_ACTIONS.find((candidate) => candidate === value)
+  if (action !== undefined) return action
+  report(
+    ctx,
+    'not-in-vocabulary',
+    'error',
+    `\`${key}: ${value}\` is not a referential action; write one of ${known}`,
+    field.valueOffset,
+  )
+  return undefined
 }
 
 function readIndex(ctx: Ctx, node: unknown): Index | undefined {

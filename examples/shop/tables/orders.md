@@ -9,14 +9,17 @@ columns:
     type: uuid
     nullable: false
     ref: customers.id
+    on delete: restrict
   - name: shipping_address_id
     type: uuid
     nullable: false
     ref: addresses.id
+    on delete: restrict
   - name: subscription_id
     type: uuid
     nullable: true
     ref: subscriptions.id
+    on delete: restrict
   - name: status
     type: text
     nullable: false

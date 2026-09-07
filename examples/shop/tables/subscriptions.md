@@ -9,6 +9,7 @@ columns:
     type: uuid
     nullable: false
     ref: customers.id
+    on delete: restrict
   - name: style
     type: text
     nullable: false

@@ -416,6 +416,7 @@ columns:
     type: uuid
     pk: true
     ref: invoices.id
+    on delete: cascade
   - name: line_no
     type: integer
     pk: true
@@ -443,6 +444,9 @@ leading edge of it.
 
 `line_no` starts at 1 within an invoice and is never reused. A deleted line
 leaves a gap, which is better than renumbering something a customer has printed.
+
+`on delete: cascade` on the first column is what happens to this line when its
+invoice goes, and it is [further down](#what-happens-when-the-target-row-goes).
 ```
 
 ### An index
@@ -610,6 +614,97 @@ The set is per target table and never pools across targets. A `ref` at
 `orders.tenant_id` and a `ref` at `archived_orders.code` are two halves of two
 different constraints, and two warnings.
 
+#### What happens when the target row goes
+
+A `ref:` says where the key points and nothing about what the engine does when
+the row it points at is deleted, and `ON DELETE CASCADE`, `ON DELETE SET NULL`
+and `ON DELETE RESTRICT` are three different promises about this row. They are
+written as two keys beside the `ref:` they are about:
+
+```yaml
+  - name: invoice_id
+    type: uuid
+    pk: true
+    ref: invoices.id
+    on delete: cascade
+```
+
+Five values, spelled the way SQL spells them, and no others:
+
+| written | what the engine does to this row |
+| --- | --- |
+| `no action` | refuses the delete, at the end of the statement |
+| `restrict` | refuses the delete, immediately. Postgres only |
+| `cascade` | deletes it, or carries the new key onto it |
+| `set null` | sets this column to null |
+| `set default` | sets this column to its `default` |
+
+This is the one closed list in the format, and a word outside it is
+`not-in-vocabulary`:
+
+```markdown dbmd-error:tables/orders.md:not-in-vocabulary
+---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+    on delete: banana
+---
+
+`banana` is not one of the five, so dbmd has nothing to record. It is an error
+rather than a warning for `superseded-key`'s reason: you meant something, dbmd
+cannot hold it, and a warning would let the next save delete the line.
+```
+
+That is the opposite of how a `type:` is treated, and the difference is worth a
+sentence. The set of types belongs to your engine and dbmd deliberately does not
+know it, so `citext` and `banana` are both carried without a word. These five
+belong to the standard, are the same five in both catalogues and are the five
+the introspection contract carries, so a sixth is not a spelling dbmd has not
+heard of: it is a fact nothing downstream could hold.
+
+**Absent is not `no action`.** No key means the file does not say; `no action`
+means somebody said, and a database reports both. That is why an import of a
+constraint whose DDL never mentioned a referential action still writes
+`on delete: no action`: the catalogue answered, and dbmd writes down answers
+rather than deciding which of them are too obvious to keep.
+
+**`on update` is the same key one word along**, for what happens when the target
+row's key changes rather than when the row goes. It takes the same five values,
+and it is much rarer in a hand-written model because most keys are surrogate and
+never change: `examples/shop` has none, for exactly that reason. It is here
+because both engines report it on every constraint, and a format that could hold
+one clause and not the other would have made every import drop half of what it
+was holding.
+
+Neither key means anything without a `ref:` beside it, and dbmd says so rather
+than dropping the line:
+
+```markdown dbmd-error:tables/orders.md:field-missing
+---
+kind: table
+table: orders
+columns:
+  - name: status
+    type: text
+    on delete: cascade
+---
+
+`on delete` is a fact about a reference and this column has none, so there is
+nothing for it to be about. Add the `ref:`, or delete the key.
+```
+
+**Nothing about writing this down makes dbmd do it.** dbmd emits no DDL, and
+these two keys describe a constraint your database already has, in the same way
+`default: now()` describes a default it already has. Nor does dbmd have an
+opinion about whether the action makes sense: `on delete: set null` on a
+`nullable: false` column is a database that will fail at the first delete,
+Postgres creates it without complaint, and dbmd carries it in silence for the
+same reason it carries `type: banana`. [ADR 0046][adr46] is where that line is
+drawn, and what the next key of this kind should ask itself.
+
 Which makes this the third file of the model this page has been building, and
 the one `invoice_lines` has been pointing at since the top of it:
 
@@ -625,6 +720,8 @@ columns:
     type: uuid
     nullable: false
     ref: customers.id
+    on delete: restrict
+    on update: no action
   - name: reference
     type: text
     nullable: false
@@ -648,6 +745,11 @@ whole reason `unique` is an index key rather than a column key: without
 unique, and a `ref: invoices.reference` elsewhere would have to be warned about.
 
 Invoices are immutable once issued. A correction is a credit note.
+
+`customer_id` shows both action keys on one column and shows the difference
+between them: `restrict` is a decision somebody made and wrote in the DDL, and
+`on update: no action` is what the catalogue reports for a clause nobody wrote,
+recorded because it was reported rather than because it is interesting.
 ```
 
 ### Layout
@@ -877,7 +979,7 @@ its first save, and so a file you write in this shape never changes at all.
 | --- | --- |
 | `_model.md` | `kind`, `name`, `engine` |
 | a table | `kind`, `table`, `columns`, `indexes`, `group`, `layout` |
-| a column | `name`, `type`, `pk`, `nullable`, `default`, `ref` |
+| a column | `name`, `type`, `pk`, `nullable`, `default`, `ref`, `on delete`, `on update` |
 | an index | `name`, `columns`, `unique` |
 | an index key | a bare string, or `{ expression: ... }` |
 | a note | `kind`, `layout`, `color` |
@@ -1014,8 +1116,9 @@ leaves the line off.
 | `kind-mismatch` | error | `kind:` disagrees with the directory. The file is not loaded. | Fix the key, or move the file. |
 | `name-missing` | error | A table file with no `table:` key. | Add `table: <the file name>`. |
 | `name-mismatch` | error | `table:` disagrees with the file name. | Make them agree. The file name wins. |
-| `field-missing` | error | A required key is absent: a column's `name`, an index's `columns`, a layout's `x`. | Add it. |
+| `field-missing` | error | A required key is absent: a column's `name`, an index's `columns`, a layout's `x`, or the `ref:` that an `on delete` on the same column is about. | Add it. |
 | `field-wrong-type` | error | A key holds the wrong sort of value: a number where a string was wanted. | Usually quotes. See [the quoting rule](#defaults-and-the-quoting-rule). |
+| `not-in-vocabulary` | error | A value of the right sort, outside the closed list its key accepts. Today that is an `on delete` or an `on update` that is not one of [the five](#what-happens-when-the-target-row-goes). | Write one of the five. A `type:` is deliberately not checked this way; the reason the two differ is beside that table. |
 | `empty-value` | warning | A required name or list is there and says nothing: `name: ""`, a name that is only whitespace, an index whose `columns` is `[]`, or a table file whose name is blank. | Fill it in, or delete the row. It is a warning because it is what a half-written model looks like; `--strict` fails the run on it. |
 | `unknown-key` | warning | A key that means nothing here. The message lists the ones that do. | Check the spelling. Otherwise delete it: it is dropped on the next save. |
 | `superseded-key` | error | A real key in the wrong place or under its old name: `null:`, or `unique:` on a column. | The message names the replacement. |
@@ -1098,17 +1201,18 @@ complete is worse than one that says where it ends.
 - **No `where` on an index**, so a partial or filtered index loses its
   predicate. The same answer covers it when somebody builds it: a plain string,
   since nothing but SQL can stand there.
-- **No `on delete` behaviour on a `ref`.** `on delete cascade` says what the
-  database *does*, and this is a model rather than a migration.
 - **No difference between a unique index and a unique constraint.** `unique:
   true` says the keys are unique. It does not say whether dropping the index
   would drop a constraint with it, which is a real difference both engines
   report and the introspection contract carries as `isUniqueConstraint`. It is
-  how the uniqueness was *declared* rather than what is true of the rows, so it
-  is the same question as `on delete` and gets the same answer: an import drops
-  it. [ADR 0003's appendix][adr3] has the argument, and the way out if you want
-  it is a second key on the index entry rather than a second meaning for
-  `unique`.
+  how the uniqueness was *declared* rather than what is true of the rows, so an
+  import drops it. [ADR 0003's appendix][adr3] has the argument, and the way out
+  if you want it is a second key on the index entry rather than a second meaning
+  for `unique`. That appendix called this the same question as `on delete`, and
+  answering `on delete` showed it is not:
+  [a referential action](#what-happens-when-the-target-row-goes) is a different
+  thing happening to your rows, and a unique index and a unique constraint are
+  the same thing under two names. [ADR 0046][adr46] is where the two part.
 - **No schemas.** Table files are flat, so two schemas with a table of the same
   name collide. Subdirectories under `tables/` are the way out and nobody has
   needed it yet.
@@ -1169,4 +1273,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr30]: architecture/decisions/0030-a-group-is-drawn-and-a-colour-is-a-name.md
 [adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
 [adr33]: architecture/decisions/0033-a-composite-foreign-key-is-judged-as-a-set.md
+[adr46]: architecture/decisions/0046-a-key-may-say-what-the-engine-does.md
 [prettier]: https://prettier.io
