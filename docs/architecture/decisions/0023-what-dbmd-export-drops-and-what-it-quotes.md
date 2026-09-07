@@ -181,7 +181,9 @@ its own owner.
 
 The studio's canvas raises the same question and is not a third gap. Its edge
 draws the relationship exactly as this diagram does, and its panel names the
-action once the edge is selected, which is the split ADR 0035 already uses for
-a group: the box is the overview, the panel is the detail. A reader who needs
-the action opens the thing the overview points at, the same way they open a
-table's panel to learn whether it joined a group.
+action on the column that carries the `ref`, once that column's table is
+selected: the panel lists every column, and the one with a `ref` carries two
+selects holding `on delete` and `on update`. That is the split ADR 0035
+already uses for a group: the box is the overview, the panel is the detail. A
+reader who needs the action selects the table and reads the column, the same
+way they open a table's panel to learn whether it joined a group.
