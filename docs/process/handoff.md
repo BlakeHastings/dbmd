@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with three agents in flight and no pull request open.**
+**As of 2026-09-07, with one agent in flight and no pull request open.**
 
 ## Where the work is
 
-Fifty pull requests have merged, all through `merge-pr.mjs`, and the
+Fifty-three pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -37,6 +37,35 @@ work, so it has neither the file watcher nor the staleness guard. Restarting it
 picks both up. Four files are modified, one `layout` line each; the model checks
 clean. Do not commit or revert them.
 
+## What has been driven, not just tested
+
+The owner asked whether the studio was validated by actually interacting with
+it. It was, on a copy of `examples/shop`, through a real browser, on
+2026-09-07. Every one of these wrote the file named and left every other file
+in the model byte-identical to where it started:
+
+| Action | What it wrote |
+| --- | --- |
+| Drag a table | that table's `layout` line, and nothing else |
+| Add table | a new file at the exact placement coordinates |
+| Add column | one appended column, nameless, on the table's own file |
+| Remove column | the column gone from that file |
+| Delete this table | the file gone, behind a confirmation step |
+
+**Edges leave and arrive at the rows of the two columns, and stay on those rows
+when a box moves.** That was the owner's first complaint and it is the half that
+is hard.
+
+**`Add table` is a two-step mode, and a reviewer who does not know that will
+report it broken.** The button arms placement, the next click on the canvas is a
+coordinate, and a small form then asks for a name. A single click on the button
+looks like nothing happening, and the only visible signal is the button's
+pressed state and a crosshair cursor.
+
+**Notes and groups still draw nothing**, which is dbmd-34 and is why `README.md`
+and the scaffolded `_model.md` currently promise something the canvas does not
+do.
+
 ## What a successor would otherwise have to reconstruct
 
 - **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
@@ -56,11 +85,8 @@ clean. Do not commit or revert them.
 - **dbmd-34**, notes and groups on the canvas. The owner asked for this by name
   and it is the last thing on their list that has not landed. It holds
   `src/studio/`, `test/studio/`, `README.md` and `examples/shop`, which is why
-  three ready items cannot be dispatched behind it.
-- **dbmd-8ms**, repairing a guarantee that had quietly stopped covering
-  everything it claimed.
-- **dbmd-4.1**, making the import page's JSON run through the real contract
-  validator rather than being checked by eye.
+  four ready items cannot be dispatched behind it: the README correction, the
+  studio label fixes, the file-name rule and the four remaining test sleeps.
 
 ## What proved out, and is easy to lose
 
