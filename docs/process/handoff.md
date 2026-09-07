@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with three agents in flight and one pull request open.**
+**As of 2026-09-07, with three agents in flight and no pull request open.**
 
 ## Where the work is
 
-Forty-five pull requests have merged, all through `merge-pr.mjs`, and the
+Fifty pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -53,11 +53,14 @@ clean. Do not commit or revert them.
 
 ## In flight
 
-- **PR #46**, restoring an ADR bullet that was replaced rather than appended, and
-  dropping a temporary Node 20 leg that reached `main` by the merge mistake above.
 - **dbmd-34**, notes and groups on the canvas. The owner asked for this by name
-  and it is the last thing on their list that has not landed.
-- **dbmd-nxb**, a composite foreign key warning twice on every import.
+  and it is the last thing on their list that has not landed. It holds
+  `src/studio/`, `test/studio/`, `README.md` and `examples/shop`, which is why
+  three ready items cannot be dispatched behind it.
+- **dbmd-8ms**, repairing a guarantee that had quietly stopped covering
+  everything it claimed.
+- **dbmd-4.1**, making the import page's JSON run through the real contract
+  validator rather than being checked by eye.
 
 ## What proved out, and is easy to lose
 
@@ -79,6 +82,12 @@ clean. Do not commit or revert them.
   before believing the shape of the failure.
 - **The parser's first error is not its most useful.** Neither emission order nor
   printed order finds the tab; character position does.
+- **A guard that fires only on the case nobody hits is worse than no guard.**
+  The test behind `docs/format.md` slices its list of diagnostic codes at the
+  first blank line, so a blank line put in to space out a doc comment drops
+  codes from the check. There is a length guard, and it catches a blank line
+  near the top of the list and not one near the bottom. That is why nobody
+  looked again for months. Reproduced, filed as dbmd-8ms, in flight.
 
 ## What is waiting on the owner
 
