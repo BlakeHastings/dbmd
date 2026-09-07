@@ -91,10 +91,10 @@ export async function readModel(dir: string): Promise<ReadResult> {
   let body = ''
   let complete = true
 
-  const names = entries.map((entry) => entry.name).sort(byText)
-  const isDirectory = new Map(entries.map((entry) => [entry.name, entry.isDirectory()]))
+  const listing = [...entries].sort((a, b) => byText(a.name, b.name))
+  const modelFile = entries.find((entry) => entry.name === MODEL_FILE)
 
-  if (isDirectory.get(MODEL_FILE) === false) {
+  if (modelFile !== undefined && !modelFile.isDirectory()) {
     const text = await readText(join(dir, MODEL_FILE), MODEL_FILE, diagnostics)
     if (text === undefined) {
       // The file is there and unreadable, so what it says is unknown rather
@@ -116,15 +116,44 @@ export async function readModel(dir: string): Promise<ReadResult> {
     })
   }
 
-  for (const entryName of names) {
-    if (isDirectory.get(entryName) !== true) continue
+  // A `Dirent` answers from the `lstat` `readdir` already did, so it describes
+  // the entry and not what the entry points at: a symlink to a directory, and a
+  // Windows junction, both answer `isDirectory()` false and `isSymbolicLink()`
+  // true. Measured on Windows 11 with Node 24, a junctioned `tables` reports
+  // `isDirectory=false isFile=false isSymbolicLink=true`, and the guard this
+  // replaced skipped it in silence: a model whose tables were right there was
+  // read as a model with no tables and reported as having no problems.
+  //
+  // So `isDirectory()` is not asked. `isFile()` is, because a plain file is the
+  // one answer that settles the question on its own: it is not a directory, it
+  // does not point at one, and it never will. Everything else is handed to
+  // `readdir`, which follows a link and is the only thing that can tell a link
+  // to a directory from a link to nothing. That costs no extra call: it is the
+  // `readdir` this loop was going to make anyway. ADR 0038.
+  for (const entry of listing) {
+    const entryName = entry.name
     const kind = KIND_DIRECTORIES.get(entryName)
     if (kind === undefined) {
+      // Still `isDirectory()` here, and deliberately: `_model.md`, a `README`
+      // and a `.gitignore` are all files at the model root that are nobody's
+      // business, and warning about a name only because it is not a directory
+      // would warn about all of them.
+      if (!entry.isDirectory()) continue
       push(diagnostics, {
         code: 'unknown-kind-directory',
         severity: 'warning',
         at: inFile(entryName),
         message: `\`${entryName}/\` is not a kind of object dbmd knows; its files are ignored`,
+      })
+      continue
+    }
+
+    if (entry.isFile()) {
+      push(diagnostics, {
+        code: 'kind-not-a-directory',
+        severity: 'error',
+        at: inFile(entryName),
+        message: `\`${entryName}\` is a file rather than a directory, so the model's ${entryName} were not read; a \`${entryName}/\` symlink checked out where symlinks are unsupported looks exactly like this`,
       })
       continue
     }
