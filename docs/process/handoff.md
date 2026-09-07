@@ -4,11 +4,11 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with three agents in flight and no pull request open.**
+**As of 2026-09-07, with two agents in flight and no pull request open.**
 
 ## Where the work is
 
-Sixty-seven pull requests have merged, all through `merge-pr.mjs`, and the
+Seventy-two pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **43 items closed, 18
 open, 1 blocked, none in progress that is not dispatched.**
 
@@ -96,10 +96,8 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 - **dbmd-d6u**, a check that fails the build when documentation names a command,
   script or npm task that does not exist. The detection layer for dbmd-7nb.
-- **dbmd-f3p**, the one model diagnostic no test has ever seen, which carries a
-  determinism invariant nothing exercises.
-- **dbmd-lof**, the two `import/empty-value` call sites hidden behind generic
-  helpers.
+- **dbmd-c8p**, whether the watcher's filename filter can be pinned on Windows
+  at all. P4, and the likeliest right answer is a comment rather than a change.
 
 ## What proved out, and is easy to lose
 
@@ -148,6 +146,14 @@ move and will file a defect. It is the note. Move it and the drag works.
   were found by driving the page and noticing something in the wrong place.
   `.scene >` is the convention now; dbmd-3ip is the check.
 
+- **An invariant with a comment and no test is a comment.** `messageOf` in the
+  reader threw the system message away because ADR 0006 forbids an absolute path
+  in output, and said so above itself. Nothing asserted it, and the path it
+  guarded was reachable only from two catch blocks no test had ever entered. The
+  test that fixes it is the shape worth copying: **read the same input from two
+  different directories and demand the same bytes**, which fails for a path no
+  test names.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
@@ -155,9 +161,9 @@ rather than by reading.
 
 - **Every enforcement guard fails when neutered.** Now a suite rather than an
   afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
-- **Every diagnostic code is emitted and, with two exceptions, exercised.**
-  `file-unreadable` and `import/empty-value` are the exceptions, filed as
-  dbmd-f3p and dbmd-ft5.
+- **Every diagnostic code is emitted and exercised.** The last two exceptions,
+  `file-unreadable` and `import/empty-value`, were closed on 2026-09-07 by
+  dbmd-f3p, dbmd-ft5 and dbmd-lof.
 - **Every `npm run`, every `scripts/*.mjs` and every `dbmd` subcommand named in
   markdown exists.** The only unreal ones are written as hypothetical, "a future
   `dbmd fmt`". Nothing repeats this check, which is filed.
