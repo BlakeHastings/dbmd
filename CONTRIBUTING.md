@@ -35,7 +35,9 @@ time is a feature.
 ## From a clone to a picture
 
 You need [Node](https://nodejs.org) 20 or later, npm, and git. Nothing else: no
-database, no Docker, no global installs.
+database, no Docker, no global installs. CI builds and tests on Node 20 on Linux
+for every pull request, and this is developed on Node 24 on Windows, so both
+ends of that range are exercised rather than promised.
 
 ```bash
 git clone https://github.com/BlakeHastings/dbmd.git
@@ -43,6 +45,11 @@ cd dbmd
 npm ci
 npm run studio
 ```
+
+On npm 11 or later, `npm ci` ends with a warning that `esbuild`'s install script
+was not run. Ignore it. esbuild ships its platform binary as an optional
+dependency, npm installs that either way, and the build works: the warning is
+npm telling you about a script it declined to run, not about something missing.
 
 `npm run studio` builds and then opens this repository's own example model,
 [`examples/shop`](examples/shop), in your browser. It is eight tables of a
@@ -62,15 +69,18 @@ npm run studio -- --port 8080    # a port you choose, rather than one you are gi
 ```
 
 The bare `--` is npm's separator: everything after it goes to `dbmd` instead of
-to npm. It is the same in bash, in PowerShell and in `cmd.exe`.
+to npm. It is the same in bash, in PowerShell and in `cmd.exe`; all three were
+checked, because a shell eating a `--` is the kind of thing that is only ever
+found by somebody on the other operating system.
 
 **Stop it with Ctrl-C.** The studio writes edits back to disk on a debounce, and
 Ctrl-C flushes a write that has not fired yet before it stops listening. Killing
 the process another way can lose the last thing you did.
 
 Anything you change in the page is written straight into `examples/shop`, so it
-shows up in `git status` like any other edit. `git checkout examples/shop` puts
-it back.
+shows up in `git status` like any other edit, and dragging one table's box is
+one changed line in that table's file. `git checkout examples/shop` puts it back,
+which is the undo.
 
 ## The one command you have to remember
 
