@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Eighty-eight pull requests have merged, all through `merge-pr.mjs`, and the
+Ninety-four pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -41,10 +41,17 @@ consistently that nobody checks it is there.
 `AGENTS.md` and `README.md` both say so. Two files claimed otherwise for a day and
 that false claim is why a CI recipe invented a version number.
 
-**The owner has a studio open on `examples/shop`**, started before today's studio
-work, so it has neither the file watcher nor the staleness guard. Restarting it
-picks both up. Four files are modified, one `layout` line each; the model checks
-clean. Do not commit or revert them.
+**`examples/shop` has four uncommitted edits from the owner**, one `layout` line
+each, all four written at 04:32 on 2026-09-07 and untouched since. The model
+checks clean, including `--strict`. **Do not commit or revert them.**
+
+Whether a studio is still open on them is **not known**: this session cannot tell
+which local process is one, and probing unknown ports is not something to do
+blindly. Earlier notes asserted one was open, which was never verifiable. What is
+verifiable is that nothing has written those files since 04:32. If a studio from
+before today's work is still open, it has neither the file watcher nor the
+staleness guard and a hand edit made under it can still be lost, so restarting
+it is the safe move either way.
 
 ## What has been driven, not just tested
 
@@ -96,8 +103,9 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-pqd**, the Postgres query telling nobody how to save its result, when
-  the obvious command produces a file the importer refuses.
+- **dbmd-aud**, the truncation message, which now names a cause that is wrong
+  for both documented routes, and the test that goes red if somebody rewraps the
+  paragraph.
 
 ## What proved out, and is easy to lose
 
@@ -185,6 +193,14 @@ move and will file a defect. It is the note. Move it and the drag works.
   "Postgres is silent".** Both found by following the instructions rather than by
   running the tool, which is a different test and nothing had been doing it.
 
+- **Distance is what goes stale, not counts.** `AGENTS.md` has carried a correct
+  count of the commands through five arrivals, because its count and its list
+  are one sentence. `README.md`'s heading counted entries two hundred lines below
+  it and was wrong twice in three chances. So the heading stopped counting and
+  the entries got a check, which is the split worth copying: **a count is
+  something a person maintains, and an entry is content that has to exist.** A
+  check that reads a heading is the check whose job a rewrite removes.
+
 ## Audited on 2026-09-07, so a successor need not redo it
 
 All clean unless a line says otherwise. Each was checked by breaking something
@@ -251,6 +267,30 @@ rather than by reading.
   that table's file and left the broken one byte-identical. That last part is
   the data-loss path staying closed, since a whole-model write would have
   replaced the unparseable file with a model that does not contain it.
+
+- **The contributor path works as written**, tested the way the skill and the
+  query recipes were: `npm run studio -- --no-open --port 8080` builds, binds to
+  the port asked for, prints the URL, opens no browser, serves 200, and writes
+  nothing to the model it is serving. The npm 11 note is still accurate and still
+  relevant: npm here is 11.17.0 and `npm ci` does warn about esbuild's install
+  script, and the build works anyway.
+- **The gate costs about 41 seconds**, measured after a day of adding checks to
+  it: typecheck 3.7s, format 3.3s, the four static checks 0.6s each, tests 9.8s,
+  build 2.1s, `check:pack` 8.5s, `check:guards` 8.4s. **Two thirds of it is the
+  tests and the two that pack a tarball**, and the four static checks together
+  are under three seconds, so the cheap end has room and the expensive end does
+  not.
+
+- **Two studios on one model directory is safe, and the loser is told why.** Both
+  bind, both serve. A edits `orders` and flushes. B, which still holds the old
+  revision and has not noticed, edits the same table: its `PATCH` is accepted at
+  B's own revision, and then B's watcher sees the file changed on disk, reloads,
+  and **drops B's edit rather than writing over A's**. B's status carries the
+  conflict and the sentence a person needs: `the studio has reloaded the file and
+  dropped its own edit to it; make the edit again if you still want it`. The file
+  keeps A's value and only that one file differs from the original. That is
+  ADR 0019's protection working against a second **writer** rather than a hand
+  edit, which is the case `wire.ts` says the revision exists for.
 
 
 ## What is waiting on the owner
