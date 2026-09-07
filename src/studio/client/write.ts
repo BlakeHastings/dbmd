@@ -127,6 +127,36 @@ export class RequestFailed extends Error {
   }
 }
 
+/**
+ * What the page says when a refusal means the model moved.
+ *
+ * The rule above was only half kept. The code decided what to *do* and the
+ * server's prose was concatenated to decide what to *say*, so the status bar
+ * showed a sentence written for a script: it names two revision numbers and
+ * tells the reader to read `/api/model` again. The person reading it cannot do
+ * that, has no reason to know what `/api/model` is, and is looking at a page
+ * that re-reads by itself. Then the page appended its own advice, so the same
+ * instruction arrived twice, the second time correctly attributed.
+ *
+ * Rendering the code rather than the words is the fix, and it is the fix
+ * everywhere rather than at the one call site, because there are two paths into
+ * this refusal (an edit and a delete) and a person meeting the same refusal
+ * twice should meet the same sentence. **The server's own message is left
+ * exactly as it is**: it is the right answer to the script that got the 409,
+ * and making it worse to make this one better would be trading one reader for
+ * the other.
+ *
+ * `what` is the noun phrase for the thing that was refused, because the page
+ * knows what it was doing and the server does not.
+ */
+export function staleNotice(what: string): string {
+  return (
+    `${what} was refused because the files changed on disk after this page read them. ` +
+    `Nothing was written and the change on disk is intact. The page is re-reading the model; ` +
+    `make the change again on top of what it then shows.`
+  )
+}
+
 /** What the server answered a mutation with: the object, and where the writes stand. */
 interface ObjectResponse extends WireStatus {
   readonly table?: Table
