@@ -1,0 +1,475 @@
+{
+  "dbmdIntrospection": 1,
+  "engine": "sqlserver",
+  "database": "Traps",
+  "productVersion": "16.0.4265.3",
+  "collation": "Latin1_General_CS_AS",
+  "tables": [
+    {
+      "schema": "Order Book",
+      "name": "Ledger Line",
+      "columns": [
+        {
+          "name": "TenantId",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "EntryId",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "Line",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "Qty",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "RefTenantId",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "RefCode",
+          "type": "nvarchar",
+          "maxLength": 100,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_LedgerLine",
+        "isClustered": true,
+        "columns": [
+          {
+            "name": "TenantId"
+          },
+          {
+            "name": "EntryId"
+          },
+          {
+            "name": "Line"
+          }
+        ]
+      },
+      "foreignKeys": [
+        {
+          "name": "FK_LedgerLine_Code",
+          "columns": [
+            {
+              "name": "RefTenantId"
+            },
+            {
+              "name": "RefCode"
+            }
+          ],
+          "referencedSchema": "Order Book",
+          "referencedTable": "Ledger [Entry]",
+          "referencedColumns": [
+            {
+              "name": "TenantId"
+            },
+            {
+              "name": "Ledger Code"
+            }
+          ],
+          "deleteAction": "SET_NULL",
+          "updateAction": "CASCADE"
+        },
+        {
+          "name": "FK_LedgerLine_Entry",
+          "columns": [
+            {
+              "name": "TenantId"
+            },
+            {
+              "name": "EntryId"
+            }
+          ],
+          "referencedSchema": "Order Book",
+          "referencedTable": "Ledger [Entry]",
+          "referencedColumns": [
+            {
+              "name": "TenantId"
+            },
+            {
+              "name": "Id"
+            }
+          ],
+          "deleteAction": "NO_ACTION",
+          "updateAction": "NO_ACTION"
+        }
+      ]
+    },
+    {
+      "schema": "Order Book",
+      "name": "Ledger [Entry]",
+      "description": "One row per ledger entry. The name has a bracket in it on purpose.",
+      "columns": [
+        {
+          "name": "Id",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": true,
+          "seedValue": 100,
+          "incrementValue": 5
+        },
+        {
+          "name": "TenantId",
+          "type": "int",
+          "maxLength": 4,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "Ledger Code",
+          "type": "nvarchar",
+          "maxLength": 100,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS",
+          "description": "Fifty characters, a hundred bytes."
+        },
+        {
+          "name": "lower(ledger_code)",
+          "type": "nvarchar",
+          "maxLength": 100,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        },
+        {
+          "name": "Note",
+          "type": "nvarchar",
+          "maxLength": 400,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        },
+        {
+          "name": "NoteLower",
+          "type": "nvarchar",
+          "maxLength": 400,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "computedDefinition": "(lower([Note]))",
+          "isPersisted": false,
+          "collationName": "Latin1_General_CS_AS"
+        },
+        {
+          "name": "Memo",
+          "type": "nvarchar",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        },
+        {
+          "name": "Amount",
+          "type": "decimal",
+          "maxLength": 9,
+          "precision": 19,
+          "scale": 4,
+          "isNullable": false,
+          "isIdentity": false,
+          "defaultName": "DF_Ledger_Amount",
+          "defaultDefinition": "((0))"
+        },
+        {
+          "name": "Flag",
+          "type": "bit",
+          "maxLength": 1,
+          "precision": 1,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false,
+          "defaultName": "DF_Ledger_Flag",
+          "defaultDefinition": "((0))"
+        },
+        {
+          "name": "Ref",
+          "type": "uniqueidentifier",
+          "maxLength": 16,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "Payload",
+          "type": "varbinary",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "Doc",
+          "type": "xml",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "Legacy",
+          "type": "text",
+          "maxLength": 16,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        },
+        {
+          "name": "Version",
+          "type": "timestamp",
+          "maxLength": 8,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "Post",
+          "type": "PostCode",
+          "systemType": "nvarchar",
+          "maxLength": 32,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        },
+        {
+          "name": "Region",
+          "type": "varchar",
+          "maxLength": 20,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false,
+          "collationName": "Latin1_General_BIN2"
+        },
+        {
+          "name": "Shape",
+          "type": "geography",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "Anything",
+          "type": "sql_variant",
+          "maxLength": 8016,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "MadeAt",
+          "type": "datetime2",
+          "maxLength": 7,
+          "precision": 23,
+          "scale": 3,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "OldAt",
+          "type": "datetime",
+          "maxLength": 8,
+          "precision": 23,
+          "scale": 3,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "Day",
+          "type": "date",
+          "maxLength": 3,
+          "precision": 10,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        },
+        {
+          "name": "Clock",
+          "type": "time",
+          "maxLength": 3,
+          "precision": 8,
+          "scale": 0,
+          "isNullable": true,
+          "isIdentity": false
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_Ledger [Entry]",
+        "isClustered": false,
+        "columns": [
+          {
+            "name": "TenantId"
+          },
+          {
+            "name": "Id"
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "IX_Ledger_Amount",
+          "isUnique": false,
+          "isClustered": false,
+          "isUniqueConstraint": false,
+          "keyColumns": [
+            {
+              "name": "TenantId",
+              "isDescending": false
+            },
+            {
+              "name": "Amount",
+              "isDescending": true
+            }
+          ],
+          "includedColumns": [
+            {
+              "name": "Ledger Code"
+            }
+          ]
+        },
+        {
+          "name": "IX_Ledger_NoteLower",
+          "isUnique": false,
+          "isClustered": false,
+          "isUniqueConstraint": false,
+          "keyColumns": [
+            {
+              "name": "NoteLower",
+              "isDescending": false
+            }
+          ]
+        },
+        {
+          "name": "IX_Ledger_lower(ledger_code)",
+          "isUnique": false,
+          "isClustered": false,
+          "isUniqueConstraint": false,
+          "keyColumns": [
+            {
+              "name": "lower(ledger_code)",
+              "isDescending": false
+            }
+          ]
+        },
+        {
+          "name": "UQ_Ledger_Code",
+          "isUnique": true,
+          "isClustered": false,
+          "isUniqueConstraint": true,
+          "keyColumns": [
+            {
+              "name": "TenantId",
+              "isDescending": false
+            },
+            {
+              "name": "Ledger Code",
+              "isDescending": false
+            }
+          ]
+        },
+        {
+          "name": "UX_Ledger_Ref",
+          "isUnique": true,
+          "isClustered": false,
+          "isUniqueConstraint": false,
+          "filterDefinition": "([Ref] IS NOT NULL)",
+          "keyColumns": [
+            {
+              "name": "Ref",
+              "isDescending": false
+            }
+          ]
+        }
+      ],
+      "checkConstraints": [
+        {
+          "name": "CK_Ledger_Amount",
+          "definition": "([Amount]>=(0))"
+        }
+      ]
+    },
+    {
+      "schema": "dbo",
+      "name": "Audit Trail",
+      "columns": [
+        {
+          "name": "At",
+          "type": "datetime2",
+          "maxLength": 8,
+          "precision": 27,
+          "scale": 7,
+          "isNullable": false,
+          "isIdentity": false
+        },
+        {
+          "name": "What",
+          "type": "nvarchar",
+          "maxLength": -1,
+          "precision": 0,
+          "scale": 0,
+          "isNullable": false,
+          "isIdentity": false,
+          "collationName": "Latin1_General_CS_AS"
+        }
+      ]
+    }
+  ]
+}

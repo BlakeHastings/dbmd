@@ -6,6 +6,7 @@
 // against a registry built by hand rather than against this one.
 
 import { postgresProvider } from './postgres.js'
+import { sqlserverProvider } from './sqlserver.js'
 import type { EngineProvider } from '../provider.js'
 import type { Diagnostic, Result } from '../diagnostics.js'
 import { compareCodeUnits, inDocument } from '../diagnostics.js'
@@ -15,9 +16,9 @@ import type { Envelope } from '../contract.js'
  * Every engine this build knows. One line per engine, and the import above it.
  *
  *   import { postgresProvider } from './postgres.js'
- *   export const engineProviders = [postgresProvider]
+ *   export const engineProviders = [postgresProvider, sqlserverProvider]
  */
-export const engineProviders: readonly EngineProvider[] = [postgresProvider]
+export const engineProviders: readonly EngineProvider[] = [postgresProvider, sqlserverProvider]
 
 export interface ProviderRegistry {
   /** Sorted, so anything that prints them is deterministic. ADR 0006. */

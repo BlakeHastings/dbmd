@@ -28,8 +28,9 @@ MIT licensed, published as `dbmd` on npm, developed at
 
 Four pieces. `src/model/` turns a `db-model/` directory into a typed
 model plus a list of diagnostics, says where that model disagrees with itself,
-writes one back canonically, and `src/index.ts` exports all three. `src/import/` holds the introspection contract and the provider
-seam, with no engine behind it yet. `src/cli.ts` and `src/cli/` are the entry
+writes one back canonically, and `src/index.ts` exports all three. `src/import/` holds the introspection contract, the provider
+seam and the PostgreSQL and SQL Server providers behind it. Nothing calls them
+yet: `dbmd query` and `dbmd import` are still open items. `src/cli.ts` and `src/cli/` are the entry
 point, and it has four commands: `dbmd init`, `dbmd check`, `dbmd studio` and
 `dbmd export`. `src/studio/` is the studio server and the page it serves,
 reachable either by importing `startStudio` or through that subcommand.

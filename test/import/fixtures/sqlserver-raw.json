@@ -2,7 +2,7 @@
   "dbmdIntrospection": 1,
   "engine": "sqlserver",
   "database": "Shop",
-  "productVersion": "16.0.4145.4",
+  "productVersion": "16.0.4265.3",
   "collation": "SQL_Latin1_General_CP1_CI_AS",
   "tables": [
     {
@@ -77,7 +77,11 @@
       "primaryKey": {
         "name": "PK_Order",
         "isClustered": true,
-        "columns": ["Id"]
+        "columns": [
+          {
+            "name": "Id"
+          }
+        ]
       },
       "indexes": [
         {
@@ -86,8 +90,14 @@
           "isClustered": false,
           "isUniqueConstraint": true,
           "keyColumns": [
-            { "name": "TenantId", "isDescending": false },
-            { "name": "Code", "isDescending": false }
+            {
+              "name": "TenantId",
+              "isDescending": false
+            },
+            {
+              "name": "Code",
+              "isDescending": false
+            }
           ]
         }
       ],
@@ -137,7 +147,7 @@
           "scale": 0,
           "isNullable": false,
           "isIdentity": false,
-          "collationName": "Latin1_General_BIN2"
+          "collationName": "SQL_Latin1_General_CP1_CI_AS"
         },
         {
           "name": "Quantity",
@@ -162,10 +172,10 @@
         {
           "name": "LineTotal",
           "type": "decimal",
-          "maxLength": 9,
-          "precision": 12,
+          "maxLength": 13,
+          "precision": 23,
           "scale": 2,
-          "isNullable": false,
+          "isNullable": true,
           "isIdentity": false,
           "computedDefinition": "([Quantity]*[UnitPrice])",
           "isPersisted": true
@@ -178,13 +188,20 @@
           "scale": 0,
           "isNullable": true,
           "isIdentity": false,
-          "collationName": "SQL_Latin1_General_CP1_CI_AS"
+          "collationName": "Latin1_General_BIN2"
         }
       ],
       "primaryKey": {
         "name": "PK_OrderLine",
         "isClustered": true,
-        "columns": ["OrderId", "LineNo"]
+        "columns": [
+          {
+            "name": "OrderId"
+          },
+          {
+            "name": "LineNo"
+          }
+        ]
       },
       "indexes": [
         {
@@ -194,28 +211,60 @@
           "isUniqueConstraint": false,
           "filterDefinition": "([Quantity]>(0))",
           "keyColumns": [
-            { "name": "OrderId", "isDescending": false },
-            { "name": "LineNo", "isDescending": true }
+            {
+              "name": "OrderId",
+              "isDescending": false
+            },
+            {
+              "name": "LineNo",
+              "isDescending": true
+            }
           ],
-          "includedColumns": ["Quantity"]
+          "includedColumns": [
+            {
+              "name": "Quantity"
+            }
+          ]
         }
       ],
       "foreignKeys": [
         {
           "name": "FK_OrderLine_Order",
-          "columns": ["TenantId", "OrderCode"],
+          "columns": [
+            {
+              "name": "TenantId"
+            },
+            {
+              "name": "OrderCode"
+            }
+          ],
           "referencedSchema": "dbo",
           "referencedTable": "Order",
-          "referencedColumns": ["TenantId", "Code"],
+          "referencedColumns": [
+            {
+              "name": "TenantId"
+            },
+            {
+              "name": "Code"
+            }
+          ],
           "deleteAction": "CASCADE",
           "updateAction": "NO_ACTION"
         },
         {
           "name": "FK_OrderLine_OrderId",
-          "columns": ["OrderId"],
+          "columns": [
+            {
+              "name": "OrderId"
+            }
+          ],
           "referencedSchema": "dbo",
           "referencedTable": "Order",
-          "referencedColumns": ["Id"],
+          "referencedColumns": [
+            {
+              "name": "Id"
+            }
+          ],
           "deleteAction": "NO_ACTION",
           "updateAction": "NO_ACTION"
         }

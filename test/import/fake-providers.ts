@@ -58,6 +58,18 @@ function optional<K extends string, V>(key: K, value: V | undefined): Record<K, 
   return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
 }
 
+/**
+ * A list of `{ "name": ... }`, which is how the SQL Server file spells every list
+ * of column names. `FOR JSON` has no way to emit an array of bare strings, so
+ * the engine's own output is objects all the way down and the Postgres file's
+ * plain `["id"]` is the shape SQL Server cannot produce rather than the norm.
+ */
+function objectNames(value: unknown): string[] {
+  return list(value)
+    .map((item) => str(obj(item)['name']))
+    .filter((item): item is string => item !== undefined)
+}
+
 // ---------------------------------------------------------------------------
 // Postgres
 // ---------------------------------------------------------------------------
@@ -291,17 +303,9 @@ const SQLSERVER_TYPES: Record<string, NormalisedType> = {
 
 /** Two bytes per character, and the same length column says -1 for the max forms. */
 const DOUBLE_BYTE_TYPES = new Set(['nchar', 'nvarchar', 'ntext'])
-const SIZED_TYPES = new Set([
-  'char',
-  'varchar',
-  'nchar',
-  'nvarchar',
-  'binary',
-  'varbinary',
-  'text',
-  'ntext',
-  'image',
-])
+// `text`, `ntext` and `image` are not here: sys.columns reports 16 for all three,
+// which is the size of the pointer rather than of the data.
+const SIZED_TYPES = new Set(['char', 'varchar', 'nchar', 'nvarchar', 'binary', 'varbinary'])
 
 const SQLSERVER_ACTIONS: Record<string, ReferentialAction> = {
   NO_ACTION: 'noAction',
@@ -364,7 +368,7 @@ function sqlServerTable(raw: Raw): Table {
   const primaryKey: PrimaryKey | undefined = str(primaryKeyRaw['name'])
     ? {
         ...optional('name', str(primaryKeyRaw['name'])),
-        columns: list(primaryKeyRaw['columns']).map((c) => String(c)),
+        columns: objectNames(primaryKeyRaw['columns']),
         isClustered: bool(primaryKeyRaw['isClustered']),
       }
     : undefined
@@ -444,7 +448,7 @@ function sqlServerColumn(raw: Raw): Column {
 }
 
 function sqlServerIndex(raw: Raw): Index {
-  const included = list(raw['includedColumns']).map((c) => String(c))
+  const included = objectNames(raw['includedColumns'])
   return {
     name: str(raw['name']) ?? '',
     columns: list(raw['keyColumns']).map((c): IndexKey => {
@@ -465,10 +469,10 @@ function sqlServerIndex(raw: Raw): Index {
 function sqlServerForeignKey(raw: Raw): ForeignKey {
   return {
     ...optional('name', str(raw['name'])),
-    columns: list(raw['columns']).map((c) => String(c)),
+    columns: objectNames(raw['columns']),
     referencedSchema: str(raw['referencedSchema']) ?? '',
     referencedTable: str(raw['referencedTable']) ?? '',
-    referencedColumns: list(raw['referencedColumns']).map((c) => String(c)),
+    referencedColumns: objectNames(raw['referencedColumns']),
     ...optional('onDelete', SQLSERVER_ACTIONS[str(raw['deleteAction']) ?? '']),
     ...optional('onUpdate', SQLSERVER_ACTIONS[str(raw['updateAction']) ?? '']),
   }
