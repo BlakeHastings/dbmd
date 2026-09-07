@@ -60,6 +60,78 @@ seam is shaped this way. The contract was written with the Postgres and the SQL
 Server catalogs open at the same time, on purpose, and every rule below that
 looks arbitrary is a rule one of the two engines forced.
 
+## The report `dbmd query --json` writes
+
+`dbmd query --engine <id>` is the first line of the journey above, and `--json`
+moves its output rather than adding to it. **Without `--json` the SQL is stdout
+and the sentence about it is stderr. With `--json` the report is stdout and the
+SQL is a string inside the report.** So adding `--json` to the redirect in the
+journey above writes a JSON document that no database will run, and that redirect
+is the plain form on purpose.
+[ADR 0011](architecture/decisions/0011-the-cli-writes-through-one-module.md) is
+why: stdout carries exactly one thing per run, and a caller that asked for a
+report cannot also be handed a document on the same stream and told to find the
+seam.
+
+`sql` is cut short in the block below and nowhere else. In the real report it is
+the whole query, ending in a newline, byte for byte what the plain form prints:
+
+```json
+{
+  "schema": 1,
+  "ok": true,
+  "engine": "postgres",
+  "displayName": "PostgreSQL",
+  "characters": 12403,
+  "sql": "-- dbmd introspection query for PostgreSQL 12 or later.\n--\n-- READ ONLY, and written to be checked rather than trusted. It is one SELECT\n-- over the system catalogs. There is no INSERT, UPDATE, DELETE, MERGE, CREATE,\n-- [cut here, and only here: 12403 characters in all]"
+}
+```
+
+**Who reads this is worth writing down, because a caller that wants the SQL
+should not.** Anything that wants the file runs the plain form and redirects,
+which is what the journey above and [`README.md`](../README.md) both show. The
+caller this report is for is a program driving that whole journey and reading one
+stream: it takes every dbmd command's report off stdout as JSON, and without
+`--json` here `query` is the one step that would have to read prose off stderr to
+learn which engine it got and whether the run was ok. `engine` is the id it can
+hand straight to `dbmd import --engine`, `displayName` is what it puts in front
+of a person, and `sql` is a string it writes to a file itself rather than through
+a shell.
+
+**`characters` is on the report for consistency and not for a caller.** It is
+`sql`'s own length, it is there because the text form prints it and the two forms
+of one command are meant to say the same thing, and a program holding `sql` never
+needs it. It also moves whenever a query does, which is the trap in quoting it
+anywhere: 12403 for Postgres and 12900 for SQL Server, measured on 2026-09-07 and
+true only until somebody edits a query. That is a description of one field rather
+than an argument for deleting it. The JSON shapes are public API from the first
+release ([ADR 0006](architecture/decisions/0006-one-cli-three-callers.md)), so a
+field that is merely unused stays, and what was missing was anybody saying what
+it is.
+
+**There is no third exit code.** This command reads nothing and writes nothing,
+so there is no model to be wrong about and no file to fail on: 0 when it printed,
+2 when the command line was wrong. Every way of getting it wrong lands on the
+same shape, the envelope and a `usage` error with no other key beside it:
+
+```json
+{
+  "schema": 1,
+  "ok": false,
+  "error": {
+    "code": "usage",
+    "message": "no engine goes by \"oracle\", and this build knows postgres, sqlserver. Run \"dbmd query --help\"."
+  }
+}
+```
+
+The message is the whole of the difference between them, and there are three. An
+engine nobody has heard of names the ones this build does have, which is where a
+caller learns the ids without parsing `--help`. A missing `--engine` says why it
+is required here and optional on `dbmd import`. A bare word is refused rather
+than quietly ignored, because every other command takes a model directory there
+and this one has no model, so a path has nothing to mean.
+
 ## The path a file takes
 
 ```
