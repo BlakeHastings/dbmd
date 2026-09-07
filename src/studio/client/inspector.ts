@@ -78,6 +78,7 @@ import {
   endingOf,
   indexKeysText,
   keysAreEditableAsText,
+  looksLikeExpressionKey,
   parseIndexColumns,
   parseRef,
   survivesATextarea,
@@ -199,6 +200,23 @@ interface Placement {
  */
 const INDEX_KEYS_NOT_EDITABLE =
   'this index has an expression key, which this one-line field cannot hold, so its keys are shown here and changed in the file'
+
+/**
+ * What the row says when the spelling above it has been typed into it.
+ *
+ * The panel prints `{ expression: lower(email) }` on the row it will not edit,
+ * one line above a row it will, so copying it is the obvious move and it is the
+ * wrong one: this field writes column names, so the model gets a column called
+ * those characters. `index-column-unknown` then fires and offers to wrap it
+ * again — `{ expression: { expression: lower(email) } }` — which is advice for
+ * a case it was not written for, and following it does not work either.
+ *
+ * The row is the only place that knows the paste came from the panel, so the
+ * row is where this is said. It is said and not acted on: the keys still reach
+ * the file exactly as typed. ADR 0047.
+ */
+const INDEX_KEYS_LOOK_LIKE_AN_EXPRESSION =
+  'that is how the file spells an expression key, but this field writes column names, so it has been written as a column called that; an expression key is a mapping this one-line field cannot make, so write that one in the file'
 
 export class Inspector {
   private selected: Selected | null = null
@@ -1054,6 +1072,8 @@ export class Inspector {
       if (row.name.value === '') said.push('this index has no name')
       if (columns.length === 0) said.push('this index names no columns')
       if (row.heldColumns !== undefined) said.push(INDEX_KEYS_NOT_EDITABLE)
+      else if (looksLikeExpressionKey(row.columns.value))
+        said.push(INDEX_KEYS_LOOK_LIKE_AN_EXPRESSION)
       row.notes.textContent = said.join('. ')
       row.notes.hidden = said.length === 0
     }
