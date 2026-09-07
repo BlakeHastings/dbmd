@@ -7,34 +7,34 @@ columns:
     pk: true
   - name: customer_id
     type: uuid
-    null: false
+    nullable: false
     ref: customers.id
   - name: recipient
     type: text
-    null: false
+    nullable: false
   - name: line1
     type: text
-    null: false
+    nullable: false
   - name: line2
     type: text
-    null: true
+    nullable: true
   - name: town
     type: text
-    null: false
+    nullable: false
   - name: postcode
     type: text
-    null: false
+    nullable: false
   - name: country_code
     type: text
-    null: false
+    nullable: false
     default: "'GB'"
   - name: superseded_by
     type: uuid
-    null: true
+    nullable: true
     ref: addresses.id
   - name: created_at
     type: timestamptz
-    null: false
+    nullable: false
     default: now()
 layout: { x: 40, y: 40 }
 ---

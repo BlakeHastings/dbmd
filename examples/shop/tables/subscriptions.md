@@ -7,29 +7,29 @@ columns:
     pk: true
   - name: customer_id
     type: uuid
-    null: false
+    nullable: false
     ref: customers.id
   - name: style
     type: text
-    null: false
+    nullable: false
     default: "'house'"
   - name: bag_grams
     type: integer
-    null: false
-    default: '250'
+    nullable: false
+    default: "250"
   - name: weeks_between
     type: integer
-    null: false
-    default: '2'
+    nullable: false
+    default: "2"
   - name: next_run_on
     type: date
-    null: false
+    nullable: false
   - name: paused_until
     type: date
-    null: true
+    nullable: true
   - name: cancelled_at
     type: timestamptz
-    null: true
+    nullable: true
 indexes:
   - name: subscriptions_due_idx
     columns: [next_run_on]

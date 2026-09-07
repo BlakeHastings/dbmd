@@ -102,10 +102,7 @@ function tableKeys(table: Table): string[] {
 function columnLines(column: Column): string[] {
   const lines = [`  - name: ${scalar(column.name)}`, `    type: ${scalar(column.type)}`]
   if (column.pk !== undefined) lines.push(`    pk: ${column.pk}`)
-  // The nullability key is spelled `null`, per ADR 0003. It is a key we emit
-  // rather than one an author typed, and the reader reads plain keys from their
-  // source text, so it needs no quoting to survive as those four characters.
-  if (column.nullable !== undefined) lines.push(`    null: ${column.nullable}`)
+  if (column.nullable !== undefined) lines.push(`    nullable: ${column.nullable}`)
   if (column.default !== undefined) lines.push(`    default: ${scalar(column.default)}`)
   if (column.ref !== undefined) {
     lines.push(`    ref: ${scalar(`${column.ref.table}.${column.ref.column}`)}`)
@@ -115,7 +112,9 @@ function columnLines(column: Column): string[] {
 
 function indexLines(index: Index): string[] {
   const columns = index.columns.map((column) => scalar(column, 'flow')).join(', ')
-  return [`  - name: ${scalar(index.name)}`, `    columns: [${columns}]`]
+  const lines = [`  - name: ${scalar(index.name)}`, `    columns: [${columns}]`]
+  if (index.unique !== undefined) lines.push(`    unique: ${index.unique}`)
+  return lines
 }
 
 /**

@@ -7,10 +7,10 @@ columns:
     pk: true
   - name: email
     type: citext
-    null: false
+    nullable: false
   - name: "null"
     type: boolean
-    null: false
+    nullable: false
     default: 'false'
 layout: { x: 120, y: 120 }
 ---

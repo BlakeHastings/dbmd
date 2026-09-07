@@ -7,14 +7,14 @@ columns:
     pk: true
   - name: order_id
     type: uuid
-    null: false
+    nullable: false
     ref: orders.id
   - name: total
     type: numeric(12,2)
-    null: false
+    nullable: false
   - name: status
     type: text
-    null: false
+    nullable: false
     default: "'draft'"
 indexes:
   - name: invoices_order_status_idx

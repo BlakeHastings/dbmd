@@ -320,14 +320,17 @@ columns:
     })
 
     expect(lines(diagnostics)).toEqual([
-      'tables/orders.md:7 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, null, pk, ref, type',
+      'tables/orders.md:7 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, pk, ref, type',
     ])
   })
 
   test('two spellings of the same name are a duplicate, and the first wins', async () => {
-    // YAML itself rejects a literally repeated key. This is the case it cannot
-    // see: `null` resolves to the null value and `"null"` to a string, so the
-    // parser thinks they are two keys and dbmd knows they are one.
+    // YAML itself rejects a literally repeated key, and it rejects `on:` against
+    // `"on":` as well, because both of those resolve to the same string. The
+    // retired `null` key is the case it cannot see: plain `null` resolves to the
+    // null value and `"null"` to a string, so the parser thinks they are two
+    // keys and dbmd knows they are one. Both complaints below are worth having
+    // and neither replaces the other.
     const { model, diagnostics } = await withModel({
       'tables/orders.md': `---
 kind: table
@@ -342,9 +345,10 @@ columns:
     })
 
     expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:7 error superseded-key: `null` is now `nullable` and means the same thing: write `nullable: false`',
       'tables/orders.md:8 error duplicate-key: `null` is given twice; the first one is used',
     ])
-    expect(model.tables[0]?.columns[0]?.nullable).toBe(false)
+    expect(model.tables[0]?.columns[0]?.nullable).toBeUndefined()
   })
 })
 
@@ -420,7 +424,7 @@ describe('never throwing, and always in the same order', () => {
       'tables/coerced.md:8 error field-wrong-type: `name` must be a string, but YAML read `null` as null. Quote it.',
       'tables/coerced.md:11 error field-wrong-type: `type` must be a string, but YAML read `true` as a boolean. Quote it.',
       'tables/coerced.md:14 error field-wrong-type: `default` must be a string, but YAML read `0` as a number. A SQL default must be a string so that it survives as SQL text. Quote it, and quote it twice if it is a SQL string literal: `default: "\'pending\'"`.',
-      'tables/coerced.md:15 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, null, pk, ref, type',
+      'tables/coerced.md:15 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, pk, ref, type',
       'tables/empty-frontmatter.md error frontmatter-empty: the frontmatter is empty, so the file declares nothing',
       'tables/no-frontmatter.md error frontmatter-absent: no frontmatter: the file does not start with a `---` line',
       'tables/shipments.md:12 error group-unknown: `group: shipping` names no file at groups/shipping.md',

@@ -43,6 +43,8 @@ afterEach(() => {
 
 describe('the canonical shape', () => {
   test('a table is kind, name, columns, indexes, group, layout, in that order', () => {
+    // An index entry is name, columns, unique, and `unique` is absent on a plain
+    // index rather than written as `false`: one canonical spelling per fact.
     expect(
       serialiseObject(
         table({
@@ -56,7 +58,10 @@ describe('the canonical shape', () => {
             },
             { name: 'status', type: 'text', nullable: false, default: "'pending'" },
           ],
-          indexes: [{ name: 'orders_customer_status_idx', columns: ['customer_id', 'status'] }],
+          indexes: [
+            { name: 'orders_customer_status_idx', columns: ['customer_id', 'status'] },
+            { name: 'orders_psp_reference_key', columns: ['psp_reference'], unique: true },
+          ],
           group: 'billing',
           layout: { x: 480, y: 120 },
         }),
@@ -70,15 +75,18 @@ columns:
     pk: true
   - name: customer_id
     type: uuid
-    null: false
+    nullable: false
     ref: customers.id
   - name: status
     type: text
-    null: false
+    nullable: false
     default: "'pending'"
 indexes:
   - name: orders_customer_status_idx
     columns: [customer_id, status]
+  - name: orders_psp_reference_key
+    columns: [psp_reference]
+    unique: true
 group: billing
 layout: { x: 480, y: 120 }
 ---

@@ -7,14 +7,14 @@ columns:
     pk: true
   - name: payment_id
     type: uuid
-    null: false
+    nullable: false
     ref: payments.id
   - name: amount
     type: numeric(12,2)
-    null: false
+    nullable: false
   - name: reason
     type: text
-    null: true
+    nullable: true
 group: billing
 layout: { x: 1160, y: 800 }
 ---

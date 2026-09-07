@@ -5,18 +5,18 @@ columns:
   - name: invoice_id
     type: uuid
     pk: true
-    null: false
+    nullable: false
     ref: invoices.id
   - name: line_no
     type: integer
     pk: true
-    null: false
+    nullable: false
   - name: description
     type: text
-    null: false
+    nullable: false
   - name: amount
     type: numeric(12,2)
-    null: false
+    nullable: false
 group: billing
 layout: { x: 1160, y: 460 }
 ---

@@ -86,6 +86,55 @@ describe('examples/shop shows off the parts of the format that are easy to miss'
     ).toEqual(['order_id', 'line_no'])
   })
 
+  test('a unique index says so in its frontmatter and not in a paragraph', async () => {
+    const { model } = await shop
+    const unique = model.tables.flatMap((table) =>
+      table.indexes.filter((index) => index.unique === true).map((index) => index.name),
+    )
+
+    // Every one of these was a sentence in a prose body before dbmd-14, because
+    // the format had no way to say it. A load-bearing fact recorded only in a
+    // comment is the failure ADR 0003 exists to prevent, and this example
+    // demonstrated it to every reader of the repository.
+    expect(unique).toEqual([
+      'customers_email_key',
+      'products_sku_key',
+      'shipments_handheld_key',
+      'stock_movements_handheld_key',
+    ])
+
+    // And the prose no longer apologises for the gap.
+    const bodies = [...model.tables, ...model.notes, ...model.groups].map((o) => o.body).join('\n')
+    expect(bodies).not.toContain('the format cannot')
+  })
+
+  test('every ref points at a column the model declares unique or primary', async () => {
+    const { model } = await shop
+    const targets = new Map(
+      model.tables.map((table) => [
+        table.name,
+        new Set([
+          ...table.columns.filter((column) => column.pk === true).map((column) => column.name),
+          ...table.indexes
+            .filter((index) => index.unique === true && index.columns.length === 1)
+            .map((index) => index.columns[0] as string),
+        ]),
+      ]),
+    )
+
+    // dbmd-12 will make this a warning in the validator: a ref whose target is
+    // neither unique nor a primary key is usually a typo. That rule was
+    // unwritable while nothing could declare a target unique, so it is asserted
+    // here against the one model that has to be right.
+    const loose = [...model.referencesTo].flatMap(([target, edges]) =>
+      edges
+        .filter((edge) => !(targets.get(target)?.has(edge.to.column) ?? false))
+        .map((edge) => `${edge.from.table}.${edge.from.column} -> ${target}.${edge.to.column}`),
+    )
+
+    expect(loose).toEqual([])
+  })
+
   test('group membership is declared by the members and computed on the way in', async () => {
     const { model } = await shop
 

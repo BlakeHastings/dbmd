@@ -7,15 +7,15 @@ columns:
     pk: true
   - name: customer_id
     type: uuid
-    null: false
+    nullable: false
     ref: customers.id
   - name: status
     type: text
-    null: false
+    nullable: false
     default: "'pending'"
   - name: placed_at
     type: timestamptz
-    null: false
+    nullable: false
     default: now()
 indexes:
   - name: orders_customer_status_idx

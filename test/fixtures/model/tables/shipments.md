@@ -7,7 +7,7 @@ columns:
     pk: true
   - name: order_id
     type: uuid
-    null: false
+    nullable: false
     ref: orders.id
 group: shipping
 layout: { x: 480, y: 460 }

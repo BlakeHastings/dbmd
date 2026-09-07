@@ -7,18 +7,19 @@ columns:
     pk: true
   - name: email
     type: citext
-    null: false
+    nullable: false
   - name: created_at
     type: timestamptz
-    null: false
+    nullable: false
     default: now()
   - name: "null"
     type: boolean
-    null: false
+    nullable: false
     default: "false"
 indexes:
   - name: customers_email_key
     columns: [email]
+    unique: true
 layout: { x: 120, y: 120 }
 ---
 

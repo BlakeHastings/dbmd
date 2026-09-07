@@ -136,3 +136,92 @@ Everything else here stands, and 0005 is built on it rather than around it. In
 particular, membership in a group is declared by the member for exactly the
 reason a relationship is declared by the foreign key column: a registry is a
 shared file, and a shared file is a merge conflict.
+
+## Amended by dbmd-14 and dbmd-16, once the format had been written by hand
+
+Appended rather than edited, because one of the two paragraphs corrected below
+was the reasoning for a trap that no longer exists, and the reasoning is still
+worth reading.
+
+Both changes came out of writing `examples/shop` by hand (dbmd-61). Neither is a
+new pattern. They are two keys, decided together because they are in the same
+files and the example had to be migrated once rather than twice.
+
+### `null:` is now `nullable:`
+
+The "YAML brings YAML's traps" bullet above says a key named `null` needs care
+because a parser hands it back as the null value rather than as four characters.
+All of that was true. It was also self-inflicted: nothing about YAML forced the
+key to be called `null`, and the reader's own field has been called `nullable`
+since the day it was written. **The name a reader chose for itself, without being
+asked, is the honest evidence of what the key should have been called.**
+
+`nullable: false` needs no special case, no paragraph, and no `NULL_KEY`
+constant. `required: true` was the other candidate and reads the way people
+speak, but it inverts the sense against SQL's `NOT NULL`, against `is_nullable`
+in both engines' catalogues, and against `Column.nullable` in
+`src/import/contract.ts`, so every trip between a database and a file would be a
+negation somebody has to get right. The rename is the change that makes the
+markdown key and the introspection field the same word.
+
+The claim that `null: false` mirrored SQL does not survive being looked at. SQL
+says `NOT NULL`. `null: false` mirrors nothing except the decision to spell it
+that way.
+
+**`null:` is an error, not an alias.** A `superseded-key` diagnostic names
+`nullable`, and no nullability is loaded from the retired key. It is an error
+rather than a warning because the file states a fact the model would then not
+hold, and an object that loaded incompletely is one the writer refuses to write
+(ADR 0010): a warning would leave the object complete and the next save would put
+the file back with the constraint deleted. There is no alias period, because
+there is nothing yet to be compatible with.
+
+### `unique:` goes on an index entry and never on a column
+
+An index entry takes `unique: true`. It was previously unsayable anywhere, so
+four indexes in `examples/shop` recorded their uniqueness in a prose sentence,
+which is precisely the failure the fourth requirement above exists to prevent.
+
+A single-column shorthand on the column itself was considered and refused. It is
+how every hand-author expects to say it, and it is how SQL says it, and it still
+loses: **a unique constraint has a name, and that name is what the engine prints
+when the constraint fires.** `duplicate key value violates unique constraint
+"customers_email_key"` is the string an operator greps for, and a column has
+nowhere to put it. A shorthand would either invent the name on the way out or
+drop it, and both are worse than one more line. The second reason is the one this
+record already gives for having no relationship registry: two places to write the
+same fact are two places to forget it, plus a contradiction between a column's
+`unique: true` and an index over the same column that nobody can adjudicate.
+
+The cost is real and it is paid where it should be. A hand-author who writes
+`unique: true` on a column gets the same `superseded-key` diagnostic, naming the
+`indexes:` entry to write and the column to put in it. That is the whole
+mitigation, and it is a branch in the reader rather than a second spelling in the
+format.
+
+`unique` also makes the validator rule dbmd-12 already planned mean something. A
+`ref` whose target is neither a primary key nor unique could never be anything
+but noise while nothing could declare a target unique.
+
+### Two neighbouring gaps, named here so they are not found a third time
+
+`check` constraints and `on delete` behaviour on a `ref` were found by the same
+agent at the same time and are deliberately **not** decided here.
+
+A `check` constraint is engine-native SQL that dbmd can carry but cannot read,
+render or compare, which makes it the same question as dbmd-18's expression
+indexes rather than a neighbour of `unique`. Both want one answer about opaque
+engine text in the markdown, and answering them in two places is how a format
+ends up with two conventions for the same thing.
+
+`on delete` is a bigger question than a key. `on delete cascade` says what the
+database *does*, not what it looks like, and this record's own line, "this is a
+model, not a migration", is the thing that would have to be revisited to accept
+it. That is an ADR, not a field.
+
+### What did not change
+
+The canonical spelling of an index entry is `name`, `columns`, `unique`, and
+`unique` is absent rather than `false` on a plain index, for the same reason an
+empty list is no key. `examples/shop` is now byte-canonical: reading it and
+writing it back produces no diff at all.

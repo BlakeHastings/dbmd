@@ -16,12 +16,12 @@
  * being reviewable, which is the only thing it is for.
  *
  * **YAML is read through nodes, not through values.** `parseDocument` rather
- * than `parse`, because the two traps ADR 0003 names are invisible in a plain
- * JS value. `null: false` is a key whose resolved value is `null` and whose
- * source text is `null`, and a scalar that resolved to a boolean is the only
- * evidence that someone wrote a column of type `on`. Where a string is
- * expected, this file checks that a string arrived and diagnoses rather than
- * coercing.
+ * than `parse`, because the traps ADR 0003 names are invisible in a plain JS
+ * value. A scalar that resolved to a boolean is the only evidence that someone
+ * wrote a column of type `on`, and a key whose resolved value is `null` is the
+ * only evidence that someone wrote the retired `null:` key rather than a column
+ * named `null`. Where a string is expected, this file checks that a string
+ * arrived and diagnoses rather than coercing.
  */
 
 import { readFile, readdir } from 'node:fs/promises'
@@ -571,8 +571,6 @@ function readTable(
   }
 }
 
-const NULL_KEY = 'null'
-
 function readColumn(ctx: Ctx, node: unknown): Column | undefined {
   if (!isMap(node)) {
     report(ctx, 'field-wrong-type', 'error', 'a column must be a mapping', offsetOf(node))
@@ -582,11 +580,15 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
   const name = requiredString(ctx, fields, 'name', offsetOf(node))
   const type = requiredString(ctx, fields, 'type', offsetOf(node))
   const pk = takeBoolean(ctx, fields, 'pk')
-  // The nullability key is spelled `null`, and YAML resolves a plain `null` to
-  // the null value rather than to the four characters. `fieldsOf` keys on the
-  // source text of plain scalars for exactly this, so the key is here as the
-  // string it was typed as.
-  const nullable = takeBoolean(ctx, fields, NULL_KEY)
+  const nullable = takeBoolean(ctx, fields, 'nullable')
+  fields.reject(
+    'null',
+    '`null` is now `nullable` and means the same thing: write `nullable: false`',
+  )
+  fields.reject(
+    'unique',
+    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one. Write it as an \`indexes:\` entry with \`columns: [${name ?? 'this column'}]\` and \`unique: true\``,
+  )
   const defaultField = fields.take('default')
   const columnDefault =
     defaultField === undefined
@@ -639,9 +641,10 @@ function readIndex(ctx: Ctx, node: unknown): Index | undefined {
       columns.push(column)
     }
   }
+  const unique = takeBoolean(ctx, fields, 'unique')
   fields.reportUnknown('an index')
   if (name === undefined || columnsField === undefined) return undefined
-  return { name, columns }
+  return { name, columns, ...(unique === undefined ? {} : { unique }) }
 }
 
 function readRef(ctx: Ctx, field: Field): Ref | undefined {
@@ -755,6 +758,14 @@ interface Field {
 
 interface FieldSet {
   take(key: string): Field | undefined
+  /**
+   * A key the format understands well enough to say what to write instead.
+   *
+   * It is taken out of the mapping without joining the list of known keys that
+   * `reportUnknown` offers, because the answer to `null:` is `nullable:` and
+   * offering `null` back would be worse than the generic warning it replaces.
+   */
+  reject(key: string, message: string): void
   /** Every key not taken, as a warning. `what` names the thing, for the text. */
   reportUnknown(what: string): void
 }
@@ -789,6 +800,12 @@ function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
     take(key) {
       taken.add(key)
       return entries.get(key)
+    },
+    reject(key, message) {
+      const field = entries.get(key)
+      if (field === undefined) return
+      entries.delete(key)
+      report(ctx, 'superseded-key', 'error', message, field.keyOffset)
     },
     reportUnknown(what) {
       const known = [...taken].sort(byText).join(', ')

@@ -7,14 +7,14 @@ columns:
     pk: true
   - name: invoice_id
     type: uuid
-    null: false
+    nullable: false
     ref: invoices.id
   - name: amount
     type: numeric(12,2)
-    null: false
+    nullable: false
   - name: taken_at
     type: timestamptz
-    null: false
+    nullable: false
 group: billing
 layout: { x: 820, y: 800 }
 ---
