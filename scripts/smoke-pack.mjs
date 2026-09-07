@@ -200,6 +200,13 @@ function checkTheEntryPoint(install) {
  * for real, which cannot be generated from a help listing because each one needs
  * arguments only somebody who knows the command can supply, and which is the
  * half that proves more than "the module loaded".
+ *
+ * Every one of them is asserted on what it said and not only on what it
+ * returned. An exit code is a coarse instrument here: `dbmd check` exits 0 for
+ * a model with warnings on purpose, `--help` exits 0 having printed nothing,
+ * and a command that narrates onto stdout exits 0 too. Each of those is a
+ * regression a user meets on their first command, and none of them moves a
+ * code.
  */
 async function checkTheCommands(install, version) {
   const printed = await dbmd(install, ['--version'])
@@ -219,8 +226,14 @@ async function checkTheCommands(install, version) {
   }
   for (const command of commands) {
     const answered = await dbmd(install, [command, '--help'])
-    if (answered.code !== 0) {
-      failures.push(`dbmd ${command} --help exited ${answered.code}: ${answered.stderr.trim()}`)
+    // The usage line and the stream it arrived on, rather than the exit code. A
+    // command whose help is empty exits 0, and `--help` is a document the caller
+    // asked for, so ADR 0006 puts it on stdout and not in the narration.
+    if (answered.code !== 0 || !answered.stdout.includes(`Usage: dbmd ${command}`)) {
+      failures.push(
+        `dbmd ${command} --help exited ${answered.code} and put no usage on stdout: ` +
+          `${firstLine(answered.stderr)}`,
+      )
     }
   }
 
@@ -228,13 +241,41 @@ async function checkTheCommands(install, version) {
 
   const model = join(install, 'model')
   const created = await dbmd(install, ['init', model])
-  if (created.code !== 0) {
-    failures.push(`dbmd init exited ${created.code}: ${created.stderr.trim()}`)
+  // `init` has no data to emit, so all of what it says is narration, and an
+  // empty stdout beside a stderr naming the directory is ADR 0006's split seen
+  // on a real pair of descriptors rather than on a captured `Environment`.
+  // `test/cli/cli.test.ts` says in its own header that this is the half it
+  // cannot prove.
+  if (created.code !== 0 || created.stdout !== '' || !created.stderr.includes(model)) {
+    failures.push(
+      `dbmd init exited ${created.code}, put ${created.stdout.length} bytes on stdout and did ` +
+        `not narrate ${model} on stderr: ${firstLine(created.stderr)}`,
+    )
     return ran
   }
+  // The words, not the code. `dbmd check` exits 0 for a model with warnings by
+  // design (ADR 0020), so an exit code cannot tell a clean scaffold from one
+  // that warns at every new user on their first command. `no problems` is the
+  // clause that carries the claim; the rest of the sentence counts tables and is
+  // prose ADR 0006 leaves free to be reworded, so the clause is all that is
+  // asserted.
   const checked = await dbmd(install, ['check', model])
-  if (checked.code !== 0) {
-    failures.push(`dbmd check over what init wrote exited ${checked.code}: ${checked.stderr.trim()}`)
+  if (checked.code !== 0 || !checked.stderr.includes('no problems')) {
+    failures.push(
+      `dbmd check over what init wrote exited ${checked.code} and did not say "no problems": ` +
+        `${lastLine(checked.stderr)}`,
+    )
+  }
+  // Again under `--strict`, which is the boundary ADR 0020 moves and so the only
+  // place a warning in the scaffold would ever reach an exit code. The pair says
+  // "nothing at all to report", which is more than either line says alone.
+  const strict = await dbmd(install, ['check', model, '--strict'])
+  if (strict.code !== 0 || !strict.stderr.includes('no problems')) {
+    failures.push(
+      `dbmd check --strict over what init wrote exited ${strict.code} and did not say ` +
+        `"no problems", so the scaffold a new user starts from is not clean: ` +
+        `${lastLine(strict.stderr)}`,
+    )
   }
   // `--stdout` rather than the write, for two reasons: it leaves the model
   // exactly as `init` wrote it for the studio to read next, and it is the one
@@ -247,7 +288,7 @@ async function checkTheCommands(install, version) {
         `${firstLine(exported.stderr)}`,
     )
   }
-  return [...ran, 'init', 'check', 'export --stdout']
+  return [...ran, 'init', 'check', 'check --strict', 'export --stdout']
 }
 
 /** The command names out of the root help, which lists them one per indented line. */
@@ -350,6 +391,19 @@ async function checkTheLibrary(install) {
 
 function firstLine(text) {
   return text.trim().split(/\r?\n/).find(Boolean) ?? '(no output)'
+}
+
+/**
+ * The last thing a report said.
+ *
+ * `dbmd check` groups its diagnostics under file headings and puts the tally
+ * last, so the first line of a failing run is a path and the last one is the
+ * count. The count is what says whether a scaffold that stopped being clean
+ * grew an error or a warning, which is the whole distinction these assertions
+ * exist for.
+ */
+function lastLine(text) {
+  return text.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? '(no output)'
 }
 
 /** The URL from the server's narration, which is on stderr and is the only place it appears. */
