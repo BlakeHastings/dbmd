@@ -115,3 +115,48 @@ becomes real. The two rules cannot both apply to the same name.
 - **A command is added that genuinely should not be in the README.** A debugging
   subcommand, say. There is no exemption today, on purpose: the first one should
   be argued for here rather than added quietly to a list in the script.
+
+## A second count in the same file went wrong, and the difference was the sentence
+
+Appended rather than edited. Nothing decided here changes, and the argument this
+record rests on turns out to be stronger than it was stated, not weaker.
+
+The **Revisit when** entry above says `AGENTS.md`'s count going wrong should be
+answered by the sentence losing its number rather than by gaining a check. That
+entry is about the count of commands. It has still never been wrong: line 54
+reads "it has seven commands" and lists seven.
+
+**A different count in the same file was wrong.** The Invariants section opened
+"Two, and both are about this repository rather than about code that does not
+exist yet", and five invariants followed it: agents do not land code, decision
+record numbers are handed out, every tracked source file has to be readable as a
+diff, a command in backticks is a claim that it exists, and a command that
+exists owes the README an entry. Found by `dbmd-b63` on 2026-09-07, by reading
+rather than by any check.
+
+**That is this record's own explanation coming true in a place it did not look.**
+The reason given above for the commands count never being wrong is structural:
+"its count and its list are the same sentence: editing the list puts your cursor
+next to the number", against a README heading that "counted entries that ended
+two hundred lines below it, and it was wrong twice out of three chances." The
+invariants count had the README's shape rather than the commands count's. The
+number sat in a lead-in sentence and the five invariants were five bold
+paragraphs below it, so adding one put nobody's cursor anywhere near it.
+
+So **what is reliable is the sentence shape and not the file**, which is a
+sharper claim than "`AGENTS.md`'s record is perfect" and is what somebody
+reading this for guidance should take from it. A count welded to its list is
+safe. A count separated from what it counts is a promise to keep two things in
+step by memory, and memory is what fails.
+
+The fix is the one the entry above already specifies, applied to the other
+sentence: the number is gone rather than corrected to five. Correcting it would
+have rebuilt the same trap with a different number in it, and the lead-in still
+does its job, which is to say the invariants are about this repository rather
+than about code that does not exist yet.
+
+**No check was added and none should be.** `check:commands` resolves commands
+against a registry, `package.json` and the filesystem. A check that counted bold
+paragraphs would be guessing at what a list is, and it would be the second
+mechanism in this repository for a problem whose first mechanism is writing the
+sentence properly.

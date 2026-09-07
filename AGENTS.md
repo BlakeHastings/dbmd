@@ -128,8 +128,10 @@ branch convention above depends on; without it `bd` will hand out a suffixed id.
 
 ## Invariants
 
-Two, and both are about this repository rather than about code that does not
-exist yet.
+Each of these is about this repository rather than about code that does not exist
+yet. There is deliberately no count in this sentence: the one that used to be
+here said two while five followed it, and ADR 0043 explains both why that
+happened and why the answer is to drop the number rather than to correct it.
 
 **Agents do not land code.** Push the branch, open the pull request or report
 the branch, and stop. The orchestrator reviews and merges. This holds when the
