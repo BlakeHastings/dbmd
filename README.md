@@ -17,7 +17,9 @@ installed, which is a thing you can do today.
 
 **Status: in development.** `npx dbmd init` works: it writes a `db-model/`
 directory with a small example model in it, two tables and a sticky note, prose
-and all. The studio above does not exist yet. What is decided is in
+and all. `npx dbmd studio` works too: it serves that directory on loopback and
+opens it, and `--port N` and `--no-open` are the two flags it takes. There is
+no `check` and no `export` yet. What is decided is in
 [`docs/architecture/decisions/`](docs/architecture/decisions/), and why the
 format is shaped this way is
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md).

@@ -17,6 +17,7 @@
 import { createRequire } from 'node:module'
 import { EXIT_FAILURE, EXIT_USAGE, UsageError, type Command } from './command.js'
 import { initCommand } from './init.js'
+import { studioCommand } from './studio.js'
 import {
   createOutput,
   processEnvironment,
@@ -30,10 +31,10 @@ import {
 /**
  * Every subcommand. Adding one is writing a `Command` and adding it here.
  *
- * `check`, `export` and `studio` are their own work items and land in this
- * array when they do.
+ * `check` and `export` are their own work items and land in this array when
+ * they do.
  */
-const COMMANDS: readonly Command[] = [initCommand]
+const COMMANDS: readonly Command[] = [initCommand, studioCommand]
 
 /**
  * From the installed package's own `package.json`, so `--version` cannot
