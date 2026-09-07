@@ -38,9 +38,37 @@ calls rather than mentions, so prose in a comment about `console.log` is fine,
 which matters because that prose is where the reason lives. It is a test rather
 than a lint rule because `npm run check` is this repository's only mechanical
 gate and vitest already runs inside it: a lint rule would mean a linter, a
-config file and a dependency to enforce three regular expressions. `process.exit`
+config file and a dependency to enforce four regular expressions. `process.exit`
 is in the list for a different reason from the other two: it truncates a pipe
 that has not flushed, which is why `src/cli.ts` sets `process.exitCode` instead.
+
+**The browser is held to the opposite rule.** `src/studio/client/` is a bundle
+that runs in a page. It has no stdout, no pipe and no exit code, so no part of
+rule 1's reasoning reaches it, and `console.error` there is the ordinary way to
+report an error rather than a mistake. Worse than useless, the Node rule's
+advice in that directory cannot be followed at all: `src/cli/output.ts` reads
+`process` and cannot be part of a browser bundle. So the client is scanned under
+its own rule, which is stricter rather than looser: **`process` may not appear
+in browser code at all**, `process.env` included. A `process` reference that
+esbuild bundles into the page is a crash in front of a user, and that is a class
+of mistake worth keeping a gate pointed at. Skipping the directory would have
+stopped looking for it.
+
+Which files are the browser's is read from `tsconfig.client.json`, not from a
+list in the test. That file is where this repository already says "this is the
+browser", by swapping the `node` types for `DOM`. A second list would be a
+second answer to the same question, and the day they disagree is the day
+somebody adds browser code, gets the Node rules, and is told to import a module
+that cannot be imported. A test asserts the seam still resolves, so renaming
+that config fails with an explanation rather than silently.
+
+**What the gate does not do is stop somebody who is trying.**
+`globalThis.console.log(...)` passes it, and so does aliasing `console` to a
+local name first. That is accepted rather than overlooked. The gate exists to
+catch narration typed by habit, and nobody reaches for `globalThis.console` by
+habit; closing those holes means a real parser, and a parser is a dependency and
+a maintenance surface to defend against a colleague who has decided to lie. Read
+it as a smoke alarm rather than a lock.
 
 **A command returns a report, and the exit code travels inside it.** A command
 gets an `Output` as its second argument and its last line is
@@ -103,7 +131,14 @@ stdout, and the fix is that thing.
   against a merge commit: the studio server defaulted its injectable `log` to a
   direct `process.stderr.write`, which is the right stream by luck rather than
   by construction. That default is now `narrate` from this module. There is no
-  exemption list and adding one would be the end of the rule.
+  exemption list and adding one would be the end of the rule: where a file
+  genuinely lives under a different runtime, it gets a rule that fits that
+  runtime, which is a decision somebody has to write down here, rather than a
+  name on a list that nobody has to justify.
+- **Two rule sets means two things to keep true.** Somebody adding browser code
+  outside `tsconfig.client.json`'s `include` gets the Node rules and an
+  instruction that will not work. That is the failure mode this split creates,
+  and it costs one line in that config to avoid.
 - **`narrate` is the seam for a caller that is not a command.** The studio
   server is a library that takes a `log`; it does not have an `Output` and
   should not have to invent one to print a URL. Narration on stderr is always
@@ -129,6 +164,12 @@ stdout, and the fix is that thing.
   every command finishes and then speaks.
 - **The `schema` number has to change.** Adding a field does not require it.
   Renaming or removing one does, and by then consumers exist.
+- **A third runtime appears in `src/`**, a worker or an edge function say. Two
+  rule sets are a split; three is a table, and a table wants to live beside the
+  code it describes rather than inside a test.
+- **Somebody walks past the gate on purpose**, or a real violation slips through
+  it in review. That is the evidence that a smoke alarm is no longer enough, and
+  the answer is a linter with a parser rather than a fifth regular expression.
 - **A Windows terminal turns up that renders the escape codes as text.** Node
   enables virtual terminal processing on a Windows console it owns, which is why
   the detection above does not ask what kind of terminal it is. A report of
