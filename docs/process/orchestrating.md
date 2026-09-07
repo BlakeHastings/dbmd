@@ -328,3 +328,57 @@ So: two documents beside the records, and one test for which is which.
 
 **The tell that a paragraph is in the wrong file is that it would still be worth
 reading next month.** A handoff paragraph should not be.
+
+## The hold-every-merge rule broke twice in one afternoon
+
+The section above says to hold every merge while anything is rebasing. On
+2026-09-07 I broke it twice, the second time within an hour of writing about the
+first, and that time it cost two agents a rebase and one of them two.
+
+**The instruction was present, correct and mine, and it did not work.** That is
+the same shape as the reporting rule further up: an instruction is not a control,
+and the answer to a rule broken by accident and repeatedly is a linter, a hook or
+a type rather than a firmer sentence.
+
+**The mechanism is that the cost is invisible at the moment of the decision.**
+Merging is one command with a clean success line. The rebase it causes shows up
+minutes later, in somebody else's report, as a thing that reads like ordinary
+timing. Nothing connects the two, so nothing weighs them.
+
+`merge-pr.mjs` already asks the API whether the pull request in front of it is
+mergeable, and in the same breath it could ask which others are open. Every one
+of those is a branch it is about to make stale, by its own refusal's definition.
+Printing them before it merges puts the cost in front of the person paying it.
+That is **dbmd-nm5**, and it is deliberately not a gate: merging while others are
+open is often right, because the alternative is a queue that never drains. What
+is wrong is that the cost is currently paid by somebody who is not in the room.
+
+**Until that lands, the practical version is narrower than the rule above and
+easier to keep:** an agent that has been sent back is *rebasing*, and the window
+between sending it back and its report is the one to keep clear. Merging while
+agents are still *building* is normal and costs one rebase each, which is the
+price of parallelism. Merging while one is rebasing costs that agent a second
+round trip for nothing.
+
+## Never write an item id from memory, and the reason is a shell habit
+
+Twice on 2026-09-07 I put an id into something durable and it was wrong. Once
+into a brief, so an agent's `bd show` failed and they had to find the item by
+listing. Once into two process documents and a pull request comment, naming an
+item that does not exist.
+
+**The cause is mechanical and it is mine.** `bd create` prints the id it chose on
+the first line of its output. I had been piping it through `tail -2`, which shows
+the priority and the status and cuts exactly the line that matters, so the id I
+then used was the one I expected rather than the one I got. Beads chooses a short
+random suffix; there is nothing to predict.
+
+So: **read the id back**, from the create output or from `bd list`, before it
+goes anywhere a person or an agent will follow. `bd create ... | tail -3` is
+enough. Writing one from memory into a brief costs an agent a failed lookup;
+writing one into a decision record or a process document costs whoever follows it
+later, and they have less context to recover with.
+
+The same applies to quoting an id in a pull request comment. Both of today's
+were caught by chance rather than by anything checking, and nothing checks:
+`check:commands` reads backticked commands, not item ids.
