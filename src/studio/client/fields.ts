@@ -137,6 +137,14 @@ export function indexKeysText(columns: readonly IndexKey[]): string {
  * Narrow on purpose: the mapping spelling and nothing else. `lower(email)` is
  * not this, because `lower(email)` is a legal column name and what the
  * validator already says about one is the right thing to say.
+ *
+ * The validator has the other half of this recognition, in
+ * `quotedExpressionMapping` in `src/model/validate.ts`, and the two are not
+ * shared. Same shape, different input: that one reads one key the reader has
+ * already parsed out of YAML and is anchored, so it can say the name was quoted
+ * in the file. This one reads the whole field before any splitting, so it cannot
+ * be anchored and cannot say that. Both exist because both layers meet the same
+ * copied line, and neither guesses.
  */
 export function looksLikeExpressionKey(text: string): boolean {
   return /\{\s*expression\s*:/.test(text)
