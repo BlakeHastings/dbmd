@@ -9,14 +9,20 @@ scaffolding commands do.
 
 It also makes a second speller of the format. `src/model/write.ts` is currently
 the only thing that knows how a model file is written: which keys exist, how a
-string is quoted, that nullability is spelled `null`, that a layout is flow
+string is quoted, that nullability is spelled `nullable`, that a layout is flow
 style on one line. A template knows all of that too, in prose, where no type
 checks it and no test compares it. The first key that gets renamed leaves the
 scaffold writing a file that the reader diagnoses, and the person who sees it is
 a new user on their first command.
 
-This is not hypothetical. The frontmatter format was being changed in the same
-week this command was written.
+This was not hypothetical and it is no longer a prediction. The frontmatter
+format changed in the same week this command was written: `null:` on a column
+became `nullable:` and an index gained `unique:` (dbmd-14 and dbmd-16), and the
+old key is a hard error rather than an alias. `dbmd init` started
+emitting the new spelling with no change to any of its code, because the only
+thing that had to know was the writer. A template would have gone quietly wrong
+instead, and the diagnostic would have been read by a new user rather than by
+whoever made the change.
 
 ## Decision
 

@@ -26,16 +26,18 @@ const accounts: Table = {
     { name: 'display_name', type: 'text', nullable: false },
     { name: 'created_at', type: 'timestamptz', nullable: false, default: 'now()' },
   ],
-  indexes: [{ name: 'accounts_email_key', columns: ['email'] }],
+  indexes: [{ name: 'accounts_email_key', columns: ['email'], unique: true }],
   layout: { x: 40, y: 40 },
   body: `
 One row per person who can sign in. There is no password column and there never
 will be: the identity provider holds credentials, this table holds the profile,
 and a copy of this database is therefore not a copy of anybody's password.
 
-\`email\` is \`citext\` rather than \`text\` because people type their own address in
-whatever case their phone decides on. \`accounts_email_key\` is what keeps one
-address to one account.
+\`accounts_email_key\` says \`unique\` above, so the frontmatter carries the
+constraint and this paragraph does not have to. What it is here to say is why
+\`email\` is \`citext\` and not \`text\`: people type their own address in whatever
+case their phone decides on, and one address in two cases is one person with two
+accounts unless the type stops caring.
 `,
 }
 
