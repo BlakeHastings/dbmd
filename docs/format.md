@@ -51,9 +51,14 @@ db-model/
   resolves against. Renaming a file renames the object.
 - Only `*.md` files are read, and files whose name starts with `.` are skipped.
 - There is one level of directories. `tables/billing/orders.md` is not read,
-  and nothing warns you about it.
+  and nothing warns you about it, because `billing` claims to be nothing.
 - **A kind directory may be a symlink**, and dbmd follows it. What it may not be
   is a plain file, which is a `kind-not-a-directory` error.
+- **An object file may be a symlink too**, and dbmd follows that as well. What
+  it may not be is a directory: a `tables/orders.md` that is one, or that is a
+  link resolving to one, is an `object-not-a-file` error. A name ending in `.md`
+  in a kind directory is a claim to be an object, and that is the difference
+  between it and `tables/billing/`.
 
 A model with no `tables/` at all is a legal, empty model, and dbmd says nothing
 about it. A `tables` that is a **file** is a different thing and gets the error,
@@ -998,6 +1003,7 @@ leaves the line off.
 | `model-file-missing` | warning | No `_model.md`. | Add one, or accept a model with no name. |
 | `unknown-kind-directory` | warning | A directory that is not `tables`, `notes` or `groups`. | Move the files, or delete the directory. |
 | `kind-not-a-directory` | error | `tables`, `notes` or `groups` is there and is a plain file, so nothing of that kind was read. A symlinked kind directory is fine and is followed; this is about a file. | Look at what is in the file. A path in it means a symlink that was checked out as text, and the fix is a checkout that can make symlinks. Otherwise rename the file out of the way. |
+| `object-not-a-file` | error | A `*.md` name inside `tables/`, `notes/` or `groups/` is a directory rather than a file, so the object it names was not read. A symlinked object file is fine and is followed; this is about one that resolves to a directory, or that is one. | Point the link at the file rather than at the directory holding it. A directory that is not meant to be an object belongs under a name that does not end in `.md`. |
 | `frontmatter-absent` | error | The file does not start with a `---` line. | Add the frontmatter. Check for a blank first line. |
 | `frontmatter-unterminated` | error | An opening `---` with no closing one. | Add the closing `---`. |
 | `frontmatter-empty` | error | Two delimiters with nothing between them. | Say what the file is. |

@@ -24,7 +24,7 @@
  * arrived and diagnoses rather than coercing.
  */
 
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isMap, isScalar, isSeq, parseDocument, type YAMLMap, type YAMLParseError } from 'yaml'
 // `byText` is `compareCodeUnits` under a name that reads at a sort call. It is
@@ -158,7 +158,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
       continue
     }
 
-    for (const file of await markdownFiles(join(dir, entryName), entryName, diagnostics)) {
+    for (const file of await markdownFiles(join(dir, entryName), entryName, kind, diagnostics)) {
       const relative = `${entryName}/${file}`
       const text = await readText(join(dir, entryName, file), relative, diagnostics)
       if (text === undefined) continue
@@ -1183,19 +1183,49 @@ function offsetOf(node: unknown): number | undefined {
 // Odds and ends.
 // --------------------------------------------------------------------------
 
+/**
+ * The `*.md` files in one kind directory, and a diagnostic for the names that
+ * claim to be objects and are not files.
+ *
+ * A `Dirent` answers from the `lstat` `readdir` already did, so `isFile()` is
+ * false for a symlink whatever it points at. This filtered on `isFile()` alone
+ * until dbmd-95n, which meant a symlinked `tables/orders.md` was dropped and the
+ * model came back one table short with nothing said. That is ADR 0038's silence
+ * one level down, and the fix is the same shape: stop asking a `Dirent` a
+ * question it cannot answer.
+ *
+ * **A name ending in `.md` here has to open as a file, and a directory is an
+ * error.** That is ADR 0040 and it is the question this had to answer, because
+ * a link to a *directory* called `orders.md` is as easy to make as a link to a
+ * file and both were silent. Reading it is impossible and skipping it is what
+ * the bug was, so what is left is to say so: the file name is the object's
+ * identity, `orders.md` is the whole of what makes a table `orders`, and a name
+ * in that position that can never be an object is worth a sentence. A *real*
+ * directory called `orders.md` gets the same sentence as a link to one, because
+ * a rule that treated a link differently from the thing it points at would be
+ * the same mistake in a new place.
+ *
+ * A name that is not `*.md` is still nobody's business, link or not: a
+ * junctioned `tables/archive/` raises nothing, exactly as a junctioned
+ * `sketches/` at the model root raises nothing.
+ *
+ * **What it costs.** One `stat`, and only for an entry that is neither a plain
+ * file nor a plain directory, which is to say only for a link. A model with no
+ * links in it makes no call it did not make before, whatever its size, because
+ * every entry takes the `isFile()` branch. Measured on a 2,000-table model on
+ * Windows 11 with Node 24: zero `stat` calls, and 718 ms against 721 ms for the
+ * reader this replaced, which is noise. The bound if every file were a link is
+ * one `stat` each at 47 µs, so 94 ms on those 2,000. ADR 0040 has the numbers.
+ */
 async function markdownFiles(
   dir: string,
   relative: string,
+  kind: ObjectKind,
   out: Diagnostic[],
 ): Promise<readonly string[]> {
+  let entries
   try {
-    const entries = await readdir(dir, { withFileTypes: true })
-    return entries
-      .filter(
-        (entry) => entry.isFile() && entry.name.endsWith('.md') && !entry.name.startsWith('.'),
-      )
-      .map((entry) => entry.name)
-      .sort(byText)
+    entries = await readdir(dir, { withFileTypes: true })
   } catch (error) {
     push(out, {
       code: 'file-unreadable',
@@ -1204,6 +1234,52 @@ async function markdownFiles(
       message: `cannot list the directory: ${messageOf(error)}`,
     })
     return []
+  }
+
+  const files: string[] = []
+  for (const entry of entries) {
+    const name = entry.name
+    if (name.startsWith('.') || !name.endsWith('.md')) continue
+    if (entry.isFile()) {
+      files.push(name)
+      continue
+    }
+    // Not a plain file, so this is a link, a directory, or something exotic.
+    // `isDirectory()` settles a real directory with no call; everything else
+    // needs the call that follows the link, because nothing else can tell a
+    // link to a file from a link to a directory.
+    if (entry.isDirectory() || (await pointsAtADirectory(join(dir, name)))) {
+      push(out, {
+        code: 'object-not-a-file',
+        severity: 'error',
+        at: inFile(`${relative}/${name}`),
+        message: `\`${name}\` is a directory rather than a file, so there is no ${kind} \`${name.slice(0, -'.md'.length)}\`; a link that resolves to a directory looks exactly like this`,
+      })
+      continue
+    }
+    // A link to a file, or a link to nothing. The read that follows is the
+    // judge either way: a link that dangles fails it with `ENOENT` and raises
+    // `file-unreadable`, which is what a listed name that will not open has
+    // always meant here.
+    files.push(name)
+  }
+  return files.sort(byText)
+}
+
+/**
+ * Whether following `file` arrives at a directory.
+ *
+ * A failure is answered `false` rather than diagnosed, and deliberately: the
+ * caller's next move is to read the file, which fails with the same errno and
+ * says `file-unreadable` in the words `docs/format.md` already documents. A
+ * diagnostic here would be a second sentence about one broken link, worded for
+ * a call the user never asked for.
+ */
+async function pointsAtADirectory(file: string): Promise<boolean> {
+  try {
+    return (await stat(file)).isDirectory()
+  } catch {
+    return false
   }
 }
 
