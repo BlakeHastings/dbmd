@@ -129,6 +129,30 @@ move and will file a defect. It is the note. Move it and the drag works.
   near the top of the list and not one near the bottom. That is why nobody
   looked again for months. Reproduced, filed as dbmd-8ms, in flight.
 
+## Audited on 2026-09-07, so a successor need not redo it
+
+All clean unless a line says otherwise. Each was checked by breaking something
+rather than by reading.
+
+- **Every enforcement guard fails when neutered.** Now a suite rather than an
+  afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
+- **Every diagnostic code is emitted and, with two exceptions, exercised.**
+  `file-unreadable` and `import/empty-value` are the exceptions, filed as
+  dbmd-f3p and dbmd-ft5.
+- **Every `npm run`, every `scripts/*.mjs` and every `dbmd` subcommand named in
+  markdown exists.** The only unreal ones are written as hypothetical, "a future
+  `dbmd fmt`". Nothing repeats this check, which is filed.
+- **Every relative link and every anchor in 101 markdown files resolves.**
+- **The studio's five security properties hold**, checked with raw sockets
+  because `fetch` rewrites the `Host` header: loopback bind only and unreachable
+  on the LAN address, an unknown `Host` refused, no `Host` refused, a form post
+  refused, and no CORS headers on a preflight. All five have tests.
+- **The CI recipe in `docs/ci.md` runs**, with the local substitution the page
+  itself tells you to make.
+- **`dbmd export` is idempotent** and writes only between its markers.
+- **`dbmd check --json` is machine-independent.** Its `directory` field echoes
+  what you typed rather than resolving it, so two machines agree.
+
 ## What is waiting on the owner
 
 - **Publishing to npm.** Asked three times, never answered, and nothing depends
