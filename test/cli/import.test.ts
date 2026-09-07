@@ -225,6 +225,55 @@ describe('a paste that stopped early', () => {
   })
 })
 
+/**
+ * The third place `file-unreadable` is raised, and the only one of the three a
+ * test can reach without mocking a filesystem call: a `--file` that is not
+ * there. The other two are in `src/model/read.ts` and are covered by
+ * `test/model/unreadable.test.ts`, which had to mock `node:fs/promises` because
+ * a permission is not a thing a test may set on two operating systems.
+ *
+ * Until dbmd-f3p none of the three had a test, so this one is not padding: it
+ * is the same code, raised by a different module, whose message was built a
+ * different way and said different things in text and in `--json`.
+ */
+describe('a --file that cannot be read', () => {
+  test('names the file once and says why, rather than pasting the system error', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const missing = join(await workspace(), 'not-here.json')
+    const run = await runCli(['import', '--file', missing, '--dir', dir])
+
+    expect(run.code).toBe(1)
+    expect(run.err).toBe(`dbmd: ${missing} could not be read: no such file or directory (ENOENT)\n`)
+    // What it used to say: `... could not be read: ENOENT: no such file or
+    // directory, open '<the same path again>'`. Node's message is the right
+    // thing to print for a parse error and the wrong thing here, because it
+    // repeats the path and `--json` could not carry it at all.
+    expect(run.err).not.toContain('ENOENT: no such file')
+  })
+
+  test('is the same sentence in --json, under file-unreadable', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const missing = join(await workspace(), 'not-here.json')
+    const { environment, written } = captureEnvironment()
+    const code = await runImport(
+      ['--file', missing, '--dir', dir],
+      createOutput(environment, { json: true, noColor: true }),
+      // `--file` is given, so standard input is never touched. This one throws
+      // if that stops being true.
+      TERMINAL,
+    )
+
+    expect(code).toBe(1)
+    const report = JSON.parse(written.out) as { error: { code: string; message: string } }
+    expect(report.error.code).toBe('file-unreadable')
+    // The message used to stop at "could not be read", so a caller reading
+    // `--json` was told that something failed and never told what.
+    expect(report.error.message).toBe(
+      `${missing} could not be read: no such file or directory (ENOENT)`,
+    )
+  })
+})
+
 describe('a name a file cannot hold', () => {
   const catalogue = postgresFile([table('Ledger: Entry'), table('orders')])
 

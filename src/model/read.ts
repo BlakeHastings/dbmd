@@ -30,7 +30,18 @@ import { isMap, isScalar, isSeq, parseDocument, type YAMLMap, type YAMLParseErro
 // `byText` is `compareCodeUnits` under a name that reads at a sort call. It is
 // aliased rather than redefined because the reader and the import contract have
 // to agree on byte order forever, not only today. ADR 0014.
-import { compareCodeUnits as byText, compareDiagnostics, inFile } from '../diagnostics.js'
+//
+// `messageOf` is `errnoText` under the name this file's three catch blocks have
+// always called it. Only the errno reaches a diagnostic, never the system
+// message, because that carries the absolute path ADR 0006 rule 4 forbids in
+// output; `errnoText` is where that rule and the words beside the errno live,
+// shared with `dbmd import`, which raises `file-unreadable` from its own read.
+import {
+  compareCodeUnits as byText,
+  compareDiagnostics,
+  errnoText as messageOf,
+  inFile,
+} from '../diagnostics.js'
 import { KIND_DIRECTORIES, MODEL_FILE } from './paths.js'
 import type {
   Column,
@@ -1183,12 +1194,6 @@ async function readText(
     })
     return undefined
   }
-}
-
-function messageOf(error: unknown): string {
-  // The system message carries the absolute path, which ADR 0006 forbids in
-  // output because it makes two machines disagree about identical input.
-  return error instanceof Error && 'code' in error ? String(error.code) : 'unknown error'
 }
 
 function push(out: Diagnostic[], diagnostic: Diagnostic): void {

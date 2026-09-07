@@ -524,8 +524,13 @@ describe('never throwing, and always in the same order', () => {
     expect(diagnostics[0]?.code).toBe('model-directory-unreadable')
     expect(location(diagnostics[0]).path).toBe('.')
     // ADR 0006 forbids absolute paths in output, so the message carries the
-    // errno and not the path the caller already knows.
-    expect(diagnostics[0]?.message).toBe('cannot read the model directory: ENOENT')
+    // errno and not the path the caller already knows. The words beside it are
+    // dbmd's own, for the same reason: `errnoText` in `src/diagnostics.ts`
+    // writes them rather than lifting Node's message, which has the path in it.
+    // dbmd-f3p, and `test/model/unreadable.test.ts` is the rest of that story.
+    expect(diagnostics[0]?.message).toBe(
+      'cannot read the model directory: no such file or directory (ENOENT)',
+    )
     expect(model.tables).toEqual([])
   })
 
