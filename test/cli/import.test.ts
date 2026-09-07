@@ -9,8 +9,9 @@
  * - the file is not JSON, which is the failure no provider can name because a
  *   provider never sees the characters, and which arrives in four shapes that
  *   want four different answers
- * - the directory already has a model in it, where the difference between
- *   "not built yet" and "not allowed" is the whole of the message
+ * - the directory already has a model in it, which is the other half of the
+ *   command rather than a failure: a delta, printed, and written only once
+ *   somebody has confirmed it
  * - the catalogue handed back a name no file can hold, which is a fact about the
  *   model and therefore a diagnostic naming the table rather than an exception
  */
@@ -174,18 +175,19 @@ describe('nothing prompts, and nothing is written over', () => {
     ).rejects.toThrow(/standard input is a terminal/)
   })
 
-  test('a directory that is not empty is refused, and the message names dbmd-42', async () => {
+  test('a directory that is not empty is a delta, and nothing is written without --confirm', async () => {
     const dir = await workspace()
     await writeFile(join(dir, 'something.md'), 'not yours\n', 'utf8')
 
     const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])
     expect(run.code).toBe(1)
-    expect(run.err).toContain('dbmd-42')
-    // And it really did leave it alone.
+    expect(flat(run.err)).toContain('--confirm')
+    // And it really did leave it alone. dbmd-42 replaced the refusal that used
+    // to be here; what has not moved is that an unconfirmed run writes nothing.
     expect(await readdir(dir)).toEqual(['something.md'])
   })
 
-  test('the refusal is the same failure in --json, with a code a script can branch on', async () => {
+  test('the unconfirmed run is a failure in --json, with a code a script can branch on', async () => {
     const dir = await workspace()
     await writeFile(join(dir, 'something.md'), 'not yours\n', 'utf8')
 
@@ -193,7 +195,18 @@ describe('nothing prompts, and nothing is written over', () => {
     expect(run.code).toBe(1)
     const report = JSON.parse(run.out) as { ok: boolean; error: { code: string } }
     expect(report.ok).toBe(false)
-    expect(report.error.code).toBe('directory-not-empty')
+    expect(report.error.code).toBe('changes-not-confirmed')
+  })
+
+  test('a --dir that is a file is still refused, and says which of the two it is', async () => {
+    const dir = await workspace()
+    const file = join(dir, 'not-a-directory')
+    await writeFile(file, 'a file\n', 'utf8')
+
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', file, '--json'])
+    expect(run.code).toBe(1)
+    const report = JSON.parse(run.out) as { error: { code: string } }
+    expect(report.error.code).toBe('not-a-directory')
   })
 })
 
@@ -435,6 +448,238 @@ describe('a foreign key to a table the export does not contain', () => {
     expect(run.err).toContain('import/reference-not-exported')
     expect(run.err).toContain('`public.customers`')
     expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).not.toContain('ref:')
+  })
+})
+
+/**
+ * Re-importing over a model somebody has been writing in. dbmd-42, ADR 0050.
+ *
+ * The thing these tests are really about is the two files a re-import must not
+ * open. Every case here hand-edits a body and a `layout:` first, the way a
+ * person does, and then asserts that what came back out is the same bytes: an
+ * assertion that the delta was right is worth much less than an assertion that
+ * the paragraph is still there, because the second is the failure nobody
+ * notices until it is in a commit.
+ */
+describe('re-importing over a model', () => {
+  /** The four-table fixture, and one table edited the way a person edits one. */
+  async function imported(): Promise<string> {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])
+    expect(run.code).toBe(0)
+    return dir
+  }
+
+  /** A real paragraph in a body, and a table dragged somewhere it was not. */
+  async function handEdited(dir: string): Promise<{ body: string; layout: string }> {
+    const path = join(dir, 'tables', 'order_line.md')
+    const text = await readFile(path, 'utf8')
+    const body =
+      '\nOne row per line on an order. `note` is what the picker in the warehouse\n' +
+      'typed, and nothing reads it but a person.\n'
+    await writeFile(path, text.slice(0, text.indexOf('---\n', 4) + 4) + body, 'utf8')
+
+    const order = join(dir, 'tables', 'Order.md')
+    const layout = 'layout: { x: 1180, y: 620 }'
+    await writeFile(
+      order,
+      (await readFile(order, 'utf8')).replace('layout: { x: 40, y: 40 }', layout),
+      'utf8',
+    )
+    return { body, layout }
+  }
+
+  /**
+   * The same database one release later, as JSON: a table dropped, a type
+   * widened, and a column dropped whose prose names it. All three of the
+   * owner's cases in one file, so one delta shows the list as a user sees it.
+   */
+  async function nextRelease(): Promise<string> {
+    const document = JSON.parse(await readFile(POSTGRES_FIXTURE, 'utf8')) as {
+      tables: {
+        table_name: string
+        columns: { column_name: string; numeric_precision?: number; numeric_scale?: number }[]
+        indexes: { index_name: string }[]
+      }[]
+    }
+    document.tables = document.tables.filter((t) => t.table_name !== 'event')
+    const line = document.tables.find((t) => t.table_name === 'order_line')
+    if (line === undefined) throw new Error('the fixture has stopped holding order_line')
+    const price = line.columns.find((c) => c.column_name === 'unit_price')
+    if (price === undefined) throw new Error('the fixture has stopped holding unit_price')
+    price.numeric_precision = 14
+    price.numeric_scale = 4
+    line.columns = line.columns.filter((c) => c.column_name !== 'note')
+    line.indexes = line.indexes.filter((i) => i.index_name !== 'order_line_note_lower_idx')
+
+    return await fileOf(JSON.stringify(document))
+  }
+
+  /** Some JSON, as a `--file` somewhere throwaway. */
+  async function fileOf(text: string): Promise<string> {
+    const path = join(await workspace(), 'introspection.json')
+    await writeFile(path, text, 'utf8')
+    return path
+  }
+
+  test('an unchanged database says so, writes nothing, and exits 0', async () => {
+    const dir = await imported()
+    const before = await readFile(join(dir, 'tables', 'Order.md'), 'utf8')
+
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])
+    expect(run.code).toBe(0)
+    expect(flat(run.err)).toContain('nothing to change')
+    expect(await readFile(join(dir, 'tables', 'Order.md'), 'utf8')).toBe(before)
+  })
+
+  test('an unchanged database is a no-op with --confirm too, so a script can always pass it', async () => {
+    const dir = await imported()
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir, '--confirm'])
+    expect(run.code).toBe(0)
+    expect(flat(run.err)).toContain('nothing to change')
+  })
+
+  test("lists all three of the owner's cases in one delta and writes nothing", async () => {
+    const dir = await imported()
+    const { body, layout } = await handEdited(dir)
+    const file = await nextRelease()
+
+    const run = await runCli(['import', '--file', file, '--dir', dir])
+    expect(run.code).toBe(1)
+
+    const list = flat(run.err)
+    expect(list).toContain('database table removed')
+    expect(list).toContain('database column changed')
+    expect(list).toContain('database column removed')
+    // The type change proposes the database's type and says both sides.
+    expect(list).toContain('`numeric(12,2)` in the file and `numeric(14,4)` in the database')
+    // The removed column's prose is named and is not offered to be edited.
+    expect(list).toContain('the prose will name a column that is not there')
+    // Nothing was written, and that includes the file the list is about.
+    expect(await readFile(join(dir, 'tables', 'order_line.md'), 'utf8')).toContain(body)
+    expect(await readFile(join(dir, 'tables', 'Order.md'), 'utf8')).toContain(layout)
+    expect((await readdir(join(dir, 'tables'))).sort()).toEqual([
+      'Order.md',
+      'Tenant.md',
+      'event.md',
+      'order_line.md',
+    ])
+  })
+
+  test('--confirm makes the changes, and the prose and the coordinates survive', async () => {
+    const dir = await imported()
+    const { body, layout } = await handEdited(dir)
+    const before = await readFile(join(dir, 'tables', 'Tenant.md'), 'utf8')
+    const model = await readFile(join(dir, '_model.md'), 'utf8')
+
+    const run = await runCli(['import', '--file', await nextRelease(), '--dir', dir, '--confirm'])
+    expect(run.code).toBe(0)
+
+    // The `only` set is doing its job: one file written out of four tables, one
+    // deleted, and the ones nobody said anything about are byte-identical.
+    const said = flat(run.err)
+    expect(said).toContain('1 file written: tables/order_line.md')
+    expect(said).toContain('1 file deleted: tables/event.md')
+    expect(await readFile(join(dir, 'tables', 'Tenant.md'), 'utf8')).toBe(before)
+    expect(await readFile(join(dir, '_model.md'), 'utf8')).toBe(model)
+
+    // The schema moved.
+    const line = await readFile(join(dir, 'tables', 'order_line.md'), 'utf8')
+    expect(line).toContain('type: numeric(14,4)')
+    expect(line).not.toContain('name: note')
+    expect((await readdir(join(dir, 'tables'))).sort()).toEqual([
+      'Order.md',
+      'Tenant.md',
+      'order_line.md',
+    ])
+
+    // And the two things a machine must never touch did not move.
+    expect(line).toContain(body)
+    expect(await readFile(join(dir, 'tables', 'Order.md'), 'utf8')).toContain(layout)
+  })
+
+  test('a table new to the database lands below what is placed and moves nothing', async () => {
+    const dir = join(await workspace(), 'db-model')
+    await runCli(['import', '--dir', dir, '--file', await fileOf(postgresFile([table('orders')]))])
+    const placed = (await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).replace(
+      'layout: { x: 40, y: 40 }',
+      'layout: { x: 40, y: 300 }',
+    )
+    await writeFile(join(dir, 'tables', 'orders.md'), placed, 'utf8')
+
+    const run = await runCli([
+      'import',
+      '--dir',
+      dir,
+      '--confirm',
+      '--file',
+      await fileOf(postgresFile([table('orders'), table('shipments')])),
+    ])
+    expect(run.code).toBe(0)
+    expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toBe(placed)
+    expect(await readFile(join(dir, 'tables', 'shipments.md'), 'utf8')).toContain(
+      'layout: { x: 40, y: 560 }',
+    )
+  })
+
+  test('a pipe works, nothing prompts, and the flag is named on stderr', async () => {
+    const dir = await imported()
+    const document = await readFile(await nextRelease(), 'utf8')
+
+    const run = await runWithStdin(['--dir', dir], piped(document))
+    expect(run.code).toBe(1)
+    // ADR 0006 rule 1: the whole delta is narration, so a pipe carrying
+    // something else is undisturbed.
+    expect(run.out).toBe('')
+    expect(flat(run.err)).toContain('run the same command again with --confirm')
+    // And it says the thing a pipe makes true and a --file does not.
+    expect(flat(run.err)).toContain('the thing to run again is the whole pipeline')
+    expect((await readdir(join(dir, 'tables'))).sort()).toContain('event.md')
+
+    const confirmed = await runWithStdin(['--dir', dir, '--confirm'], piped(document))
+    expect(confirmed.code).toBe(0)
+    expect((await readdir(join(dir, 'tables'))).sort()).not.toContain('event.md')
+  })
+
+  test('the delta is in --json, item by item, with the same exit code', async () => {
+    const dir = await imported()
+    const run = await runCli(['import', '--file', await nextRelease(), '--dir', dir, '--json'])
+
+    expect(run.code).toBe(1)
+    const report = JSON.parse(run.out) as {
+      ok: boolean
+      reimport: boolean
+      confirmed: boolean
+      files: string[]
+      removed: string[]
+      changes: { kind: string; path: string; headline: string; detail: string[] }[]
+      counts: { changes: number }
+    }
+    expect(report.ok).toBe(false)
+    expect(report.reimport).toBe(true)
+    expect(report.confirmed).toBe(false)
+    expect(report.files).toEqual([])
+    expect(report.removed).toEqual([])
+    expect(report.changes.map((change) => change.kind).sort()).toEqual([
+      'column-changed',
+      'column-removed',
+      'index-removed',
+      'table-removed',
+    ])
+    expect(report.counts.changes).toBe(report.changes.length)
+  })
+
+  test('a model this cannot read is refused rather than read as a database that dropped it', async () => {
+    const dir = await imported()
+    // A table file that does not parse. The table is still there, with its
+    // prose in it, and a delta computed over a model missing it would put
+    // "database table removed" on the list about a file sitting on disk.
+    await writeFile(join(dir, 'tables', 'Tenant.md'), 'no frontmatter here\n', 'utf8')
+
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir, '--confirm'])
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('holds a model this cannot read')
+    expect(await readFile(join(dir, 'tables', 'Tenant.md'), 'utf8')).toBe('no frontmatter here\n')
   })
 })
 

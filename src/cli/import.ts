@@ -20,32 +20,46 @@
  *    so this is where those are told apart, and told apart without knowing the
  *    engine, because sniffing one out of the characters would put an engine's
  *    name outside `src/import/providers/`. ADR 0045.
- * 2. **The refusal to write into a directory that is not empty**, which names
- *    dbmd-42, so that a user can tell "not built yet" from "not allowed".
- * 3. **Nothing prompts.** With no `--file` and a terminal on standard input
- *    there is nothing to read, and waiting would be a prompt with worse manners,
- *    so it is a usage error saying which flag supplies the answer. ADR 0006.
+ * 2. **The two halves of the command**, which are one word apart on the command
+ *    line and are not the same operation. Into an empty directory this writes a
+ *    model. Over one that already holds a model, it computes a delta, prints it
+ *    itemised, and writes nothing until `--confirm` says so. dbmd-42 asked for
+ *    the second and ADR 0050 is what it decided; `src/import/delta.ts` owns
+ *    what a change *is*, and this file owns when one is written.
+ * 3. **Nothing prompts, and that is what makes `--confirm` a flag.** With no
+ *    `--file` and a terminal on standard input there is nothing to read, and
+ *    waiting would be a prompt with worse manners, so it is a usage error
+ *    saying which flag supplies the answer. The confirmation of a delta is the
+ *    same rule applied to a bigger question: the JSON is usually already on
+ *    standard input, so there is no terminal left to ask at, and ADR 0006 rule
+ *    2 says a command that needs a decision it does not have exits non-zero and
+ *    names the flag that supplies it.
  * 4. **Turning a `WriteSkip` into a diagnostic.** A catalogue will hand you a
  *    table name a file cannot hold. The writer refuses it and says which object
  *    it was; ADR 0026 says the caller that built the model is the one that turns
  *    that into a diagnostic, and this is that caller.
  */
 
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   errnoText,
   formatDiagnostics,
+  hasErrors,
   inDocument,
   sortDiagnostics,
   type Diagnostic,
 } from '../diagnostics.js'
 import type { IntrospectionDocument } from '../import/contract.js'
+import { deltaOf, type Delta, type DeltaItem } from '../import/delta.js'
 import { modelFromIntrospection } from '../import/model.js'
 import { readIntrospection } from '../import/read.js'
+import { readModel } from '../model/read.js'
+import type { Model } from '../model/types.js'
 import { writeModel, type WriteSkip } from '../model/write.js'
 import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
-import { sortedBy, type Output, type Report } from './output.js'
+import { sortedBy, type JsonValue, type Output, type Palette, type Report } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The same default `dbmd init` writes. */
 const DEFAULT_DIRECTORY = 'db-model'
@@ -100,20 +114,30 @@ Options:
       --file <path>    the JSON to read, defaulting to standard input
       --dir <path>     the model directory to write, defaulting to ${DEFAULT_DIRECTORY}
       --engine <id>    read the file as this engine, whatever it says it is
+      --confirm        make the changes an import over an existing model lists
 
 The file says which engine produced it, so there is nothing to remember and
 nothing to be told wrong. --engine overrides that, and says so when it does.
 
-It refuses to write into a directory that already exists and is not empty.
-Re-importing over a model without losing the prose and the layout somebody put
-there is dbmd-42, and it is not built yet, so this refuses rather than guessing.
+Over a directory that already holds a model this is a re-import. It compares
+what the database says against what the files say, prints every difference as
+an itemised list naming the file it is about, and writes nothing. Read the
+list, then run it again with --confirm to make exactly those changes. An
+unchanged database prints one line and exits 0, so a re-import is safe in CI.
+
+Prose bodies, layout coordinates and group membership are never touched by a
+re-import, and a file no item on the list names is never opened. A column or a
+table that goes takes no paragraph with it: the list says which paragraphs will
+then name something that is not there, and you decide what they should say.
 
 Tables land on a grid, in name order, and there is no auto layout: arrange them
-once in "dbmd studio" and the drag is what writes the coordinates.
+once in "dbmd studio" and the drag is what writes the coordinates. A table new
+to a re-import lands below everything already placed and moves nothing.
 
 Exit codes:
-  0   written, with any warnings printed
-  1   the file could not be read or imported, the directory was not empty, or a
+  0   written, or nothing to change, with any warnings printed
+  1   the file could not be read or imported, a re-import found changes and
+      --confirm was not given, the model already there could not be read, or a
       table could not be written
   2   the command line was wrong
 
@@ -137,7 +161,7 @@ export async function runImport(
   out: Output,
   stdin: Input = processStdin(),
 ): Promise<number> {
-  const { file, directory, engine } = parseImportArgs(argv)
+  const { file, directory, engine, confirm } = parseImportArgs(argv)
   const source = file ?? STDIN
   // `-` is what a report calls standard input and what a shell calls it; prose
   // that says it out loud reads better in the one place a person is reading.
@@ -156,25 +180,34 @@ export async function runImport(
 
   // Before anything is read, because a directory that cannot be written to is a
   // refusal whatever the file turns out to say, and being told that after
-  // pasting a schema is a worse minute than being told it first.
-  if (await isOccupied(directory)) {
+  // pasting a schema is a worse minute than being told it first. The model
+  // already there is read here for the same reason: a re-import over a model
+  // that does not parse cannot produce a truthful delta, and finding that out
+  // before the paste is read is the difference between a refusal and a waste.
+  const occupancy = await occupancyOf(directory)
+  if (occupancy === 'not-a-directory') {
+    const reason = `${directory} is a file rather than a directory`
     return out.report({
       code: EXIT_FAILURE,
       text:
-        `${out.style.bad('dbmd:')} ${out.style.strong(directory)} already exists and is not ` +
-        `empty, so import has left it alone.\n` +
-        `Re-importing over a model without losing the prose and the layout in it is dbmd-42, ` +
-        `and it is not built yet.\n` +
-        `Import into a new directory with --dir, or empty this one first.\n`,
-      json: {
-        directory,
-        source,
-        error: {
-          code: 'directory-not-empty',
-          message: `${directory} already exists and is not empty`,
-        },
-      },
+        `${out.style.bad('dbmd:')} ${out.style.strong(directory)} is a file rather than a ` +
+        `directory, so a model cannot be written there.\n` +
+        `Pass --dir with somewhere a directory can go.\n`,
+      json: { directory, source, error: { code: 'not-a-directory', message: reason } },
     })
+  }
+
+  let existing: Model | undefined
+  if (occupancy === 'occupied') {
+    const read = await readModel(directory)
+    // Errors only. A warning is a model with something worth saying about it and
+    // a delta over it is still true; an error means a file's contents are partly
+    // unknown, and an unknown table reads from here as a table that is not
+    // there, which is the one mistake this whole command is arranged to avoid.
+    if (hasErrors(read.diagnostics)) {
+      return out.report(unreadableModel(read.diagnostics, directory, source, out))
+    }
+    existing = read.model
   }
 
   const text = await sourceText(file, { source, label }, stdin, directory, out)
@@ -189,6 +222,21 @@ export async function runImport(
   }
 
   const built = modelFromIntrospection(read.value)
+
+  if (existing !== undefined) {
+    return await reimport({
+      delta: deltaOf(existing, built.model),
+      confirm,
+      directory,
+      source,
+      stdinWasTheSource: file === undefined,
+      engine: read.value.engine,
+      document: read.value,
+      found: [...read.diagnostics, ...built.diagnostics],
+      out,
+    })
+  }
+
   const { written, skipped } = await writeModel(directory, built.model)
 
   const diagnostics = sortDiagnostics([
@@ -228,6 +276,245 @@ export async function runImport(
       diagnostics,
     },
   })
+}
+
+// --------------------------------------------------------------------------
+// The re-import: the delta, the list, and the one flag that writes it
+// --------------------------------------------------------------------------
+
+interface Reimport {
+  readonly delta: Delta
+  readonly confirm: boolean
+  readonly directory: string
+  readonly source: string
+  /** Whether the JSON came off standard input, which decides one sentence. */
+  readonly stdinWasTheSource: boolean
+  readonly engine: string
+  readonly document: IntrospectionDocument
+  /** What reading and building the document had to say, before anything is written. */
+  readonly found: readonly Diagnostic[]
+  readonly out: Output
+}
+
+/**
+ * An import over a directory that already holds a model.
+ *
+ * Three answers, and they are the whole of the contract a script reads:
+ *
+ * - **Nothing to change.** One line, exit 0, nothing written. Re-importing an
+ *   unchanged database is a no-op that is safe to leave in CI.
+ * - **Changes, and nobody has confirmed them.** The itemised list, exit 1,
+ *   nothing written, and the flag named. ADR 0006 rule 2 is why this is not a
+ *   question asked at a terminal: the JSON is usually already on standard
+ *   input, so there is no terminal left to ask at, and a command that needs a
+ *   decision it does not have exits non-zero and says which flag supplies it.
+ * - **Changes, and `--confirm`.** Exactly the files the list named, and nothing
+ *   else opened.
+ */
+async function reimport(run: Reimport): Promise<number> {
+  const { delta, directory, source, engine, out } = run
+
+  if (delta.items.length === 0) {
+    const diagnostics = sortDiagnostics([...run.found])
+    return out.report({
+      code: 0,
+      text:
+        `${out.style.strong(directory)} already says what this ${out.style.strong(engine)} ` +
+        `import says: ${plural(delta.model.tables.length, 'table')}, nothing to change.\n` +
+        (diagnostics.length === 0 ? '' : `\n${formatDiagnostics(diagnostics).join('\n')}\n`),
+      json: {
+        directory,
+        source,
+        engine,
+        reimport: true,
+        confirmed: false,
+        changes: [],
+        files: [],
+        removed: [],
+        counts: { changes: 0, errors: 0, warnings: diagnostics.length },
+        diagnostics,
+      },
+    })
+  }
+
+  if (!run.confirm) {
+    const diagnostics = sortDiagnostics([...run.found])
+    const reason = `${plural(delta.items.length, 'change')} in ${directory} were not confirmed`
+    return out.report({
+      code: EXIT_FAILURE,
+      text:
+        `Re-importing ${out.style.strong(directory)} from ${out.style.strong(engine)} would ` +
+        `make ${plural(delta.items.length, 'change')}:\n\n` +
+        `${itemised(delta.items, out.style)}` +
+        (diagnostics.length === 0 ? '' : `\n${formatDiagnostics(diagnostics).join('\n')}\n`) +
+        `\n${out.style.bad('dbmd:')} nothing has been written, because nothing above has ` +
+        `been confirmed.\n` +
+        `Read the list, then run the same command again with ${out.style.strong('--confirm')}\n` +
+        `to make exactly those changes.\n` +
+        (run.stdinWasTheSource
+          ? `The JSON came from standard input and has been read, so the thing to run again\n` +
+            `is the whole pipeline.\n`
+          : '') +
+        `Prose bodies, layout and group membership are not touched either way.\n`,
+      json: {
+        directory,
+        source,
+        engine,
+        reimport: true,
+        confirmed: false,
+        changes: delta.items.map(asJson),
+        files: [],
+        removed: [],
+        counts: { changes: delta.items.length, errors: 0, warnings: diagnostics.length },
+        diagnostics,
+        error: { code: 'changes-not-confirmed', message: reason },
+      },
+    })
+  }
+
+  // `only` is the point of the whole feature. Every path in it is one an item on
+  // the list named, so a table nobody said anything about is not opened, and the
+  // paragraph somebody wrote into it this morning is not at risk from a command
+  // that was told to look at a different table.
+  const { written, skipped } = await writeModel(directory, delta.model, { only: delta.write })
+
+  // `writeModel` deliberately does not delete, so this does, and only against
+  // the list the user has just read. `force`, because a file the reader saw and
+  // the filesystem no longer has is not worth stopping a confirmed run for.
+  for (const path of delta.remove) {
+    await rm(join(directory, ...path.split('/')), { force: true })
+  }
+
+  const diagnostics = sortDiagnostics([...run.found, ...unwritableNames(skipped, run.document)])
+  const errors = diagnostics.filter((d) => d.severity === 'error').length
+  const files = sortedBy(written)
+
+  return out.report({
+    code: errors > 0 ? EXIT_FAILURE : 0,
+    text:
+      `Re-imported ${out.style.strong(directory)} from ${out.style.strong(engine)}, ` +
+      `${plural(delta.items.length, 'change')}:\n\n` +
+      `${itemised(delta.items, out.style)}` +
+      `\n${plural(files.length, 'file')} written:\n` +
+      files.map((path) => `  ${out.style.faint(path)}\n`).join('') +
+      (delta.remove.length === 0
+        ? ''
+        : `${plural(delta.remove.length, 'file')} deleted:\n` +
+          delta.remove.map((path) => `  ${out.style.faint(path)}\n`).join('')) +
+      (diagnostics.length === 0 ? '' : `\n${formatDiagnostics(diagnostics).join('\n')}\n`) +
+      (errors === 0
+        ? `\nEvery other file in ${out.style.strong(directory)} was left exactly as it was.\n` +
+          `Read what changed with "git diff".\n`
+        : `\n${out.style.bad('dbmd:')} ${plural(errors, 'error')}, so ${directory} is ` +
+          `missing a table the database has.\n`),
+    json: {
+      directory,
+      source,
+      engine,
+      reimport: true,
+      confirmed: true,
+      changes: delta.items.map(asJson),
+      files,
+      removed: [...delta.remove],
+      counts: { changes: delta.items.length, errors, warnings: diagnostics.length - errors },
+      diagnostics,
+    },
+  })
+}
+
+/**
+ * The list, grouped under the file each item is about.
+ *
+ * The same shape `dbmd check` gives a list of diagnostics, because it is the
+ * same question asked one step earlier: which file, and what about it. The
+ * headline is the owner's own vocabulary and is what the eye runs down; the
+ * sentences under it are what somebody reads once they have found the line they
+ * did not expect.
+ */
+function itemised(items: readonly DeltaItem[], style: Palette): string {
+  const lines: string[] = []
+  let heading: string | undefined
+  for (const item of items) {
+    if (item.path !== heading) {
+      if (heading !== undefined) lines.push('')
+      lines.push(style.strong(item.path))
+      heading = item.path
+    }
+    lines.push(`  ${item.headline}`)
+    for (const sentence of item.detail) {
+      for (const line of wrapped(sentence)) lines.push(`      ${line}`)
+    }
+  }
+  return `${lines.join('\n')}\n`
+}
+
+/** The width the rest of this command's prose is wrapped to, less the indent. */
+const WRAP = 74
+
+/**
+ * One sentence as lines, wrapped on spaces and never mid-word.
+ *
+ * The sentences arrive from `src/import/delta.ts` unwrapped, on purpose: they
+ * carry names out of somebody's database, so where one breaks is a fact about
+ * this run rather than about the source file, and a test asserting on a break
+ * would be asserting on the length of a table name.
+ */
+function wrapped(sentence: string): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of sentence.split(' ')) {
+    if (line === '') line = word
+    else if (line.length + 1 + word.length <= WRAP) line += ` ${word}`
+    else {
+      lines.push(line)
+      line = word
+    }
+  }
+  if (line !== '') lines.push(line)
+  return lines
+}
+
+/** One item as the `--json` form of it. The shape is public API: ADR 0006 rule 3. */
+function asJson(item: DeltaItem): JsonValue {
+  return { kind: item.kind, path: item.path, headline: item.headline, detail: [...item.detail] }
+}
+
+/**
+ * The model already there could not be read, so there is no delta to compute.
+ *
+ * A table whose file failed to parse is missing from the model (ADR 0008), and
+ * missing from the model reads from a delta's point of view as missing from the
+ * database, which would put `database table removed` on the list about a table
+ * that is sitting right there with a paragraph in it. Refusing is the only
+ * honest answer, and the diagnostics are printed because they are what turns the
+ * refusal into something somebody can act on.
+ */
+function unreadableModel(
+  raw: readonly Diagnostic[],
+  directory: string,
+  source: string,
+  out: Output,
+): Report {
+  const diagnostics = sortDiagnostics(raw)
+  const errors = diagnostics.filter((d) => d.severity === 'error').length
+  const reason = `${directory} has ${plural(errors, 'error')} and cannot be compared against an import`
+  return {
+    code: EXIT_FAILURE,
+    text:
+      `${formatDiagnostics(diagnostics).join('\n')}\n` +
+      `${out.style.bad('dbmd:')} ${out.style.strong(directory)} holds a model this cannot ` +
+      `read, so there is no list of changes to show and nothing was written.\n` +
+      `A file that does not parse is missing from the model, and missing from the model\n` +
+      `reads from here as a table the database dropped.\n` +
+      `Fix what "dbmd check ${directory}" reports, then import again.\n`,
+    json: {
+      directory,
+      source,
+      counts: { errors, warnings: diagnostics.length - errors },
+      diagnostics,
+      error: { code: 'model-unreadable', message: reason },
+    },
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -497,20 +784,23 @@ function refused(
 }
 
 /**
- * Whether there is something in the way.
+ * Which of the three the target is, which is which half of this command runs.
  *
- * `ENOTDIR` counts as occupied, the same as `dbmd init` treats it: pointed at a
- * file, this has to refuse rather than scatter a model around it. Anything else
- * is thrown, because a permission error is a fact about the machine and the
- * entry point reports it.
+ * `ENOTDIR` used to be folded into "occupied" because both answers were the same
+ * refusal. They are not any more: an occupied directory is now a re-import and a
+ * file is still nowhere a model can go, so the two are told apart here rather
+ * than by a message that has to hedge. Anything else is thrown, because a
+ * permission error is a fact about the machine and the entry point reports it.
  */
-async function isOccupied(directory: string): Promise<boolean> {
+type Occupancy = 'empty' | 'occupied' | 'not-a-directory'
+
+async function occupancyOf(directory: string): Promise<Occupancy> {
   try {
-    return (await readdir(directory)).length > 0
+    return (await readdir(directory)).length > 0 ? 'occupied' : 'empty'
   } catch (error) {
     const code = error instanceof Error && 'code' in error ? error.code : undefined
-    if (code === 'ENOENT') return false
-    if (code === 'ENOTDIR') return true
+    if (code === 'ENOENT') return 'empty'
+    if (code === 'ENOTDIR') return 'not-a-directory'
     throw error
   }
 }
@@ -519,25 +809,40 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`
 }
 
-/** Three string options and no positionals. `parseArgs` with `strict` rejects the rest. */
+/**
+ * Three string options, one flag, and no positionals. `parseArgs` with `strict`
+ * rejects the rest.
+ *
+ * `--confirm` is accepted on every run and not only on the ones that have
+ * something to confirm, which is deliberate: a scheduled job runs the same line
+ * every week, and the week it imports into a directory that is empty because
+ * somebody deleted it is not the week to fail on an argument. It confirms
+ * whatever list this run produced, and an empty list needs no confirming.
+ */
 function parseImportArgs(argv: readonly string[]): {
   readonly file: string | undefined
   readonly directory: string
   readonly engine: string | undefined
+  readonly confirm: boolean
 } {
-  let values: { file?: string; dir?: string; engine?: string }
+  let values: { file?: string; dir?: string; engine?: string; confirm?: boolean }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: { file: { type: 'string' }, dir: { type: 'string' }, engine: { type: 'string' } },
+      options: {
+        file: { type: 'string' },
+        dir: { type: 'string' },
+        engine: { type: 'string' },
+        confirm: { type: 'boolean' },
+      },
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd import" takes --file, --dir and ` +
-        `--engine; run "dbmd import --help".`,
+      `${offendingOption(argv) ?? messageOf(error)}. "dbmd import" takes --file, --dir, ` +
+        `--engine and --confirm; run "dbmd import --help".`,
     )
   }
 
@@ -551,5 +856,10 @@ function parseImportArgs(argv: readonly string[]): {
     )
   }
 
-  return { file: values.file, directory: values.dir ?? DEFAULT_DIRECTORY, engine: values.engine }
+  return {
+    file: values.file,
+    directory: values.dir ?? DEFAULT_DIRECTORY,
+    engine: values.engine,
+    confirm: values.confirm === true,
+  }
 }

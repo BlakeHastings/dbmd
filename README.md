@@ -217,7 +217,8 @@ Run it, save the one value it returns, then "dbmd import --file <that file>".
 directory, the other way in besides `dbmd init`. `--file <path>` says which file
 to read, defaulting to standard input so a pipe works; `--dir <path>` says where
 to write, defaulting to `db-model` like every other command; `--engine <id>`
-overrides the engine the file says it is.
+overrides the engine the file says it is; `--confirm` makes the changes a run
+over a directory that already holds a model lists.
 
 ```
 $ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
@@ -280,18 +281,61 @@ database already had on this table; a table with none gets a line saying so,
 because a paragraph invented out of the frontmatter above it would say nothing
 a reader could not already see two lines up.
 
-It refuses to write into a directory that already exists and is not empty:
+Run it again over that directory next release and it is a **re-import**. It
+compares what the database says against what the files say, prints every
+difference as an itemised list naming the file it is about, and writes nothing:
 
 ```
-$ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
-dbmd: shop-model already exists and is not empty, so import has left it alone.
-Re-importing over a model without losing the prose and the layout in it is dbmd-42, and it is not built yet.
-Import into a new directory with --dir, or empty this one first.
+$ dbmd import --file next-release.json --dir shop-model
+Re-importing shop-model from postgres would make 3 changes:
+
+tables/event.md
+  database table removed
+      `event` is in the model and not in this import, so tables/event.md is
+      deleted.
+      Its prose goes with it, and the last commit is where that survives.
+      A table nobody dropped on this list usually means an import over fewer
+      schemas than the last one.
+
+tables/order_line.md
+  database column removed
+      `order_line.note` is in the file and not in the database, so the entry is
+      removed from `columns:`.
+      1 mention of it in backticks stays exactly as written, in
+      tables/order_line.md, so the prose will name a column that is not there.
+      No check reads a body, so nothing else will tell you.
+  database column changed
+      `order_line.unit_price`: type `numeric(12,2)` in the file and
+      `numeric(14,4)` in the database.
+      The database's answer is taken, and nothing else about the column is
+      touched.
+
+dbmd: nothing has been written, because nothing above has been confirmed.
+Read the list, then run the same command again with --confirm
+to make exactly those changes.
+Prose bodies, layout and group membership are not touched either way.
 ```
 
-That is "not built yet" rather than "not allowed": re-importing over a model
-without losing what a person wrote by hand is a separate, harder decision, and
-this is where it is left rather than guessed at.
+That exits 1, so a first run in a script tells its author what to add. `--confirm`
+on the next run makes exactly the changes the list named and opens no other file:
+a table nothing was said about is not rewritten, every prose body and every
+`layout:` survives, and a table new to the database lands below everything
+already placed. **Prose is never edited by a machine.** A column that goes leaves
+the paragraph about it exactly as written, and the list is what tells you the
+sentence has gone stale.
+
+An unchanged database prints one line and exits 0, so a re-import is safe to
+leave in CI:
+
+```
+$ dbmd import --file next-release.json --dir shop-model
+shop-model already says what this postgres import says: 4 tables, nothing to change.
+```
+
+Nothing prompts, in either half.
+[ADR 0050](docs/architecture/decisions/0050-a-re-import-is-a-delta-somebody-confirmed.md)
+is why the confirmation is a flag rather than a question: the JSON is usually
+already on standard input, so there is no terminal left to ask at.
 
 **`dbmd studio [directory]`** serves that directory on loopback and opens it in
 a browser. The URL it bound to is printed on stderr, and with the default port,
