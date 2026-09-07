@@ -132,6 +132,15 @@ export class Edits {
   private adopted: ReadResult
   /** A fingerprint of what is being served, so a re-read that changed nothing is not a change. */
   private print: string
+  /**
+   * The same, of the objects alone, which is what `revision` counts.
+   *
+   * Two strings rather than one because a re-read answers two questions and
+   * they have different answers: "is there anything new to serve", which
+   * diagnostics are part of, and "could an edit made against the old picture
+   * lose something", which they are not. See `fingerprint`.
+   */
+  private shape: string
   /** The files this session has edited and has not written yet. Empty means idle. */
   private edited = new Set<string>()
   /** The files a write is in flight for. Empty except inside `write`. */
@@ -157,6 +166,13 @@ export class Edits {
     this.diagnostics = read.diagnostics
     this.adopted = read
     this.print = fingerprint(read.model, read.diagnostics)
+    this.shape = shapeOf(read.model)
+  }
+
+  /** Take note of what is now being served, after this session changed it itself. */
+  private restate(): void {
+    this.print = fingerprint(this.model, this.diagnostics)
+    this.shape = shapeOf(this.model)
   }
 
   static async open(dir: string, options: EditsOptions = {}): Promise<Edits> {
@@ -250,7 +266,7 @@ export class Edits {
     // answers "did something happen that I did not ask for", and a client that
     // was told to redraw after every one of its own drags would be told to
     // redraw sixty times a second.
-    this.print = fingerprint(this.model, this.diagnostics)
+    this.restate()
     this.schedule(fileOf(name))
     return next
   }
@@ -290,7 +306,7 @@ export class Edits {
       )
     }
     this.model = { ...this.model, tables: sortByName([...this.model.tables, created]) }
-    this.print = fingerprint(this.model, this.diagnostics)
+    this.restate()
     this.edited.add(fileOf(name))
     await this.flush()
     return created
@@ -333,7 +349,7 @@ export class Edits {
         ...this.model,
         tables: this.model.tables.filter((table) => table.name !== name),
       }
-      this.print = fingerprint(this.model, this.diagnostics)
+      this.restate()
       await rm(target, { force: true })
       this.log(`removed ${path}`)
       await this.adopt()
@@ -490,6 +506,13 @@ export class Edits {
     const print = fingerprint(this.model, this.diagnostics)
     if (print === this.print) return
     this.print = print
+    // Something is new to serve. Whether it is new to *edit against* is the
+    // second question, and only that one moves the revision: a change that
+    // leaves every object saying what the session already says cannot make an
+    // edit made against the old picture lose anything.
+    const shape = shapeOf(this.model)
+    if (shape === this.shape) return
+    this.shape = shape
     this.revision += 1
   }
 
@@ -616,14 +639,14 @@ function renderObject(object: CanvasObject): string {
 }
 
 /**
- * A whole model as one string, for "did anything change" and nothing else.
+ * Every object a model holds, as one string: what a stale edit could overwrite.
  *
- * Diagnostics are in it because a file can change in a way that leaves every
- * object identical and still has something new to say: an unknown key is a
- * warning and no object at all, and a page that did not redraw would never show
- * it.
+ * This is what `revision` counts, and the two are the same question asked once.
+ * An edit is stale when the picture it was computed from is no longer what the
+ * files say, and "what the files say" is the objects, because an edit replaces
+ * objects and nothing else.
  */
-function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
+function shapeOf(model: Model): string {
   const objects: readonly CanvasObject[] = [...model.tables, ...model.notes, ...model.groups]
   return JSON.stringify([
     serialiseModelFile(model),
@@ -632,8 +655,28 @@ function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
       `${directoryOfKind(object.kind)}/${object.name}.md`,
       renderObject(object),
     ]),
-    diagnostics,
   ])
+}
+
+/**
+ * A whole model as one string, for "is there anything new to serve".
+ *
+ * Diagnostics are in this one and deliberately not in `shapeOf`, and the split
+ * is the difference between the two questions a re-read answers. A file can
+ * change in a way that leaves every object identical and still has something
+ * new to say: an unknown key is a warning and no object at all, and a page that
+ * did not redraw would never show it. So a diagnostics-only change is adopted
+ * and served.
+ *
+ * It is not a staleness. dbmd-25 made a blank column name a warning, and the
+ * inspector's `Add column` writes exactly that (ADR 0016), so the session's own
+ * write comes back with a diagnostic the session could not have predicted. A
+ * revision that moved for it would refuse the very next character the developer
+ * typed into the column they had just added. Every object still says what the
+ * page has, so there is nothing for a stale edit to lose.
+ */
+function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
+  return JSON.stringify([shapeOf(model), diagnostics])
 }
 
 /** One sentence, in one place, because the status and the refusal have to agree. */

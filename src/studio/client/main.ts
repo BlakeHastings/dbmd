@@ -330,6 +330,14 @@ async function peek(): Promise<void> {
     }
     stale = true
   }
+  // Taken whatever the revision says, because the revision counts objects and
+  // not diagnostics (ADR 0025): a file can gain an unknown key, which is a
+  // warning and no object at all, and this is what puts it in the footer. They
+  // are a fact about the bytes rather than about the page's own edits, so
+  // taking them without adopting the model is the same trade `pollStatus`
+  // already makes.
+  readerDiagnostics = response.diagnostics
+  showDiagnostics()
   showStatus(response)
 }
 

@@ -59,6 +59,24 @@ what the files say". The session's own writes do not move it, so an ordinary
 editing session never trips over it, and there is no second piece of bookkeeping
 to keep in step with the first.
 
+**It counts the objects, and not what the reader said about the bytes.** ADR
+0019 computed one fingerprint over both, for a good reason: a file can change in
+a way that leaves every object identical and still have something new to say, and
+a page that did not redraw would never show it. Making that same number the
+staleness token broke on a case that arrived while this was being built. dbmd-25
+made a blank column name a warning, and `Add column` in the panel writes exactly
+that (ADR 0016), so the studio's own write comes back from the reader carrying a
+diagnostic the session could not have predicted. Counting it moved the revision
+and refused the very next character typed into the column the developer had just
+added, and every character after it.
+
+So there are two fingerprints. One is "is there anything new to serve", which
+diagnostics are part of and which still decides what is adopted. The other is
+"could an edit made against the old picture lose something", which is the
+objects alone, and that is what `revision` counts. They are two questions and
+they have different answers; the first is about a page redrawing and the second
+is about a file being overwritten.
+
 **It is a header rather than a key in the body.** `TablePatch` stays exactly the
 shape of a table document, `DELETE` has no body at all and is guarded by the same
 one line, and it is a second custom header on every mutation, which is the same
@@ -177,6 +195,10 @@ and that nothing is left pointing at a table that is not there.
 - **Every existing test that mutates had to say what it read.** That is churn,
   and it is the useful kind: a suite that could mutate without naming a revision
   is a suite that is not exercising the client that exists.
+- **A diagnostics-only change is served without moving the revision.** So a page
+  learns about a warning that is not attached to any object from the read it was
+  making anyway, rather than from a counter. That is one beat later at worst,
+  and the alternative is a counter that fires on the studio's own writes.
 - **Two sessions on one model would now refuse each other twice.** ADR 0013 and
   ADR 0019 both name this trigger already; this adds a second mechanism with the
   same answer, and does not make it worse, because a second window would move the

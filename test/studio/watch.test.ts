@@ -785,6 +785,63 @@ describe('an edit made against a model the studio has moved on from', () => {
     })
   })
 
+  it('does not call the session’s own new diagnostic a reason to refuse the next edit', async () => {
+    // dbmd-25 made a blank column name a warning, and `Add column` in the panel
+    // writes exactly that (ADR 0016), so the studio's own write comes back from
+    // the reader carrying a diagnostic the session could not have predicted.
+    // The revision counts the objects and not the diagnostics for this reason:
+    // counting both refused the very next character typed into the column the
+    // developer had just added, and every character after it.
+    await withStudio(async (running) => {
+      const drawn = await status(running.studio)
+      const held = (await get(running.studio, '/api/model')) as unknown as {
+        model: { tables: { name: string; columns: Column[] }[] }
+      }
+      const columns = held.model.tables.find((table) => table.name === 'orders')?.columns ?? []
+
+      // Add column: the whole list, plus one with no name and no type.
+      expect(
+        (
+          await stalePatch(
+            running.studio,
+            'orders',
+            { columns: [...columns, { name: '', type: '' }] },
+            drawn.revision,
+          )
+        ).status,
+      ).toBe(200)
+      await settle(running.studio)
+
+      const after = await status(running.studio)
+      expect(after.revision).toBe(drawn.revision)
+      // The warning is still reported: it is served, it is simply not a reason
+      // to call the page stale.
+      const body = await get(running.studio, '/api/model')
+      const diagnostics = body['diagnostics'] as { severity: string; code: string }[]
+      expect(diagnostics.some((d) => d.code === 'empty-value' && d.severity === 'warning')).toBe(
+        true,
+      )
+
+      // And the next keystrokes into that column land, one after another,
+      // against the revision the page still holds.
+      for (const name of ['g', 'gi', 'gift']) {
+        expect(
+          (
+            await stalePatch(
+              running.studio,
+              'orders',
+              { columns: [...columns, { name, type: 'text' }] },
+              drawn.revision,
+            )
+          ).status,
+        ).toBe(200)
+      }
+      await settle(running.studio)
+      expect(await columnNames(running.dir, 'orders')).toContain('gift')
+      expect((await status(running.studio)).conflicts).toEqual([])
+    })
+  })
+
   it('lets the edit through once the caller has read the model again', async () => {
     await withStudio(async (running) => {
       const held = await status(running.studio)
