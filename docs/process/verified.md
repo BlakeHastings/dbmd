@@ -370,6 +370,40 @@ move and will file a defect. It is the note. Move it and the drag works.
 All clean unless a line says otherwise. Each was checked by breaking something
 rather than by reading.
 
+- **The two flaky watcher cases, diagnosed by reproduction rather than by
+  reading, and neither fixed by waiting longer.** The burst case was the test's
+  own assumption: `ModelWatcher` promises one wake-up per burst, where a burst
+  is events no further apart than the window, so two changes further apart are
+  two bursts and are owed a wake-up each. `expected 2 to be 1` was the right
+  answer to a question the case did not mean to ask. The debounce is now a
+  `Burst` class a test drives directly, because a burst driven by `fs.watch` is
+  not a burst the test made, it is one the test hoped for.
+
+  The checkout case was waiting on the wrong event. `writeFile` truncates before
+  it writes, so a wake-up landing inside a `git checkout` reads an empty file;
+  the studio carries the last good version forward as `complete: false`, and
+  that still moves the revision, so a wait on `revision > written.revision` was
+  satisfied on the way to the checkout. The patch then hit an incomplete object,
+  was refused 409, and the flush wrote nothing.
+
+  **Verified independently**: the old wait put back into the new deterministic
+  case fails with `expected 409 to be 200`, and the file as delivered passes 38
+  of 38. #144.
+
+- **The timeouts under contention were never that race, and the measurement says
+  so.** Under five concurrent copies of the suite, `runs to the end when nothing
+  changes underneath it` failed 35 times in 48 while the burst case failed 0 in
+  48. The first contains no wait, no watcher poll and no sleep, so it cannot lose
+  a race. Opposite signatures, and one of them is a machine running out of
+  capacity.
+
+- **Both `until` helpers used a 5000ms deadline against vitest's 5000ms
+  default**, and vitest's clock starts first, so no wait in either studio test
+  file had ever been able to name what it was waiting for: the framework gave up
+  a moment before the helper would have said which wait it was. Every timeout in
+  the CI record for those files was less informative than it needed to be. Now
+  4000ms, documented as a diagnosis fix rather than a timing one.
+
 - **The publish path, driven as far as it can be driven without pushing a tag.**
   Pushing one is the step `release.yml`'s own header says no agent here may
   take, so everything below stops short of it deliberately.
