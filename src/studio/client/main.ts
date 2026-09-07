@@ -60,6 +60,7 @@ import {
   renameTable,
   RenameStopped,
   RequestFailed,
+  staleNotice,
 } from './write.js'
 // The two values this page imports from outside its own directory. ADR 0014
 // says a consumer that only wants to print where a diagnostic points should not
@@ -145,6 +146,21 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
   statusText.dataset['tone'] = tone
 }
 
+/**
+ * Say that the model moved, in the page's own words, and keep the server's.
+ *
+ * Both paths that can meet this refusal come through here, so the person who
+ * meets it twice reads the same sentence twice. What the server said goes to
+ * the console instead of the status line: the two revision numbers are the
+ * first thing worth having when the guard itself is suspected of being wrong,
+ * and the last thing worth reading when it is working, which is every time a
+ * developer sees this.
+ */
+function sayStale(what: string, failure: RequestFailed): void {
+  console.warn(`dbmd studio: ${failure.code}: ${failure.message}`)
+  say(staleNotice(what), 'bad')
+}
+
 const writer = new ObjectWriter({
   revision: () => drawn,
   onStatus: (status) => {
@@ -160,10 +176,7 @@ const writer = new ObjectWriter({
       // files had moved on from, and the edit was refused rather than written
       // over the change. Saying it as an error would send a developer looking
       // at their disk.
-      say(
-        `${failure.message}. The page will re-read the model; make the edit again on top of what it then shows.`,
-        'bad',
-      )
+      sayStale(`The edit to ${kind} \`${table}\``, failure)
       // Through `catchUp` rather than straight to `reload`, because a refusal in
       // the middle of a drag is exactly when redrawing every box would be worst:
       // the pointer is holding one of them. The re-read happens on the pointerup
@@ -543,11 +556,20 @@ async function remove(kind: ObjectKind, name: string): Promise<void> {
     await writer.settle(kind, name)
     await deleteObject(kind, name, drawn)
   } catch (error) {
+    // The same refusal the writer meets, said the same way. A delete refused
+    // because the model moved is not "could not delete" either: nothing failed
+    // and nothing was lost, and this path used to say the server's sentence
+    // straight through, which for a `conflicted` delete is readable and for a
+    // `stale` one is the `/api/model` instruction the writer's path also gave.
+    if (error instanceof RequestFailed && error.isStale) {
+      sayStale(`The delete of ${path}`, error)
+      // A delete refused because the model moved leaves a page showing
+      // something the developer was told they were deleting. Re-reading is what
+      // puts the question back where they can ask it again.
+      await reload()
+      return
+    }
     say(`Could not delete ${name}: ${messageOf(error)}`, 'bad')
-    // A delete refused because the model moved leaves a page showing something
-    // the developer was told they were deleting. Re-reading is what puts the
-    // question back where they can ask it again.
-    if (error instanceof RequestFailed && error.isStale) await reload()
     return
   }
   await reload()

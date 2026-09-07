@@ -18,6 +18,7 @@ import {
   withRefsRetargeted,
   type RenamePlan,
 } from '../../src/studio/client/model.js'
+import { staleNotice } from '../../src/studio/client/write.js'
 
 /**
  * The inspector without a browser.
@@ -415,6 +416,54 @@ describe('which backticked spans name a table', () => {
   it('does not read across a line break, so a fence is not one enormous span', () => {
     expect(of('```sql\nselect * from orders\n```\n', 'orders')).toBe(0)
     expect(of('A ` that opens nothing,\nand `orders` on the next line.\n', 'orders')).toBe(1)
+  })
+})
+
+/**
+ * The sentence a developer reads at the moment they think they have lost work.
+ *
+ * Not the inspector, and here anyway, because it is the same kind of thing as
+ * everything above it: a string the interface says out loud, which no
+ * typechecker reads and which was wrong for as long as nobody read it aloud.
+ * The defect was that the page rendered the server's prose. That prose is the
+ * right answer to a script and the wrong one to a person: it names two revision
+ * numbers and tells the reader to fetch a URL, and then the page appended the
+ * same advice again in words that actually said who does the fetching.
+ *
+ * So the assertions are mostly about what is *absent*. There is no type that
+ * can hold "this sentence is for a person", and the two things that made it not
+ * one are both greppable.
+ */
+describe('what the page says when the model moved underneath it', () => {
+  it('gives the instruction once, and says nothing was lost', () => {
+    const notice = staleNotice('The edit to table `products`')
+    expect(notice).toContain('The edit to table `products` was refused')
+    expect(notice).toContain('Nothing was written')
+    expect(notice).toContain('the change on disk is intact')
+    // Once. The page used to append its own copy of the server's last sentence.
+    expect(notice.match(/again/g)).toHaveLength(1)
+  })
+
+  it('names no endpoint, because the person reading it cannot call one', () => {
+    expect(staleNotice('The delete of tables/orders.md')).not.toContain('/api/')
+  })
+
+  it('names no revision number, because two of them answer a question nobody asked', () => {
+    // The numbers are not thrown away: `sayStale` in `main.ts` puts the
+    // server's whole sentence on the console, which is where they are worth
+    // having and where they are not the first thing read.
+    expect(staleNotice('The edit to note `stock`')).not.toMatch(/revision \d/)
+  })
+
+  it('is the same sentence whichever path met the refusal', () => {
+    // One function and two callers: an edit refused by the writer and a delete
+    // refused by the server. A developer who meets this twice in a minute
+    // should not have to work out whether the two are the same thing.
+    const edit = staleNotice('The edit to table `orders`')
+    const removal = staleNotice('The delete of tables/orders.md')
+    expect(edit.replace('The edit to table `orders`', '')).toBe(
+      removal.replace('The delete of tables/orders.md', ''),
+    )
   })
 })
 
