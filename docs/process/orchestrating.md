@@ -682,3 +682,56 @@ Two smaller things this cost, both of them avoidable:
   round trip that buys nothing. The rule's own last paragraph is what saved it
   from being worse: tell them immediately rather than letting them finish,
   report, and be sent back.
+
+## The main checkout is read-only, and this is a state rather than a judgement
+
+**Third destruction in one day, after writing two sections about the first two.**
+`git worktree remove --force` took an agent's only file. `git reset --hard` took
+a backlog item that a database happened to hold a second copy of. And then
+`git reset --hard` again took the owner's uncommitted work: a `README.md` edit
+and ten `layout:` lines they had spent an afternoon dragging into place.
+
+The README came back out of a dangling stash object. **The ten layout files did
+not.** Searched every dangling commit and blob in the repository for their
+coordinates and they were nowhere, because they had never been committed,
+stashed or copied, and the studio that held them had already exited.
+
+**The lesson written after the first two was "read what the refusal named before
+you clear it", and it did not work.** It cannot: the refusal names one file, the
+reset destroys eleven, and the one it names is usually the one you were already
+thinking about. Reading it correctly and still losing everything else is the
+normal case rather than the unlucky one.
+
+So the rule is not about care. It is about which directory a command runs in.
+
+**In the main checkout, do exactly four things:**
+
+- edit files you are writing
+- `git add <path>` **by name**, never `git add -A`
+- `git commit`
+- `git push`
+
+**Everything else happens in a throwaway worktree.** Switching branches,
+rebasing, resetting, merging, and anything with `--force` or `--hard`:
+
+```bash
+git worktree add -b rb/<n> "$SCRATCH/rb<n>" origin/<branch>
+cd "$SCRATCH/rb<n>" && git rebase origin/main && git push --force-with-lease ...
+git worktree remove "$SCRATCH/rb<n>" --force && git branch -D rb/<n>
+```
+
+That costs one directory and it removes the whole class. A worktree has no
+foreign uncommitted work in it, so there is nothing in it to lose, and the main
+checkout never moves under whoever else is working in it.
+
+**The reason it has to be a state and not a rule of thumb:** the orchestrator is
+not the only writer. The owner edits files, a studio writes coordinates as boxes
+are dragged, and beads rewrites a tracked export on every backlog write. None of
+those announce themselves, and `git status` at the moment you look is not
+`git status` at the moment the command runs.
+
+**When it happens anyway, say what is gone before saying anything else**, and go
+looking rather than apologising: `git fsck --unreachable` lists dangling commits
+and blobs, dropped stashes among them, and `git cat-file -p` will read any of
+them. That is how the README came back. Search for the *content* rather than for
+the commit, because you will not know which object holds it.
