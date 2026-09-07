@@ -370,6 +370,33 @@ move and will file a defect. It is the note. Move it and the drag works.
 All clean unless a line says otherwise. Each was checked by breaking something
 rather than by reading.
 
+- **Every red run on `main`, in all three workflows, with the listing limit set
+  above the run count.** Do it that way or the answer is a window: I first read
+  `--limit 100` against a branch with 140 runs and reported four failures when
+  there were seven.
+
+   workflow          | runs on `main` | failed
+  -------------------|---------------|--------
+   `check.yml`       | 140           | 7
+   `model.yml`       | 107           | 0
+   `provenance.yml`  | 140           | 1
+
+  **`model.yml` has never gone red on `main`.** Not once in 107 runs.
+
+  **`provenance.yml`'s single failure is the repository's own birth** and needs
+  no further investigation. Run `32798428416`, 2026-08-25T01:40Z, at
+  `30726ead`. Its log shows `PROVENANCE_BEFORE: 0000000000000000`, which is
+  GitHub's way of saying this was the first push to the branch, so all six
+  commits in it arrived without a pull request because there was no repository
+  to open one against. `BASELINE` in `check-main-provenance.mjs` is set to
+  `30726ead`, the last of those, so everything after the bootstrap is judged
+  and nothing was excused after the fact. The script's own warning, "do not
+  silence this by moving the baseline forward", has been obeyed.
+
+  **`check.yml`'s seven split four to three.** Four are the flush race that
+  `60f0279` (#44) fixed, all of them before it landed. Three are live and all
+  three are in `test/studio/watch.test.ts`. `dbmd-056`.
+
 - **The studio's four defences, probed rather than read, on 2026-09-07.** Each
   was attacked from outside the page and each refused:
   - **Bound to loopback only.** The socket says `127.0.0.1:7314`, not `0.0.0.0`.

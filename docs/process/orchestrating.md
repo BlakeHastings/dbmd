@@ -413,3 +413,77 @@ what it named before you clear it.** Both refusals printed the path. One line of
 the whole cost. And prefer the flagless route where one exists: `git stash` and
 `git worktree remove` without `--force` both fail loudly instead of quietly, and
 failing loudly is the behaviour being overridden.
+
+## A stale instruction outlives a stale fact, because it reads as current
+
+The handoff is supposed to decay. What is not obvious is that **it does not decay
+evenly**, and the difference is grammatical rather than topical.
+
+Two of them on 2026-09-07, in two different files:
+
+- `handoff.md` said `examples/shop` had four uncommitted edits from the owner and
+  ended the paragraph **"Do not commit or revert them."** The owner had already
+  said the edits could go, and something had already removed them.
+  `git diff HEAD -- examples/shop` was empty and no commit that day touched a
+  `layout` line there. The instruction outlived its subject by hours, in the one
+  file that is printed into context after every compaction.
+- `orchestrating.md` said the gotchas "now live in `docs/process/gotchas.md`, and
+  `working-an-issue.md` sends every agent there". The file had been deleted three
+  paragraphs further down in the same section.
+
+**A description that goes stale is merely wrong, and the next reader can notice
+it against the repository.** An instruction that goes stale is obeyed. It carries
+no date, it names no evidence, and nothing about reading it suggests checking
+whether its subject still exists. Both of the above were found by a mechanical
+sweep rather than by reading, because reading them is exactly what fails: they
+are short, confident and phrased as the thing to do.
+
+So, when writing into either file:
+
+- **Attach the check to the instruction.** "Do not commit or revert them" becomes
+  useful the moment it says how to tell they are still there. One command is
+  enough, and the reader who runs it is the reader the instruction was for.
+- **Prefer the observation to the order.** "`git diff HEAD -- examples/shop` was
+  empty at 13:00" cannot mislead the way "do not revert them" can, because it
+  says when it was true and the reader supplies the rest.
+- **Sweep for the ones already written.** These two were found by resolving every
+  backticked path in the tree and by diffing the working tree against `HEAD`,
+  neither of which is a judgement call. Do that before trusting a summary of
+  where the work stands, including your own.
+
+## Every listing is a window, and I have now reported three of them as censuses
+
+The same mistake three times on 2026-09-07, with three different tools:
+
+- **`bd create ... | tail -2`** cut the line carrying the new item's id, so the
+  id I used afterwards was the one I expected rather than the one I got. Twice,
+  into durable documents.
+- **`bd list | tail`** showed the low-priority end of a sorted list, so a P2
+  under a P0 epic sorted to the top where I never looked, and I twice announced
+  that nothing was left but the owner's decisions.
+- **`gh run list --limit 100`** against a branch with **140 runs**. I reported
+  "100 runs on main, four failed" as a finding, in a pull request whose subject
+  was that nobody counts these. There were seven, and the three I missed were
+  below the window.
+
+The tool differs every time and the shape does not: **a command that returns
+part of a list returns it without saying so.** `tail` says nothing about what it
+dropped. `--limit 100` says nothing about there being 140. Neither prints an
+ellipsis, neither exits non-zero, and the output of a truncated listing is
+indistinguishable from the output of a complete one.
+
+The habit that fixes it is not "be careful". It is:
+
+- **Ask for the total before you quote a count.** `gh run list --limit 200 |
+  wc -l` against `--limit 100` is one extra command and it is the whole check.
+  If the two numbers are equal you have a census; if they differ you have a
+  window and you have to say so.
+- **Never `tail` a command whose interesting output is at the top.** `bd create`
+  prints the id first. A sorted `bd list` puts the highest priority first. Both
+  of those are the reason to read the whole thing.
+- **Say "of the last N" when that is what you looked at.** A windowed number is
+  still useful. A windowed number described as a total is a false claim that
+  survives review, because nothing in it looks wrong.
+
+The cost is on record: the seventh red build on `main` was the post-merge run of
+the pull request that reported four, and I did not notice for about an hour.

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Seed a GitHub issue graph: epics, leaf issues, and real sub-issue links.
 
+DO NOT RUN THIS AGAINST THIS REPOSITORY. It is kept for the reason at the bottom
+of this docstring, and it is from before the backlog moved. dbmd's backlog is
+beads, driven by `bd`, and `AGENTS.md` states that as an invariant under "The
+backlog is beads, not GitHub issues". Running this would put a second backlog in
+a repository that decided against one, in ADR 0002.
+
 Run once. Resumable: every created number is recorded in STATE_FILE, so a rerun
 after a failure links what exists rather than duplicating half the backlog.
 
