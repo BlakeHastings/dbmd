@@ -119,6 +119,12 @@ Options:
 The file says which engine produced it, so there is nothing to remember and
 nothing to be told wrong. --engine overrides that, and says so when it does.
 
+With no --file this reads standard input until it ends, which is what makes
+the pipe work and is also the one way this command can wait. On a terminal it
+says so and stops rather than sitting there. A caller that starts it with a
+pipe it is not going to write to gets no such warning and no such stop, and
+either closes that pipe or passes --file.
+
 Over a directory that already holds a model this is a re-import. It compares
 what the database says against what the files say, prints every difference as
 an itemised list naming the file it is about, and writes nothing. Read the
@@ -170,6 +176,10 @@ export async function runImport(
   // ADR 0006: nothing prompts. With no --file and a terminal on standard input
   // this would sit there looking like it had hung, so it says which flag
   // answers the question and stops.
+  //
+  // A terminal and not a pipe, and ADR 0063 is why: a pipe nobody writes to
+  // waits here too, and it is the same value as a pipe somebody is about to
+  // write to slowly. Refusing it would refuse the documented default.
   if (file === undefined && stdin.isTty) {
     throw new UsageError(
       `"dbmd import" reads the introspection JSON from --file or from standard input, and ` +
