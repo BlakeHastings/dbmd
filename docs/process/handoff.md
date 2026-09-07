@@ -334,6 +334,16 @@ rather than by reading.
   through byte-identical. Filed as a P4 because the asymmetry is real and the
   workaround is one message away.
 
+- **The diagram markers refuse rather than guess, and one message forgot the
+  slashes.** A file carrying `<!-- dbmd:diagram -->` without its closing pair is
+  exit 1 with a message naming both markers; a file carrying neither gets the
+  section appended. Both are what `docs/format.md` promises. But that error
+  prints a Windows path where the same report's `--json` and the two success
+  lines all print a slashed one, three lines apart in the same file, whose helper
+  carries a comment explaining exactly why that matters. **`slashed` is
+  export-only and it is one missed call site rather than a pattern**: every other
+  command already prints forward slashes. Filed as a P3.
+
 
 ## What is waiting on the owner
 
