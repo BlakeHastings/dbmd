@@ -174,9 +174,34 @@ and neither should be re-asked:
   recommendation on the first case, and it is built and merged.
 - **Publishing.** _"Yes let's publish to npm"_, after five asks.
 
-**One step is theirs and the loop cannot take it.** Add an npm token as the
-repository secret `NPM_TOKEN`, then `git tag v0.1.0` and push it. Until they do,
-`npx dbmd` resolves nothing, and no page in the repository claims otherwise.
+**One step is theirs and the loop cannot take it**, for two separate reasons
+rather than one. A token can only be minted by whoever owns the npm account, and
+`release.yml`'s own header says pushing tags is "the one step of this that no
+agent in this repository is allowed to take", because a publish cannot be
+undone.
+
+The whole of it, for copying:
+
+```bash
+# 1. npmjs.com, Access Tokens, Generate New Token, choose Automation.
+# 2. GitHub, Settings, Secrets and variables, Actions, New repository secret,
+#    named NPM_TOKEN.
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Nothing else. The tag triggers
+[`release.yml`](../../.github/workflows/release.yml), which compares the tag to
+`package.json`, checks the commit is on `main`, and runs the whole check suite
+through `prepublishOnly` before it uploads anything. Until that tag exists,
+`npx dbmd` resolves nothing and no page in the repository claims otherwise;
+`npm view dbmd versions` is the answer a page cannot get wrong.
+
+**If the publish job goes red, read which step failed before touching the tag.**
+A version mismatch is the tag's fault and the message says so. A checkout that
+lacks `origin/main` says so separately since #147. A failure inside
+`prepublishOnly` is the test suite and the tag is fine: re-running the job
+publishes, and deleting the tag is the wrong move.
 
 That step is now driven as far as it can be without pushing a tag, and
 [`verified.md`](verified.md) carries the detail. The short version: **the name is
