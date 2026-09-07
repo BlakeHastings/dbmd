@@ -99,6 +99,12 @@ something `dbmd check` can report to you either. The studio does say
 so, because a request has to be answered. This is the one thing on this page
 where the advice is "do not" rather than "you will be told".
 
+The gap between the two layers has one name in it that the reader *does* report:
+a file called ` .md`, whose table is named a single space. The writer will write
+that file, since the name is not empty, and reading it back gets `empty-value`
+on the file, because a name made of whitespace is not a name a `ref` can be
+written against.
+
 ## A file
 
 Every file is YAML frontmatter, then markdown:
@@ -282,6 +288,32 @@ columns:
 your engine has, and a reference tool that rejected `citext` would be worse than
 one that says nothing.
 
+**A name that is there and blank is not a name.** `name: ""` gets `empty-value`,
+a **warning**, on the column's own line, and so does a name that is only
+whitespace, because a name you cannot see is not a name you can type into a
+query. `type: ""` is the same:
+
+```markdown dbmd-error:tables/orders.md:empty-value
+---
+kind: table
+table: orders
+columns:
+  - name: ""
+    type: text
+---
+
+A column with no name is an `empty-value` warning, and so is one with no type.
+```
+
+It is a warning rather than an error because it is what a model looks like
+halfway through being written. *Add column* in the studio puts exactly this row
+on disk the moment it is clicked, and a new table is born with `type: ""` on its
+`id`, so every model edited in the page passes through this state. A warning
+says the model is not finished without stopping anybody finishing it, and
+`dbmd check --strict` is how a team that wants a blank name out of `main` says
+so. [ADR 0027][adr27] is the argument, and the short version is that an error
+would make dbmd refuse to save the file the studio had just written.
+
 **`nullable` has three states and only two of them are a fact.** `nullable:
 false` says NOT NULL, `nullable: true` says the column accepts nulls, and *no
 `nullable` key at all* says the file did not mention it. Absent is not the same
@@ -400,6 +432,27 @@ away.
 Two indexes of one table under one name get `duplicate-index`, which is worth
 catching here because the engine would refuse the second one and the model
 happily carries both.
+
+**An index has to name something, and be named.** `columns: []` is an index over
+nothing, which no engine would accept, and it gets `empty-value`. A blank `name:`
+gets it too. Together they are what *Add index* writes before you have typed
+anything:
+
+```markdown dbmd-error:tables/orders.md:empty-value
+---
+kind: table
+table: orders
+indexes:
+  - name: orders_status_idx
+    columns: []
+---
+
+An index over no columns is an `empty-value` warning.
+```
+
+This is the one place an index and a table differ on the same key. A table's
+`columns: []` is a table nobody has filled in yet, which is a real thing to have
+and is not warned about; an index with no keys is not an index.
 
 Omit `unique` on a plain index rather than writing `unique: false`. Both are
 read the same way and dbmd keeps a `false` you wrote, so nothing will tidy it
@@ -891,6 +944,7 @@ leaves the line off.
 | `name-mismatch` | error | `table:` disagrees with the file name. | Make them agree. The file name wins. |
 | `field-missing` | error | A required key is absent: a column's `name`, an index's `columns`, a layout's `x`. | Add it. |
 | `field-wrong-type` | error | A key holds the wrong sort of value: a number where a string was wanted. | Usually quotes. See [the quoting rule](#defaults-and-the-quoting-rule). |
+| `empty-value` | warning | A required name or list is there and says nothing: `name: ""`, a name that is only whitespace, an index whose `columns` is `[]`, or a table file whose name is blank. | Fill it in, or delete the row. It is a warning because it is what a half-written model looks like; `--strict` fails the run on it. |
 | `unknown-key` | warning | A key that means nothing here. The message lists the ones that do. | Check the spelling. Otherwise delete it: it is dropped on the next save. |
 | `superseded-key` | error | A real key in the wrong place or under its old name: `null:`, or `unique:` on a column. | The message names the replacement. |
 | `ref-malformed` | error | A `ref:` that is not `table.column`. | Add the column. |
@@ -966,4 +1020,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr17]: architecture/decisions/0017-the-validator-is-a-second-opinion.md
 [adr20]: architecture/decisions/0020-what-dbmd-check-fails-on.md
 [adr22]: architecture/decisions/0022-engine-sql-in-a-format-that-does-not-read-sql.md
+[adr27]: architecture/decisions/0027-an-empty-name-is-a-warning-because-an-error-means-loss.md
 [prettier]: https://prettier.io

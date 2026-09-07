@@ -359,6 +359,133 @@ columns:
   })
 })
 
+/**
+ * dbmd-25. `dbmd check` said `no problems` on a table whose every name was
+ * `""`, which is the state the studio's `Add column` button writes on disk the
+ * moment it is clicked, so the page and the checker disagreed about the same
+ * file and the page was right. ADR 0027 is the argument for the severity.
+ */
+describe('a name that is there and says nothing', () => {
+  test('the model that used to pass with no problems now says so, five times', async () => {
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: ""
+    type: ""
+indexes:
+  - name: ""
+    columns: []
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:5 warning empty-value: `name` is empty, so this column has no name; name it, or delete the row',
+      "tables/orders.md:6 warning empty-value: `type` is empty, so this column has no type; write the engine's own spelling of one",
+      'tables/orders.md:8 warning empty-value: `name` is empty, so this index has no name; name it what the database calls it',
+      'tables/orders.md:9 warning empty-value: `columns` is empty, so this index covers no columns; list its keys, or delete the index',
+    ])
+  })
+
+  test('nothing was lost, which is why it is a warning and not an error', async () => {
+    // The whole severity argument in one assertion: an error would make the
+    // table incomplete, and an incomplete table is one `writeModel` skips and
+    // the studio refuses to edit, which would lock the table the moment
+    // somebody clicked `Add column`. The reader kept every character.
+    const { model } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: ""
+    type: ""
+---
+`,
+    })
+
+    expect(model.tables[0]?.complete).toBe(true)
+    expect(model.tables[0]?.columns).toEqual([{ name: '', type: '' }])
+  })
+
+  test('whitespace is the same mistake wearing a disguise', async () => {
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: "  "
+    type: "\t"
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:5 warning empty-value: `name` is only whitespace, so this column has no name; name it, or delete the row',
+      "tables/orders.md:6 warning empty-value: `type` is only whitespace, so this column has no type; write the engine's own spelling of one",
+    ])
+    expect(model.tables[0]?.columns[0]?.name).toBe('  ')
+  })
+
+  test('a table whose file name is whitespace has no name either', async () => {
+    const { diagnostics } = await withModel({
+      'tables/ .md': '---\nkind: table\ntable: " "\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/ .md warning empty-value: the file name is only whitespace, so this table has no name, and the file name is what a `ref` resolves against; rename the file, and its `table:` key with it',
+    ])
+  })
+
+  test('an index key that is an empty expression is the same code', async () => {
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+indexes:
+  - name: orders_lower_idx
+    columns: [{ expression: "" }]
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:6 warning empty-value: `expression` is empty, so this index key is neither a column nor an expression; write the SQL, or name a column',
+    ])
+  })
+
+  test("a table's own `columns: []` is a table nobody has filled in, and is not warned about", async () => {
+    // The distinction the rule turns on: an index with no keys is not an index,
+    // and no engine would accept one. A table with no columns is a normal thing
+    // to have halfway through a morning, and `primary-key-missing` already
+    // stands down for it for the same reason.
+    const { diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ncolumns: []\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([])
+  })
+
+  test('a list that lost its only key is one complaint, not two', async () => {
+    // `columns: [123]` is already an error naming the key it dropped, and
+    // adding "this index covers no columns" on top of it would be the second
+    // complaint about one mistake that ADR 0017 exists to prevent.
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+indexes:
+  - name: orders_idx
+    columns: [123]
+---
+`,
+    })
+
+    expect(diagnostics.map((d) => d.code)).toEqual(['field-wrong-type'])
+  })
+})
+
 describe('_model.md', () => {
   test('its name, engine and prose are the model-wide facts', async () => {
     const { model } = await readModel(fixtureModel)
