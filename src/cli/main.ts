@@ -15,6 +15,7 @@
  */
 
 import { createRequire } from 'node:module'
+import { checkCommand } from './check.js'
 import { EXIT_FAILURE, EXIT_USAGE, UsageError, type Command } from './command.js'
 import { initCommand } from './init.js'
 import { studioCommand } from './studio.js'
@@ -31,10 +32,12 @@ import {
 /**
  * Every subcommand. Adding one is writing a `Command` and adding it here.
  *
- * `check` and `export` are their own work items and land in this array when
- * they do.
+ * The order is the order the root `--help` lists them in, and it is the order a
+ * person meets them rather than alphabetical: `init` makes a model, `check`
+ * says whether it is still good, `studio` is where it is edited. `export` is
+ * its own work item and lands in this array when it does.
  */
-const COMMANDS: readonly Command[] = [initCommand, studioCommand]
+const COMMANDS: readonly Command[] = [initCommand, checkCommand, studioCommand]
 
 /**
  * From the installed package's own `package.json`, so `--version` cannot

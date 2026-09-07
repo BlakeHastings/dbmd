@@ -95,7 +95,7 @@ habit every example on this page keeps.
 
 **The first layer does not tell you off.** A name its writer will not write is
 skipped in silence, and that refusal has no diagnostic code today, so it is not
-something a future `dbmd check` could report to you either. The studio does say
+something `dbmd check` can report to you either. The studio does say
 so, because a request has to be answered. This is the one thing on this page
 where the advice is "do not" rather than "you will be told".
 
@@ -859,8 +859,11 @@ And about the model, with a path and no line:
 | `primary-key-missing` | warning | A table with columns and no `pk: true` on any of them. | Add `pk: true`, or accept a keyless table. |
 | `group-empty` | warning | A group file no table declares itself a member of. | Add `group:` to a table, or delete the group file. |
 
-`dbmd check`, which will print all of these from the command line, does not exist
-yet. Until it does, the honest advice is to keep this page open.
+`dbmd check` prints all of these from the command line, grouped by the file they
+are in, and `dbmd check --json` prints them as the objects this page's `code` and
+`severity` columns describe. Its exit code is the short version: 0 when nothing
+worse than a warning turned up, 1 when an error did, and 1 for a warning too
+under `--strict`. [ADR 0020][adr20] is why the boundary is there.
 
 ## What the format does not have
 
@@ -904,4 +907,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr3]: architecture/decisions/0003-markdown-on-disk-is-the-model.md
 [adr5]: architecture/decisions/0005-the-canvas-holds-more-than-tables.md
 [adr17]: architecture/decisions/0017-the-validator-is-a-second-opinion.md
+[adr20]: architecture/decisions/0020-what-dbmd-check-fails-on.md
 [prettier]: https://prettier.io
