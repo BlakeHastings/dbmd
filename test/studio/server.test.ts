@@ -112,9 +112,14 @@ async function flush(running: Running): Promise<void> {
  * The one thing left in this file that has to wait on a clock the test does not
  * hold is the debounce firing by itself, and polling for it is bounded by what
  * happened rather than by a guess about how slow the machine is.
+ *
+ * Under vitest's default `testTimeout` of five seconds, and the same number for
+ * the same reason as `until` in `watch.test.ts`: on the number they used to
+ * share, vitest gives up first and the run says `Test timed out in 5000ms`
+ * instead of naming the wait. The docstring over there has the measurement.
  */
 async function until(what: () => Promise<boolean>, why: string): Promise<void> {
-  const deadline = Date.now() + 5_000
+  const deadline = Date.now() + 4_000
   for (;;) {
     if (await what()) return
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${why}`)

@@ -6,7 +6,7 @@ import { readModel } from '../../src/model/read.js'
 import { validate } from '../../src/model/validate.js'
 import type { Column } from '../../src/model/types.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
-import { ModelWatcher } from '../../src/studio/watch.js'
+import { Burst, ModelWatcher } from '../../src/studio/watch.js'
 import { REVISION_HEADER, type WireConflict } from '../../src/studio/wire.js'
 import { exampleShop, withCopy } from '../model/fixtures.js'
 
@@ -170,15 +170,69 @@ const ONLY_ON_DEMAND = 60_000
  * Polling rather than a fixed sleep: `fs.watch` latency is the operating
  * system's business and a sleep long enough to be safe on a loaded Windows
  * machine would be long enough to make the suite unpleasant on every other one.
+ *
+ * **The deadline is under vitest's own, and that is the whole reason for the
+ * number.** It used to be `5_000`, which is exactly vitest's default
+ * `testTimeout`, and vitest starts its clock first, so this function has never
+ * once been able to say what it was waiting for: a run that lost one of these
+ * waits reported `Error: Test timed out in 5000ms` and named no wait at all.
+ * Measured on a machine running the suite twice at once, where several cases in
+ * this file died that way and the line numbers were the only clue to which wait
+ * it was. This is a diagnosis fix and not a timing one; it buys nothing and
+ * costs a second of headroom on a wait that takes tens of milliseconds when it
+ * works, and it is worth that to be told which wait gave up.
  */
 async function until<T>(what: () => Promise<T | undefined>, why: string): Promise<T> {
-  const deadline = Date.now() + 5_000
+  const deadline = Date.now() + 4_000
   for (;;) {
     const answer = await what()
     if (answer !== undefined) return answer
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${why}`)
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
+}
+
+/** One table as the studio is serving it right now, as the page would receive it. */
+async function servedTable(
+  studio: Studio,
+  name: string,
+): Promise<{ name: string; complete: boolean } | undefined> {
+  const body = (await get(studio, '/api/model')) as unknown as {
+    model: { tables: { name: string; complete: boolean }[] }
+  }
+  return body.model.tables.find((table) => table.name === name)
+}
+
+/**
+ * Wait for the studio to be serving the table as the file now says it.
+ *
+ * **Not "the revision moved", which is a weaker thing and is what the checkout
+ * cases used to wait for.** `revision` moves for any change a re-read found, and
+ * `writeFile` truncates before it writes, so a wake-up that lands inside one
+ * reads a file with nothing in it. The studio does the right thing with that:
+ * `carryForward` keeps the last version that parsed and marks it
+ * `complete: false`. But the shape changed, so the revision moved, so a case
+ * waiting on the revision was let through into the middle of somebody else's
+ * save. It then patched an object the studio was holding as incomplete, was
+ * refused `409`, flushed nothing, and finished by reporting the layout still on
+ * disk as though the write had been dropped: `expected { x: 480, y: 340 } to
+ * deeply equal { x: 500, y: 500 }`, which is dbmd-056 on `verify (22)`.
+ *
+ * Naming the state cannot be satisfied by a state on the way to it. The
+ * comparison is against a fresh `readModel` rather than a literal because the
+ * claim is "the studio has caught up with the directory", and the directory is
+ * what settles that; both sides are the same reader's output for the same file,
+ * so equal models render to equal text.
+ */
+async function servesWhatTheFileSays(running: Running, table: string): Promise<void> {
+  const onDisk = JSON.stringify(
+    (await readModel(running.dir)).model.tables.find((entry) => entry.name === table),
+  )
+  await until(
+    async () =>
+      JSON.stringify(await servedTable(running.studio, table)) === onDisk ? true : undefined,
+    `the studio to be serving ${table} as the file now says it`,
+  )
 }
 
 /**
@@ -210,6 +264,12 @@ const WATCH_DEBOUNCE_MS = 40
  * half already under control, and leave the delivery latency real: a fake timer
  * fired before the operating system had delivered the second event of a burst
  * would make the coalescing case below pass for exactly the wrong reason.
+ *
+ * Removing the delivery latency does solve it, and that is what `the debounce,
+ * driven rather than observed` does: it bumps `Burst` by hand, so this wait is
+ * still an absence but the burst it is an absence after is one the case made.
+ * This is used both ways below and the two are not the same wait, which is why
+ * the block that counts wake-ups off a real filesystem no longer counts them.
  *
  * A case that waits this way and then asserts nothing happened must also prove
  * that the watcher was awake the whole time, or a watcher that never fires at
@@ -530,18 +590,34 @@ describe('the watcher, counted at the callback', () => {
   const woken = (watching: Watching, why: string): Promise<true> =>
     until(async () => (watching.wakes > 0 ? true : undefined), why)
 
-  it('turns a burst of separate changes into one wake-up', async () => {
-    // Two files, so the debounce has something to coalesce on every platform
-    // rather than only on the ones that report a single save more than once.
-    // This is the case that fails when the debounce is deleted, wherever it
-    // runs: two saved files cannot be fewer than two filesystem events.
+  it('is woken by two files saved together, and not once per filesystem event', async () => {
+    // **This case used to assert the count, and the count has moved next door**
+    // to `the debounce, driven rather than observed`, where a burst is made
+    // rather than hoped for. It could not stay here. Two `editByHand` calls are
+    // two writes whose events the operating system delivers when it feels like
+    // it, and a burst is events no further apart than the window, so a machine
+    // that spaced them by more than 40ms produced two bursts. Two wake-ups for
+    // two bursts is the watcher keeping its promise, and this case called it
+    // `expected 2 to be 1`: dbmd-056, three runs in a hundred on CI and none in
+    // twenty-eight here. It reproduces on a quiet machine with nothing but a
+    // 150ms sleep between the two writes, which is the whole of the defect.
+    //
+    // What is left is what the filesystem can actually answer, and it is not
+    // nothing. Both files live in the same kind directory and each has to reach
+    // the debounce, so a watcher attached to the wrong thing fails the wait; and
+    // the bound is one wake-up per file *changed*, not per event *reported*,
+    // which on Windows is up to five for a single save (see the case below).
+    // Deleting the debounce breaks the bound there. It cannot break it on a
+    // platform that reports one event per write, and that is the cost of asking
+    // the filesystem: this is a coalescing proof on some platforms and a wiring
+    // proof on the rest. The case next door is neither and holds everywhere.
     await withWatcher(async (watching) => {
       await editByHand(watching.dir, 'tables/orders.md', addColumn)
       await editByHand(watching.dir, 'tables/customers.md', addColumn)
       await woken(watching, 'the watcher to wake for two files saved together')
       await pastTheDebounce()
 
-      expect(watching.wakes).toBe(1)
+      expect(watching.wakes).toBeLessThanOrEqual(2)
     })
   })
 
@@ -603,6 +679,84 @@ describe('the watcher, counted at the callback', () => {
       await woken(watching, 'the watcher that ignored a temporary file to wake for a real one')
       expect(watching.wakes).toBe(1)
     })
+  })
+})
+
+/**
+ * The same promise, with the filesystem taken out of it.
+ *
+ * `Burst` is the whole of the watcher's timing and a bump is a function call, so
+ * a burst here is something these cases *make*. That is the difference from the
+ * block above, and it is the difference dbmd-056 was about: a case that saves
+ * two files and expects one wake-up is not asserting that the debounce works, it
+ * is asserting that the operating system delivered two events close together,
+ * and a loaded CI runner is exactly where it does not.
+ *
+ * Nothing below depends on how busy the machine is. The bumps inside one burst
+ * have no `await` between them, so no stall can get in and split them. The two
+ * bursts in the second case are separated by a fence on a wake-up that has
+ * already happened rather than by a sleep, and a stall can only push them
+ * further apart, which is the direction that keeps the assertion true.
+ */
+describe('the debounce, driven rather than observed', () => {
+  function counted(): { burst: Burst; calls: () => number } {
+    let calls = 0
+    return { burst: new Burst(WATCH_DEBOUNCE_MS, () => (calls += 1)), calls: () => calls }
+  }
+
+  it('turns a burst of separate changes into one wake-up', async () => {
+    // The claim the watcher's docstring makes, and the one the case in the
+    // block above used to carry: three events that arrive together are one
+    // look-again, not three. Delete the debounce and this is three.
+    const { burst, calls } = counted()
+    try {
+      burst.bump()
+      burst.bump()
+      burst.bump()
+      // Trailing, not leading. A wake-up that had already happened by here
+      // would be one taken before the burst had finished arriving, which is the
+      // thing the watcher exists to avoid.
+      expect(calls()).toBe(0)
+
+      await until(async () => (calls() > 0 ? true : undefined), 'the burst to wake')
+      await pastTheDebounce()
+
+      expect(calls()).toBe(1)
+    } finally {
+      burst.cancel()
+    }
+  })
+
+  it('starts a new burst when the gap is longer than the window', async () => {
+    // The other half, and the half dbmd-056 turned out to be about: two changes
+    // further apart than the window are two bursts and are owed a wake-up each.
+    // A watcher that answered one here would be swallowing the second change,
+    // so `expected 2 to be 1` on CI was the right answer to a question the case
+    // did not mean to ask.
+    const { burst, calls } = counted()
+    try {
+      burst.bump()
+      await until(async () => (calls() === 1 ? true : undefined), 'the first burst to wake')
+      burst.bump()
+      await until(async () => (calls() === 2 ? true : undefined), 'the second burst to wake')
+      await pastTheDebounce()
+
+      expect(calls()).toBe(2)
+    } finally {
+      burst.cancel()
+    }
+  })
+
+  it('drops a wake-up that was queued when it was cancelled', async () => {
+    // What `close` needs from it. A watcher that has stopped must not call back
+    // into a studio whose server has gone, and `ModelWatcher.close` has nothing
+    // to do that with but this.
+    const { burst, calls } = counted()
+    burst.bump()
+    burst.cancel()
+    await pastTheDebounce()
+
+    expect(calls()).toBe(0)
   })
 })
 
@@ -786,20 +940,62 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
       const committed = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
       await patch(running.studio, 'orders', { layout: { x: 999, y: 999 } })
       await flush(running.studio)
-      const written = await status(running.studio)
 
       // What `git checkout -- db-model` does to the filesystem: the committed
       // bytes, back where they were, with nothing to tell the studio about it.
       await writeFile(join(running.dir, 'tables', 'orders.md'), committed, 'utf8')
-      await until(
-        async () => ((await status(running.studio)).revision > written.revision ? true : undefined),
-        'the watcher to notice a checkout',
-      )
+      await servesWhatTheFileSays(running, 'orders')
 
-      await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
+      const restored = await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
+      // Asserted rather than assumed, because a patch refused at the door
+      // writes nothing and the assertion at the end of this case would then
+      // report the layout still on disk as though the flush had lost the edit.
+      // That is the sentence dbmd-056 was read as for a day. Say what happened.
+      expect(restored.status).toBe(200)
       await flush(running.studio)
       const after = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
       expect(after).not.toContain('999')
+      const read = await readModel(running.dir)
+      expect(read.model.tables.find((table) => table.name === 'orders')?.layout).toEqual({
+        x: 500,
+        y: 500,
+      })
+    })
+  })
+
+  it('is noticed even when the watcher first read the file half-written', async () => {
+    // The case above, with the race in it made to happen every time instead of
+    // three times in a hundred on a loaded runner.
+    //
+    // `git checkout` writes with `writeFile`, which truncates and then writes,
+    // so a wake-up that lands inside one reads a file with nothing in it. Here
+    // that read is arranged rather than waited for: the empty file is left on
+    // disk until the studio has demonstrably read it, and only then does the
+    // committed text arrive. Everything after that is the case above, unchanged.
+    //
+    // Point the old wait at this and it fails the way CI did. The revision has
+    // already moved for the empty read, so `revision > written.revision` lets
+    // the case through, the patch lands on an object the studio is holding as
+    // incomplete and is refused `409`, the flush writes nothing, and the layout
+    // read back at the end is the committed one: `expected { x: 480, y: 340 }
+    // to deeply equal { x: 500, y: 500 }`. dbmd-056.
+    await withStudio(async (running) => {
+      const committed = await readFile(join(running.dir, 'tables', 'orders.md'), 'utf8')
+      await patch(running.studio, 'orders', { layout: { x: 999, y: 999 } })
+      await flush(running.studio)
+
+      await writeFile(join(running.dir, 'tables', 'orders.md'), '', 'utf8')
+      await until(
+        async () =>
+          (await servedTable(running.studio, 'orders'))?.complete === false ? true : undefined,
+        'the studio to have read the file while it was empty',
+      )
+      await writeFile(join(running.dir, 'tables', 'orders.md'), committed, 'utf8')
+      await servesWhatTheFileSays(running, 'orders')
+
+      const restored = await patch(running.studio, 'orders', { layout: { x: 500, y: 500 } })
+      expect(restored.status).toBe(200)
+      await flush(running.studio)
       const read = await readModel(running.dir)
       expect(read.model.tables.find((table) => table.name === 'orders')?.layout).toEqual({
         x: 500,
@@ -847,10 +1043,7 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
       await flush(running.studio)
       expect(await columnNames(running.dir, 'customers')).toContain('scratch')
       await writeFile(join(running.dir, 'tables', 'customers.md'), committed, 'utf8')
-      await until(
-        async () => ((await status(running.studio)).revision > drawn.revision ? true : undefined),
-        'the watcher to notice a checkout',
-      )
+      await servesWhatTheFileSays(running, 'customers')
 
       // The panel still holds the column list it was built from, and sends it.
       const response = await stalePatch(
