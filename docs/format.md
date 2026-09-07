@@ -62,16 +62,25 @@ Keep to lowercase letters, digits, hyphens and underscores and nothing below
 will ever concern you. Two layers refuse the rest, and they refuse different
 amounts of it:
 
-- **dbmd will not write a file** whose object name is empty, is `.` or `..`, or
-  contains `/` or `\`.
-- **The studio refuses more**, because it takes names from a web page rather
-  than from a directory listing: also a name longer than 255 characters, one
-  containing `:` or a control character, one ending in a dot or a space, and a
-  Windows device name such as `con`, `nul`, `aux`, `prn`, `com1` or `lpt1`,
-  with or without an extension.
+- **dbmd will not write a file** whose object name is empty, is `.` or `..`,
+  contains `/`, `\`, `:`, `<`, `>`, `"`, `|`, `?`, `*` or a control character,
+  or is long enough that the file would not fit in one path component, which is
+  about 210 characters. Every one of those is a name that fails to open
+  somewhere, so the object is skipped and the caller is told which one it was.
+  [ADR 0026][adr26].
+- **The studio also refuses** a name ending in a dot or a space, and a Windows
+  device name such as `con`, `nul`, `aux`, `prn`, `com1` or `lpt1`, with or
+  without an extension, because it takes names from a web page rather than from
+  a directory listing.
 
-The last two are refused on suspicion rather than for something you can watch go
-wrong. `con`, `nul` and their friends are reserved in Windows path handling, and
+The colon is worth a sentence of its own, because it is the one that does not
+fail honestly. On Windows `orders:draft.md` opens an alternate data stream on a
+file called `orders`: the write succeeds, and the bytes are in no directory
+listing and no `git status`. That is why it is refused rather than left to the
+filesystem.
+
+The studio's two extra refusals are on suspicion rather than for something you
+can watch go wrong. `con`, `nul` and their friends are reserved in Windows path handling, and
 a trailing dot or space is stripped by some of the ways a path reaches the
 filesystem and not by others, so what such a name does depends on which layer
 opened it: `cmd.exe`, an older Windows, or an API that does not use the extended
@@ -93,11 +102,16 @@ one on the machine that checks it out next, with the surviving content decided
 by the order the files arrived in. Lowercase is the safe habit, and it is the
 habit every example on this page keeps.
 
-**The first layer does not tell you off.** A name its writer will not write is
-skipped in silence, and that refusal has no diagnostic code today, so it is not
-something `dbmd check` can report to you either. The studio does say
-so, because a request has to be answered. This is the one thing on this page
-where the advice is "do not" rather than "you will be told".
+**The first layer does not tell you off, and no diagnostic is coming.** A name
+the writer will not write is skipped and reported to whatever asked for the
+write, so the studio answers the request and `dbmd import` will name the table,
+but there is no diagnostic code and `dbmd check` will never mention it. There
+cannot be one: your filesystem refuses these names before dbmd is involved, so
+no model *on disk* holds an object with a name like this, and a code for it
+would be a row in the table below that nothing could ever produce. The only way
+to reach it is a model built in memory, which means the studio or an import.
+[ADR 0026][adr26] is the argument. This is the one thing on this page where the
+advice is "do not" rather than "you will be told".
 
 The gap between the two layers has one name in it that the reader *does* report:
 a file called ` .md`, whose table is named a single space. The writer will write
@@ -986,6 +1000,15 @@ complete is worse than one that says where it ends.
   since nothing but SQL can stand there.
 - **No `on delete` behaviour on a `ref`.** `on delete cascade` says what the
   database *does*, and this is a model rather than a migration.
+- **No difference between a unique index and a unique constraint.** `unique:
+  true` says the keys are unique. It does not say whether dropping the index
+  would drop a constraint with it, which is a real difference both engines
+  report and the introspection contract carries as `isUniqueConstraint`. It is
+  how the uniqueness was *declared* rather than what is true of the rows, so it
+  is the same question as `on delete` and gets the same answer: an import drops
+  it. [ADR 0003's appendix][adr3] has the argument, and the way out if you want
+  it is a second key on the index entry rather than a second meaning for
+  `unique`.
 - **No schemas.** Table files are flat, so two schemas with a table of the same
   name collide. Subdirectories under `tables/` are the way out and nobody has
   needed it yet.
@@ -1007,8 +1030,9 @@ If this page and the code disagree, the code is right and this page is a bug.
   two modules and one list of codes.
 - `src/model/write.ts` writes one back, and is where
   [the canonical form](#the-canonical-form) is decided.
-- `src/studio/safe-path.ts` is the stricter half of
-  [what a file may be called](#naming-a-file).
+- `src/model/paths.ts` is the first half of
+  [what a file may be called](#naming-a-file), and `src/studio/safe-path.ts` is
+  the stricter half.
 - [`examples/shop`](../examples/shop) is a whole model in this format, eight
   tables of a coffee roastery, byte-canonical and read by the test suite on
   every run.
@@ -1020,5 +1044,6 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr17]: architecture/decisions/0017-the-validator-is-a-second-opinion.md
 [adr20]: architecture/decisions/0020-what-dbmd-check-fails-on.md
 [adr22]: architecture/decisions/0022-engine-sql-in-a-format-that-does-not-read-sql.md
+[adr26]: architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md
 [adr27]: architecture/decisions/0027-an-empty-name-is-a-warning-because-an-error-means-loss.md
 [prettier]: https://prettier.io
