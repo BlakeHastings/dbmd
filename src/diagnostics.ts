@@ -76,6 +76,18 @@ export type ModelDiagnosticCode =
   | 'field-missing'
   /** A key holds the wrong sort of value: a boolean where a string was wanted. */
   | 'field-wrong-type'
+  /**
+   * A required name or list is present and says nothing: `name: ""`, a name
+   * that is only whitespace, or an index whose `columns` is `[]`.
+   *
+   * It is a warning and never an error, and that is a decision rather than a
+   * default. An error from the reader means the object is missing something its
+   * file has, which is what makes the writer refuse to save over the file, and
+   * an empty name loses nothing: the reader carries the empty string exactly as
+   * written. It is also what a model looks like halfway through being edited,
+   * since `Add column` writes an empty row the moment it is clicked. ADR 0027.
+   */
+  | 'empty-value'
   /** A key that means nothing to this kind of file. */
   | 'unknown-key'
   /**

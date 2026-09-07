@@ -520,6 +520,18 @@ function readTable(
   name: string,
   body: string,
 ): TableInProgress {
+  // The file name is the table's identity (ADR 0008), so this is the one name
+  // in the format with no key to point at and no line to carry. `markdownFiles`
+  // already skips a dot-file, so `.md` cannot reach here and only the
+  // whitespace case is live; both are said, because the rule is about the name
+  // and not about which directory listing produced it.
+  reportBlank(
+    ctx,
+    'the file name',
+    name,
+    'this table has no name, and the file name is what a `ref` resolves against; rename the file, and its `table:` key with it',
+  )
+
   const declaredName = fields.take('table')
   if (declaredName === undefined) {
     push(ctx.out, {
@@ -585,8 +597,20 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
     return undefined
   }
   const fields = fieldsOf(ctx, node)
-  const name = requiredString(ctx, fields, 'name', offsetOf(node))
-  const type = requiredString(ctx, fields, 'type', offsetOf(node))
+  const name = requiredString(
+    ctx,
+    fields,
+    'name',
+    offsetOf(node),
+    'this column has no name; name it, or delete the row',
+  )
+  const type = requiredString(
+    ctx,
+    fields,
+    'type',
+    offsetOf(node),
+    "this column has no type; write the engine's own spelling of one",
+  )
   const pk = takeBoolean(ctx, fields, 'pk')
   const nullable = takeBoolean(ctx, fields, 'nullable')
   fields.reject(
@@ -628,15 +652,36 @@ function readIndex(ctx: Ctx, node: unknown): Index | undefined {
     return undefined
   }
   const fields = fieldsOf(ctx, node)
-  const name = requiredString(ctx, fields, 'name', offsetOf(node))
+  const name = requiredString(
+    ctx,
+    fields,
+    'name',
+    offsetOf(node),
+    'this index has no name; name it what the database calls it',
+  )
   const columnsField = fields.take('columns')
   const columns: IndexKey[] = []
   if (columnsField === undefined) {
     report(ctx, 'field-missing', 'error', 'an index needs a `columns` key', offsetOf(node))
   } else {
-    for (const item of seqItems(ctx, 'columns', columnsField)) {
+    const items = seqItems(ctx, 'columns', columnsField)
+    for (const item of items) {
       const key = readIndexKey(ctx, item)
       if (key !== undefined) columns.push(key)
+    }
+    // The list as written, not the keys that survived it: a `columns: [123]`
+    // that lost its only key has already been reported once, and saying the
+    // index covers nothing on top of that is two complaints about one mistake.
+    // A table's `columns: []` is deliberately not the same case; see
+    // `docs/format.md`.
+    if (isSeq(columnsField.node) && items.length === 0) {
+      report(
+        ctx,
+        'empty-value',
+        'warning',
+        '`columns` is empty, so this index covers no columns; list its keys, or delete the index',
+        columnsField.valueOffset,
+      )
     }
   }
   const unique = takeBoolean(ctx, fields, 'unique')
@@ -667,7 +712,13 @@ function readIndexKey(ctx: Ctx, node: unknown): IndexKey | undefined {
     return undefined
   }
   const fields = fieldsOf(ctx, node)
-  const expression = requiredString(ctx, fields, 'expression', offsetOf(node))
+  const expression = requiredString(
+    ctx,
+    fields,
+    'expression',
+    offsetOf(node),
+    'this index key is neither a column nor an expression; write the SQL, or name a column',
+  )
   fields.reportUnknown('an index key')
   return expression === undefined ? undefined : { expression }
 }
@@ -891,18 +942,59 @@ function takeString(ctx: Ctx, fields: FieldSet, key: string): string | undefined
   return field === undefined ? undefined : stringOf(ctx, key, field)
 }
 
+/**
+ * `remedy` is a clause, and it is not optional, because a string the format
+ * requires and a string that says nothing are the same mistake made two ways
+ * and every caller has to have an answer for the second one. Leaving it off
+ * would let the next required key be added with the emptiness check silently
+ * skipped, which is how `name: ""` got through in the first place.
+ */
 function requiredString(
   ctx: Ctx,
   fields: FieldSet,
   key: string,
   fallbackOffset: number | undefined,
+  remedy: string,
 ): string | undefined {
   const field = fields.take(key)
   if (field === undefined) {
     report(ctx, 'field-missing', 'error', `\`${key}\` is required`, fallbackOffset)
     return undefined
   }
-  return stringOf(ctx, key, field)
+  const value = stringOf(ctx, key, field)
+  reportBlank(ctx, `\`${key}\``, value, remedy, field.valueOffset)
+  return value
+}
+
+/**
+ * A required string that arrived saying nothing.
+ *
+ * A warning rather than an error, and the reason is mechanical rather than a
+ * matter of taste: an error raised here would make the object incomplete, and
+ * an incomplete object is one `writeModel` skips and the studio refuses to
+ * edit. Nothing was lost reading `name: ""`, since the empty string is carried
+ * exactly as written, so there is nothing here for the writer to protect and an
+ * error would lock the table the studio's own `Add column` just wrote.
+ * ADR 0027.
+ *
+ * Whitespace is the same mistake wearing a disguise, so `name: " "` is reported
+ * as such rather than passing for a name nobody can see.
+ */
+function reportBlank(
+  ctx: Ctx,
+  what: string,
+  value: string | undefined,
+  remedy: string,
+  offset?: number | null,
+): void {
+  if (value === undefined || value.trim() !== '') return
+  report(
+    ctx,
+    'empty-value',
+    'warning',
+    `${what} is ${value === '' ? 'empty' : 'only whitespace'}, so ${remedy}`,
+    offset,
+  )
 }
 
 function takeBoolean(ctx: Ctx, fields: FieldSet, key: string): boolean | undefined {

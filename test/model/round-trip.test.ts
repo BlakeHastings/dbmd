@@ -58,7 +58,13 @@ describe('property 1: a serialised model parses back to an equal model', () => {
         expect(firstWrite.skipped.filter((skip) => skip.reason !== 'unchanged')).toEqual([])
 
         const { model, diagnostics } = await readModel(dir)
-        expect(diagnostics).toEqual([])
+        // `''` and `'  '` are in the awkward pool on purpose, so a generated
+        // model names columns and indexes with them and gets `empty-value`
+        // since dbmd-25. It is allowed through by code rather than by severity,
+        // because it is the one diagnostic that says nothing was lost: the
+        // `toEqual` below is the proof, since an empty name that did not
+        // survive the round trip would fail there instead.
+        expect(diagnostics.filter((d) => d.code !== 'empty-value')).toEqual([])
         expect(model.name).toEqual(input.name)
         expect(model.engine).toEqual(input.engine)
         expect(model.body).toEqual(input.body)
