@@ -192,6 +192,20 @@ rather than by reading.
 - **`dbmd export` is idempotent** and writes only between its markers.
 - **`dbmd check --json` is machine-independent.** Its `directory` field echoes
   what you typed rather than resolving it, so two machines agree.
+- **The whole journey, against a real database rather than a fixture.** A
+  PostgreSQL 16 container, a schema with an enum type, identity primary keys, a
+  cascading foreign key, a composite unique constraint, an index on
+  `lower(note)`, and comments on a table and a column. Then the four steps:
+  print the query, run it through `psql`, import what came back, check it. Clean,
+  and clean under `--strict`. What survived is the interesting part: the enum
+  kept its own spelling and its `'draft'::shop.order_state` default, the
+  expression index came through as `{ expression: lower(note) }`, `timestamp
+  with time zone` and `timestamp without time zone` stayed distinct where the
+  normalised vocabulary would have collapsed them, and the table with a comment
+  got it as prose while the table without one got the prompt line instead. The
+  studio then drew both with the arrow on `orders.account_id` pointing at
+  `accounts.id` rather than at the box.
+
 
 ## What is waiting on the owner
 
