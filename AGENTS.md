@@ -21,8 +21,16 @@ engine is one file and one registry line. ADR 0007.
 connects to a database except the import path, and that reads a JSON file a
 human produced by running a query themselves.
 
-MIT licensed, published as `dbmd` on npm, developed at
+MIT licensed and developed at
 `github.com/BlakeHastings/dbmd`.
+
+**It is not published to npm.** `package.json` says `"private": true`, on
+purpose, and nobody has asked for it to be published. The name is free as of
+2026-09-07. So `npx dbmd` does not work for anybody yet, and a document, a
+recipe or a message that says it does is wrong: run it from a checkout with
+`node dist/cli.js`. dbmd-50 made the package ready and deliberately left that one
+line in place, so publishing is a decision somebody makes rather than something
+that happens.
 
 ## What exists today
 
