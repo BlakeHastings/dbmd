@@ -48,9 +48,14 @@ npm ci
 npm run check
 ```
 
-`npm run check` is typecheck, format check, decision-record numbering, tests and
-build, in that order. It is the only mechanical gate and it is exactly what CI
-runs, so a green local run and a green CI run mean the same thing.
+`npm run check` is typecheck, format check, decision-record numbering, the
+reviewable-diff check, tests, a build, and a smoke test over the packed tarball,
+in that order. It is the only mechanical gate and it is exactly what CI runs, so
+a green local run and a green CI run mean the same thing.
+
+The last of those, `npm run check:pack`, packs the package, installs it into a
+temporary directory and drives the installed binary, because the source tree has
+everything and the tarball is what ships. ADR 0024.
 
 Individually: `npm run typecheck`, `npm run format`, `npm run test`,
 `npm run build`.

@@ -26,8 +26,22 @@
   "bin": {
     "dbmd": "dist/cli.js"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./studio": {
+      "types": "./dist/studio/index.d.ts",
+      "default": "./dist/studio/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.js.map"
   ],
   "engines": {
     "node": ">=20"
@@ -40,9 +54,11 @@
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
     "studio": "npm run build && node dist/cli.js studio examples/shop",
     "prepack": "npm run build",
-    "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run check:reviewable && npm run test && npm run build",
+    "prepublishOnly": "npm run check",
+    "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run check:reviewable && npm run test && npm run build && npm run check:pack",
     "check:adr": "node scripts/check-adr-numbers.mjs",
     "check:reviewable": "node scripts/check-reviewable.mjs",
+    "check:pack": "node scripts/smoke-pack.mjs",
     "backlog": "bd export -o .beads/issues.jsonl"
   },
   "devDependencies": {

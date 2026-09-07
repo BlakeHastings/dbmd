@@ -18,3 +18,8 @@ coverage/
 # Screenshots and snapshots left behind by driving the studio in a browser,
 # which docs/process/review.md asks a reviewer to do. Evidence, not source.
 .playwright-cli/
+
+# `npm pack` with no --pack-destination writes the tarball here. ADR 0024 makes
+# packing part of `npm run check`, which packs into a temp directory, but the
+# bare command is the obvious thing to type when you want to look inside one.
+*.tgz

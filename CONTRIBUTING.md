@@ -89,9 +89,15 @@ npm run check
 ```
 
 Typecheck, format check, decision-record numbering, the reviewable-diff check,
-tests, and a build, in that order. It is the only mechanical gate, and it is
-exactly what CI runs, so green here and green there mean the same thing. There
-is no second list of things to remember.
+tests, a build, and a smoke test over the packed tarball, in that order. It is
+the only mechanical gate, and it is exactly what CI runs, so green here and
+green there mean the same thing. There is no second list of things to remember.
+
+The last one packs the package, installs it into a temporary directory outside
+this repository and runs the installed `dbmd`. It takes about six seconds and it
+is the only thing here that looks at what a user would actually get;
+[ADR 0024](docs/architecture/decisions/0024-the-tarball-is-what-ships.md) says
+why that is worth six seconds on every run.
 
 **`npm run check` is not `dbmd check`.** They are a keystroke apart and you will
 meet both. This one is this repository's gate over this repository's source.
