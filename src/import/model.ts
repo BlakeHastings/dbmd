@@ -72,6 +72,22 @@ const COLUMN_PITCH = 300
 const ROW_PITCH = 260
 const PER_ROW = 5
 
+/**
+ * The same four numbers, as a value, for `./delta.ts`.
+ *
+ * A re-import puts a table the model has never seen on the same grid, below
+ * everything already placed, and it has to be the same grid or the first new
+ * table lands in a column of its own. Exported rather than copied so that
+ * changing the pitch here changes both, which is the mistake this makes
+ * impossible rather than merely unlikely.
+ */
+export const GRID = {
+  margin: MARGIN,
+  columnPitch: COLUMN_PITCH,
+  rowPitch: ROW_PITCH,
+  perRow: PER_ROW,
+} as const
+
 export interface ImportedModel {
   readonly model: Model
   /** Sorted, and pointing into the document that was read. Never a throw. */
@@ -388,7 +404,7 @@ function modelBody(document: IntrospectionDocument): string {
  * the directory back and compares, so a change to either side that broke the
  * pairing fails there.
  */
-function referencesTo(tables: readonly Table[]): ReadonlyMap<string, readonly RefEdge[]> {
+export function referencesTo(tables: readonly Table[]): ReadonlyMap<string, readonly RefEdge[]> {
   const edges = new Map<string, RefEdge[]>()
   for (const table of tables) edges.set(table.name, [])
   for (const table of tables) {
