@@ -306,6 +306,10 @@
          was about. That is the same accident the `.note-card` comment below
          describes, one plural along, so the answer is the same one said in
          CSS: a rule about a layer of the scene says so.
+
+         That is now a rule rather than a habit. `npm run check:scenes` fails
+         the build when a class name both `canvas.ts` and `inspector.ts` write
+         has a rule anchored to neither scene. ADR 0037.
          ------------------------------------------------------------------ */
       .scene > .notes,
       .scene > .groups {
