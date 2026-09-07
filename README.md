@@ -25,7 +25,12 @@ That is `dbmd studio` open on [`examples/shop`](examples/shop), a coffee
 roastery's order book. `shipments` is selected, so the panel on the right is
 editing `examples/shop/tables/shipments.md`, and that file is this:
 
-```markdown
+<!-- Prettier formats the inside of a markdown block, and this one is a file in
+     this repository rather than prose. See the same comment over the block in
+     the `dbmd import` walkthrough, which is how that one came to differ from
+     the file it claims to be. -->
+<!-- prettier-ignore -->
+```markdown dbmd-head:examples/shop/tables/shipments.md
 ---
 kind: table
 table: shipments
@@ -37,6 +42,7 @@ columns:
     type: uuid
     nullable: false
     ref: orders.id
+    on delete: restrict
   - name: carrier
     type: text
     nullable: false
@@ -82,7 +88,9 @@ this table invites, and it has been made twice.
 That is the frontmatter in full, and the first two paragraphs of a body that
 keeps going. Every field in the panel is a line in the frontmatter, in the same
 order. Scroll the panel and the indexes are there too, then a box holding the
-body, which the studio carries byte for byte and never reflows.
+body, which the studio carries byte for byte and never reflows. The build reads
+that block against the file it names, so the only line on this page allowed to
+disagree with it is `layout:`, which moves every time somebody drags the box.
 
 The two halves of that file are why this exists. `unique: true` on
 `shipments_handheld_key` is the difference between a parcel packed twice and a
@@ -100,7 +108,7 @@ above and choosing `nullable: true`:
 diff --git a/examples/shop/tables/shipments.md b/examples/shop/tables/shipments.md
 --- a/examples/shop/tables/shipments.md
 +++ b/examples/shop/tables/shipments.md
-@@ -28,6 +28,9 @@ columns:
+@@ -29,6 +29,9 @@ columns:
    - name: shipped_at
      type: timestamptz
      nullable: true

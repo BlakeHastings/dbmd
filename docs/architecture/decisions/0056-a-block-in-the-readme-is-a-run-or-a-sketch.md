@@ -131,3 +131,85 @@ the tags are invisible and a reader deserves to know which blocks are evidence.
 - **Prettier's handling of fenced blocks changes.** The `prettier-ignore` above
   the file block is a workaround for one formatter's opinion, and if the
   formatter stops holding it the comment should go rather than linger.
+
+## The first revisit entry fired the same day, and a fourth tag answers it
+
+Appended rather than edited, because the consequence above naming the opening
+block as uncovered was true when it was written and is the argument this section
+answers. Everything the three tags decide is unchanged.
+
+**The block that record named as excluded went stale, and it was already stale
+when it was named.** `README.md`'s opening block claims to be
+`examples/shop/tables/shipments.md`. The committed file has `on delete: restrict`
+on `order_id`, from [ADR 0046](0046-a-key-may-say-what-the-engine-does.md), and
+the block did not (dbmd-5pj). So the page's first illustration of the format was
+missing a key the format has, on the page that opens by saying the picture and
+the file are the same thing.
+
+**The instruction on that entry was to widen the region rather than fix the
+block, and it is followed with one correction.** Widening the *walkthrough*
+region is not the move, because the walkthrough is not a region drawn around
+blocks that can be checked. It is drawn around the sentence that promised every
+block below was real output, and the rule that every fence inside it carries a
+tag follows from that promise rather than from the mechanism. Widening it to the
+whole page would demand a tag on every ` ```json `, ` ```bash ` and ` ```diff `
+fence on it, most of which are prose.
+
+**What widens instead is the file assertion.** A fourth tag,
+`dbmd-head:<path>`, is looked for on the whole page rather than inside the
+walkthrough, and the exhaustiveness rule stays where the promise was made.
+
+    ```markdown dbmd-head:examples/shop/tables/shipments.md
+
+**`dbmd-head:` is a committed file in this repository, quoted from the top.**
+It differs from `dbmd-file:` in both halves of what a path means. A
+`dbmd-file:` path is a file the session above it wrote, read out of the sandbox,
+and asserted whole. A `dbmd-head:` path is a file in the repository, read from
+the repository root, and asserted for as many lines as the block shows, because
+a page quoting a file to make a point about it stops where the point stops. The
+opening block was already a prefix, which is the page having half-arrived at
+this on its own.
+
+**`layout:` is compared as a key and not as a value, and that exception is the
+whole reason this is a second tag rather than `dbmd-file:` with a wider scope.**
+The consequence above is right: asserting that line byte for byte would turn
+dragging a box in the studio into a red build. That is intolerable twice over.
+`examples/shop` exists to be arranged, and ADR 0003 calls `layout:` the line a
+reviewer learns to skip, so a test built on it would make the one line nobody
+reads the one line that can break a build. The exception is one regular
+expression over one key, named in the test, and adding a second key to it needs
+the argument this one has: a value a person changes on purpose does not belong
+there, because then the page can be wrong about it and nothing says so.
+
+**Everything else in the block is held to the byte, including the prose.** The
+frontmatter minus the coordinates is a claim about the model, and the two
+paragraphs quoted under it are the half of the format ADR 0003 says is the
+point. If somebody edits that body, in the studio or in the file, the build
+goes red and the page is updated with it. That is the intended cost and it is
+the difference between a coordinate and a sentence.
+
+**The guard has been seen to fail, as ADR 0034 requires**, in the three shapes
+that matter. Removing `on delete: restrict` from the block, which is the defect
+this section exists for, fails with a diff of the block against the file.
+Changing a column's type in `examples/shop/tables/shipments.md` fails the same
+way. Moving that table's `layout:` to `{ x: 1240, y: 180 }` passes, which is the
+property the exception is for.
+
+**The rule is about any block showing a file, not about this one.** A future
+block anywhere on the page that quotes a committed file takes the tag, and
+`docs/media/` aside, that is now the whole of the page's exposure to this kind of
+rot. The `<!-- prettier-ignore -->` over the block is there for the reason the
+walkthrough's is, and the same comment says so.
+
+**One thing on the page was corrected without a tag, because nothing covers its
+shape.** The `diff` block under "What a change looks like" is a diff of the same
+file and its hunk header said `@@ -28,6 +28,9 @@`, one line out for the same
+missing `on delete:` line. It now says `-29`, regenerated rather than counted. A
+tag that runs a diff against a file is a bigger mechanism than one block earns,
+and this is the note that says the block is uncovered so the next person does not
+have to work that out.
+
+**The second revisit entry is unchanged and still stands.** The studio's block
+still prints a port the kernel chose and is still excluded, and `examples/shop`'s
+layout has not stopped being volatile: it has been contained rather than
+removed as an objection.

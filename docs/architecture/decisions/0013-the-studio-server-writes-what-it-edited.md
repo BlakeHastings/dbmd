@@ -106,3 +106,36 @@ than adopted if an edit arrived while it was in flight". That was right about th
 edit and wrong about every other file: a hand edit to `customers.md` was thrown
 away because a drag of `orders` was pending. A read is now adopted file by file,
 keeping only the ones with unwritten edits.
+
+## The first revisit entry fired in dbmd-34, for notes and groups
+
+Appended rather than edited, and appended below 0019's section so the two
+corrections read in the order they happened. Everything this record decides
+stands: the model in memory is still a cache of the directory, a write is still
+followed by a re-read, the session still writes only the files it edited, and a
+request still names an object rather than a path.
+
+The first entry under **Revisit when** says the routes here are tables only and
+that the containment check and the patch parser both name tables today. That
+stopped being true in #55, which put notes and groups on the canvas. The
+sentence should be read as a description of the server on the day this record
+was written rather than of the server now.
+
+**One route serves three kinds, and the general half of that entry was the half
+that held.** `KIND_ENDPOINTS` in `src/studio/server.ts` maps `table`, `note` and
+`group` onto one set of endpoints, because ADR 0005 made a kind a directory and
+a set of keys and nothing else. The containment check did not have to be
+written twice: `fileFor(kind, name)` takes the kind, resolves under
+`directoryOfKind(kind)`, and applies the same two refusals in the same words to
+all three. Only the patch parser and the apply differ per kind, which is exactly
+the split this entry predicted, and it is smaller than the entry expected.
+
+**`_model.md` is the third thing that entry names and it is still not edited by
+the studio.** There are three object kinds and it is not one of them, so that
+part of the condition has not fired and the entry is not spent.
+
+**The rest of the list was read at the same time and none of it has fired.** Two
+people or two windows editing one model is still the trigger ADR 0004 and this
+record both point at, and the studio is still one loopback session with no
+authentication. Nobody has measured a flush slow enough to feel, so the re-read
+is still unnarrowed for the reason given above.

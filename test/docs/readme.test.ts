@@ -16,12 +16,13 @@
  * inputs rather than illustrations, and the one that cannot is marked in the
  * page's own prose as a sketch.
  *
- * Three info strings are picked up, and all three are invisible on GitHub, so
- * the page reads exactly as it did:
+ * Four info strings are picked up, and all four are invisible on GitHub, so the
+ * page reads exactly as it did:
  *
  *   ```dbmd-run
  *   ```markdown dbmd-file:shop-model/tables/orders.md
  *   ```dbmd-sketch
+ *   ```markdown dbmd-head:examples/shop/tables/shipments.md
  *
  * A `dbmd-run` block is a shell session. Every `$ dbmd ...` line in it is run,
  * in order, and the lines under it must equal what that command wrote to
@@ -29,6 +30,22 @@
  * must equal the file at that path once the session has run. A `dbmd-sketch`
  * block is not run, and the only thing asserted about it is that it exists,
  * because the assertion a reader needs is the sentence beside it.
+ *
+ * A `dbmd-head:` block is a committed file in this repository, quoted from the
+ * top and stopping wherever the page stops, which is what a page showing a file
+ * to make a point about it does. It is read from the repository rather than
+ * from the sandbox, and it is the one tag whose blocks are looked for on the
+ * whole page rather than inside the `dbmd import` walkthrough: a file quoted
+ * anywhere goes stale the same way, and the walkthrough's boundary is about
+ * where the page promised that every block was run (ADR 0056).
+ *
+ * `layout:` is compared as a key and not as a value, and that exception is the
+ * whole reason this tag exists rather than `dbmd-file:` with a wider scope. The
+ * coordinates are what the studio rewrites when somebody drags a box, and
+ * ADR 0003 calls that the line a reviewer learns to skip. A test that turned a
+ * drag into a red build would make the one line nobody reads the one line that
+ * can break the build, and `examples/shop` exists to be arranged. Everything
+ * else in the block is a claim about the model and is held to the byte.
  *
  * WHY THE COMMANDS RUN FROM A SANDBOX RATHER THAN WITH ABSOLUTE PATHS
  * A command prints the directory it was given (ADR 0006), so a run passing
@@ -55,17 +72,29 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { runCli } from '../cli/harness.js'
 
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const readmePath = fileURLToPath(new URL('../../README.md', import.meta.url))
 const fixtures = fileURLToPath(new URL('../import/fixtures', import.meta.url))
 
 /** Where the fixtures have to land for the paths the page prints to be the paths it runs. */
 const FIXTURES_IN_PAGE = 'test/import/fixtures'
 
-type Kind = 'run' | 'file' | 'sketch'
+/**
+ * The lines a `dbmd-head:` block may disagree with its file about.
+ *
+ * One entry, and adding a second one needs the argument this one has: a
+ * `layout:` is rewritten by dragging a box, says nothing a reader of the page
+ * came for, and is the line ADR 0003 says a reviewer learns to skip. A key that
+ * a person changes on purpose does not belong here, because then the page can
+ * be wrong about it and nothing says so.
+ */
+const VOLATILE = /^\s*layout:/
+
+type Kind = 'run' | 'file' | 'sketch' | 'head'
 
 interface Block {
   readonly kind: Kind
-  /** On a `dbmd-file:` block, the path it claims to be. */
+  /** On a `dbmd-file:` or `dbmd-head:` block, the path it claims to be. */
   readonly path?: string
   readonly text: string
   /** The line the fence opened on, for a failure that says where to look. */
@@ -81,7 +110,7 @@ interface Block {
  * Either way GitHub shows nothing, and `docs/format.md` has the same convention
  * for the same reason.
  */
-const OPENING = /^```(?:(\S+)\s+)?(dbmd-run|dbmd-sketch|dbmd-file:\S+)\s*$/
+const OPENING = /^```(?:(\S+)\s+)?(dbmd-run|dbmd-sketch|dbmd-file:\S+|dbmd-head:\S+)\s*$/
 
 function blocksIn(lines: readonly string[]): Block[] {
   const blocks: Block[] = []
@@ -94,10 +123,32 @@ function blocksIn(lines: readonly string[]): Block[] {
     const tag = opening[2] as string
     if (tag === 'dbmd-run') blocks.push({ kind: 'run', text, line: i + 1 })
     else if (tag === 'dbmd-sketch') blocks.push({ kind: 'sketch', text, line: i + 1 })
+    else if (tag.startsWith('dbmd-head:'))
+      blocks.push({ kind: 'head', path: tag.slice('dbmd-head:'.length), text, line: i + 1 })
     else blocks.push({ kind: 'file', path: tag.slice('dbmd-file:'.length), text, line: i + 1 })
     i = end
   }
   return blocks
+}
+
+/**
+ * The file's opening, as many lines as the block claims, with the volatile
+ * lines replaced by what the block says about them.
+ *
+ * Written as one string to compare against another so that a failure is a diff
+ * of the block against the file rather than a line number and a boolean, which
+ * is the failure ADR 0034 asks a guard to produce. A file shorter than the
+ * block comes out shorter and fails the same way.
+ */
+function openingOf(file: string, block: Block): string {
+  const claimed = block.text.slice(0, -1).split('\n')
+  const found = file.split('\n').slice(0, claimed.length)
+  return found
+    .map((line, i) => {
+      const claim = claimed[i] ?? ''
+      return VOLATILE.test(line) && VOLATILE.test(claim) ? claim : line
+    })
+    .join('\n')
 }
 
 /**
@@ -119,10 +170,16 @@ function walkthroughOf(lines: readonly string[]): { readonly from: number; reado
 const page = await readFile(readmePath, 'utf8')
 const lines = page.split('\n')
 const walkthrough = walkthroughOf(lines)
-const blocks = blocksIn(lines.slice(walkthrough.from, walkthrough.to)).map((block) => ({
-  ...block,
-  line: block.line + walkthrough.from,
-}))
+
+// The page is scanned once and the blocks are then sorted by where they are,
+// because the two mechanisms have different scopes on purpose. A session and
+// the file it wrote only mean anything inside the walkthrough that ran them; a
+// file quoted from this repository means the same thing anywhere on the page.
+const tagged = blocksIn(lines)
+const inWalkthrough = (block: Block): boolean =>
+  block.line - 1 >= walkthrough.from && block.line - 1 < walkthrough.to
+const blocks = tagged.filter((block) => block.kind !== 'head' && inWalkthrough(block))
+const heads = tagged.filter((block) => block.kind === 'head')
 
 describe('the import walkthrough in README.md says which of its blocks were run', () => {
   test('every block in it is tagged, one way or the other', () => {
@@ -163,6 +220,26 @@ describe('the import walkthrough in README.md says which of its blocks were run'
       expect(before.join('\n'), `the prose above README.md:${block.line}`).toContain('sketch')
     }
   })
+})
+
+describe('a block in README.md that quotes a committed file is that file', () => {
+  test('there is a block to read', () => {
+    // The same floor the walkthrough carries, for the same reason: a refactor
+    // that broke the info string would otherwise leave this suite green while
+    // asserting nothing about any file at all.
+    expect(heads.length).toBeGreaterThanOrEqual(1)
+  })
+
+  for (const block of heads) {
+    const path = block.path as string
+
+    test(`README.md:${block.line} is the opening of ${path}`, async () => {
+      const file = await readFile(join(repoRoot, path), 'utf8')
+      expect(openingOf(file, block), `${path}, against the block at README.md:${block.line}`).toBe(
+        block.text.slice(0, -1),
+      )
+    })
+  }
 })
 
 describe('the import walkthrough in README.md prints what it shows', () => {

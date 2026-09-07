@@ -228,3 +228,49 @@ told it was never going to be written.
 - **Two schemas with the same table name stops being rare.** `import/name-collision`
   is a report about a limitation rather than about the user, and the way out is
   subdirectories under `tables/`, which ADR 0003 already names.
+
+## Two revisit entries have fired: the refusal is replaced, and the warnings are gone
+
+Appended rather than edited, because everything decided here about what an
+import writes is unchanged, including the one-line prompt body, the engine's own
+spelling of a type, and the grid. Two conditions under **Revisit when** describe
+work that has since happened, and one consequence stopped being true along with
+one of them.
+
+**"An import is asked to write into a directory that already has a model."** That
+was dbmd-42, and it landed on 2026-09-07 in #119 as
+[ADR 0050](0050-a-re-import-is-a-delta-somebody-confirmed.md). The refusal this
+record calls a placeholder has been replaced, so the paragraph above headed "It
+refuses a directory that is not empty" reads as history: a re-import now computes
+a delta, itemises it, and writes nothing until somebody has confirmed it with
+`--confirm`. The message that named dbmd-42 by name, so a user could tell "not
+built yet" from "not allowed", did the job it was written for and is gone with
+the refusal. The last consequence above is spent with it: there is a `--confirm`
+now, and it is the thing this record called "dbmd-42 wearing a disguise" arriving
+with the conversation it was waiting for rather than as a flag.
+
+**"A composite foreign key's warnings annoy somebody enough to file it."** They
+did, and the answer went the other way from the one predicted here. This entry
+says the annoyance is evidence that the format needs a composite ref.
+[ADR 0033](0033-a-composite-foreign-key-is-judged-as-a-set.md) weighed that
+against a validator that reads the refs into one target table as a set, and took
+the validator: the format does not change, `ref-target-not-unique` now asks
+whether the whole key a column sits in is referenced from this table, and a
+covering pair is silent. So the prediction in this entry is wrong, and it is left
+standing because the reasoning that produced it is the reasoning ADR 0033 had to
+answer, and answering it is most of that record.
+
+**The consequence above, "a composite foreign key becomes two refs and two
+warnings", is half wrong from ADR 0033 onwards.** It is still two refs, because
+this record is right that the format has no way to write one constraint. It is
+no longer two warnings when the pair covers a whole key of the target, which is
+the case the paragraph was written about, and `dbmd check --strict` no longer
+fails a freshly imported model for it. The two honest answers that paragraph
+named, a composite ref in the format or a validator that understands a pair, are
+still the two answers; the second one was taken.
+
+**The rest of the list was read at the same time and none of it has fired.**
+Nobody has asked for the normalised type in the file. The
+`timestamp with time zone(3)` wart has not shown up in a real diff, so
+`EngineProvider` still has no `formatType`. Two schemas with the same table name
+is still rare, and `tables/` is still flat.
