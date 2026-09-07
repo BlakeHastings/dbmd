@@ -91,7 +91,8 @@ npm run check
 ```
 
 Typecheck, format check, decision-record numbering, the reviewable-diff check,
-tests, a build, and a smoke test over the packed tarball, in that order. It is
+the check that every command named here exists, tests, a build, and a smoke test
+over the packed tarball, in that order. It is
 the only mechanical gate, and it is exactly what CI runs, so green here and
 green there mean the same thing. There is no second list of things to remember.
 
@@ -110,6 +111,23 @@ meet both. This one is this repository's gate over this repository's source.
 `dbmd check` is a command the tool ships, and it reads somebody's model
 directory and reports what is wrong with it; `dbmd check --help` is the whole
 story on that one.
+
+**A command you write in backticks has to exist.** `dbmd query` was named by
+four error messages, a documentation page, a decision record and `AGENTS.md`
+before anybody wrote it, and every reference agreed with every other, so there
+was nothing to notice. `npm run check:commands` resolves every `dbmd <command>`,
+`npm run <script>` and `node scripts/<file>` written inside backticks anywhere
+in the tree. Prose is not read at all, so "dbmd reads the model" is none of its
+business. If you mean something that does not exist yet, say so on the line you
+wrote it:
+
+```
+A future `dbmd fmt` will tidy a whole directory. <!-- hypothetical: dbmd fmt -->
+```
+
+[ADR 0036](docs/architecture/decisions/0036-a-command-in-backticks-is-a-claim-that-it-exists.md)
+says why that marker is written rather than guessed at, and why decision records
+are not scanned.
 
 The pieces run on their own when you want a faster loop: `npm run typecheck`,
 `npm run format` (which writes; `npm run format:check` only complains),

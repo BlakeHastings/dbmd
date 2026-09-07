@@ -892,7 +892,7 @@ moves again.
 
 You are not obliged to produce any of this. Anything YAML accepts is read, and a
 file is rewritten only when something saves *that* file: `dbmd import` and a
-future `dbmd fmt` bring a whole directory into this shape, and the studio saves
+future `dbmd fmt` bring a whole directory into this shape, and the studio saves <!-- hypothetical: dbmd fmt -->
 the files you edited and leaves the rest alone. So a model where two tables are
 canonical and six are however you typed them is a normal model.
 

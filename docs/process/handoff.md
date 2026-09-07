@@ -159,8 +159,10 @@ rather than by reading.
   `file-unreadable` and `import/empty-value` are the exceptions, filed as
   dbmd-f3p and dbmd-ft5.
 - **Every `npm run`, every `scripts/*.mjs` and every `dbmd` subcommand named in
-  markdown exists.** The only unreal ones are written as hypothetical, "a future
-  `dbmd fmt`". Nothing repeats this check, which is filed.
+  markdown exists.** The only unreal one is a future `dbmd fmt`.
+  <!-- hypothetical: dbmd fmt -->
+  This one is no longer a sweep: `scripts/check-commands.mjs` repeats it on every
+  run, and ADR 0036 says how it tells a real reference from a hypothetical one.
 - **Every relative link and every anchor in 101 markdown files resolves.**
 - **The studio's five security properties hold**, checked with raw sockets
   because `fetch` rewrites the `Host` header: loopback bind only and unreachable
