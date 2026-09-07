@@ -1,0 +1,316 @@
+/**
+ * `dbmd import`.
+ *
+ * The exit code is the contract, as it is for every command here, so each test
+ * asserts one. What is particular to this command is the three ways a run can be
+ * wrong that are not the model's fault, and each of them has a test because each
+ * of them is a sentence somebody reads at the worst moment:
+ *
+ * - the paste stopped early, which is this feature's most likely failure and
+ *   the one no provider can name, because a provider never sees the characters
+ * - the directory already has a model in it, where the difference between
+ *   "not built yet" and "not allowed" is the whole of the message
+ * - the catalogue handed back a name no file can hold, which is a fact about the
+ *   model and therefore a diagnostic naming the table rather than an exception
+ */
+
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterEach, describe, expect, test } from 'vitest'
+import { type Input, runImport } from '../../src/cli/import.js'
+import { createOutput } from '../../src/cli/output.js'
+import { captureEnvironment, runCli, type Run } from './harness.js'
+
+const temporaries: string[] = []
+
+afterEach(async () => {
+  for (const directory of temporaries.splice(0)) {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+async function workspace(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'dbmd-import-cli-'))
+  temporaries.push(dir)
+  return dir
+}
+
+const POSTGRES_FIXTURE = fileURLToPath(
+  new URL('../import/fixtures/postgres-provider-raw.json', import.meta.url),
+)
+const SQLSERVER_FIXTURE = fileURLToPath(
+  new URL('../import/fixtures/sqlserver-provider-raw.json', import.meta.url),
+)
+
+/** A minimal Postgres-shaped file, so a case is about one thing. */
+function postgresFile(tables: readonly unknown[]): string {
+  return JSON.stringify({ dbmdIntrospection: 1, engine: 'postgres', database: 'shop', tables })
+}
+
+function table(name: string, extra: Record<string, unknown> = {}): unknown {
+  return {
+    table_schema: 'public',
+    table_name: name,
+    columns: [{ column_name: 'id', format_type: 'bigint', not_null: true }],
+    primary_key: { constraint_name: `${name}_pkey`, columns: ['id'] },
+    indexes: [],
+    foreign_keys: [],
+    check_constraints: [],
+    ...extra,
+  }
+}
+
+/** Standard input as a value: what is on it, and whether a person is typing. */
+function piped(text: string): Input {
+  return { isTty: false, read: () => Promise.resolve(text) }
+}
+
+const TERMINAL: Input = {
+  isTty: true,
+  read: () => Promise.reject(new Error('a terminal must never be read from')),
+}
+
+/** `runImport` with its third argument, which `runCli` cannot supply. */
+async function runWithStdin(argv: readonly string[], stdin: Input): Promise<Run> {
+  const { environment, written } = captureEnvironment()
+  const code = await runImport(
+    argv,
+    createOutput(environment, { json: false, noColor: true }),
+    stdin,
+  )
+  return { code, out: written.out, err: written.err }
+}
+
+describe('the happy path', () => {
+  test('writes a model directory from a file and says what it wrote', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])
+
+    expect(run.code).toBe(0)
+    // ADR 0006 rule 1: this command's answer is narration, so stdout is empty
+    // and a pipe carrying something else is undisturbed.
+    expect(run.out).toBe('')
+    expect(run.err).toContain('Imported 4 tables from postgres')
+    expect((await readdir(join(dir, 'tables'))).sort()).toEqual([
+      'Order.md',
+      'Tenant.md',
+      'event.md',
+      'order_line.md',
+    ])
+    expect(await readFile(join(dir, '_model.md'), 'utf8')).toContain('engine: postgres')
+  })
+
+  test('reads standard input, so a pipe works and nothing has to be saved first', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const text = await readFile(SQLSERVER_FIXTURE, 'utf8')
+    const run = await runWithStdin(['--dir', dir], piped(text))
+
+    expect(run.code).toBe(0)
+    expect(run.err).toContain('Imported 3 tables from sqlserver')
+    // The awkward name dbmd-44 imported: legal everywhere, and written.
+    expect(await readdir(join(dir, 'tables'))).toContain('Ledger [Entry].md')
+  })
+
+  test('checks clean afterwards, with nothing worse than an opinion about the database', async () => {
+    const dir = join(await workspace(), 'db-model')
+    expect((await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])).code).toBe(0)
+
+    const checked = await runCli(['check', dir, '--json'])
+    expect(checked.code).toBe(0)
+    const report = JSON.parse(checked.out) as { ok: boolean; counts: { errors: number } }
+    expect(report.ok).toBe(true)
+    expect(report.counts.errors).toBe(0)
+  })
+
+  test('--json puts the report on stdout and narrates nothing', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir, '--json'])
+
+    expect(run.code).toBe(0)
+    expect(run.err).toBe('')
+    const report = JSON.parse(run.out) as {
+      ok: boolean
+      engine: string
+      files: string[]
+      counts: { tables: number; errors: number; warnings: number }
+    }
+    expect(report.ok).toBe(true)
+    expect(report.engine).toBe('postgres')
+    expect(report.counts).toEqual({ tables: 4, errors: 0, warnings: 0 })
+    expect(report.files).toEqual([
+      '_model.md',
+      'tables/Order.md',
+      'tables/Tenant.md',
+      'tables/event.md',
+      'tables/order_line.md',
+    ])
+  })
+})
+
+describe('nothing prompts, and nothing is written over', () => {
+  test('a terminal on standard input with no --file is a usage error, not a wait', async () => {
+    // `TERMINAL.read` rejects, so this passing at all is the assertion: the
+    // command refused before it could sit there looking like it had hung.
+    // A `UsageError` rather than a report, because `main` owns exit code 2.
+    await expect(
+      runWithStdin(['--dir', join(await workspace(), 'db-model')], TERMINAL),
+    ).rejects.toThrow(/standard input is a terminal/)
+  })
+
+  test('a directory that is not empty is refused, and the message names dbmd-42', async () => {
+    const dir = await workspace()
+    await writeFile(join(dir, 'something.md'), 'not yours\n', 'utf8')
+
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])
+    expect(run.code).toBe(1)
+    expect(run.err).toContain('dbmd-42')
+    // And it really did leave it alone.
+    expect(await readdir(dir)).toEqual(['something.md'])
+  })
+
+  test('the refusal is the same failure in --json, with a code a script can branch on', async () => {
+    const dir = await workspace()
+    await writeFile(join(dir, 'something.md'), 'not yours\n', 'utf8')
+
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir, '--json'])
+    expect(run.code).toBe(1)
+    const report = JSON.parse(run.out) as { ok: boolean; error: { code: string } }
+    expect(report.ok).toBe(false)
+    expect(report.error.code).toBe('directory-not-empty')
+  })
+})
+
+describe('a paste that stopped early', () => {
+  const whole = postgresFile([table('orders')])
+
+  test('names truncation as the likely cause, without guessing at an engine', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(['--dir', dir], piped(whole.slice(0, whole.length - 40)))
+
+    expect(run.code).toBe(1)
+    expect(run.err).toContain('is not JSON')
+    expect(run.err).toContain('a paste that stopped early')
+    // The engine's own query header is where the reason lives, per engine. This
+    // points at it and names no engine, because it has not read one yet.
+    expect(run.err).toContain('comment above the query you ran')
+    expect(run.err).not.toContain('SQL Server')
+  })
+
+  test('is a code in --json, so a caller does not parse the prose', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const { environment, written } = captureEnvironment()
+    const code = await runImport(
+      ['--dir', dir],
+      createOutput(environment, { json: true, noColor: true }),
+      piped('{"dbmdIntrospection": 1, "engine": "post'),
+    )
+    expect(code).toBe(1)
+    const report = JSON.parse(written.out) as { error: { code: string; likelyCause: string } }
+    expect(report.error.code).toBe('input-not-json')
+    expect(report.error.likelyCause).toBe('the paste stopped early')
+  })
+
+  test('an empty paste says so rather than complaining about position 0', async () => {
+    const run = await runWithStdin(['--dir', join(await workspace(), 'db-model')], piped('   \n'))
+    expect(run.code).toBe(1)
+    expect(run.err).toContain('there was nothing in standard input')
+  })
+
+  test('a byte-order mark on the front is not a parse failure', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(['--dir', dir], piped(`${String.fromCharCode(0xfeff)}${whole}`))
+    expect(run.code).toBe(0)
+  })
+})
+
+describe('a name a file cannot hold', () => {
+  const catalogue = postgresFile([table('Ledger: Entry'), table('orders')])
+
+  test('is a diagnostic naming the table, and the rest of the model is still written', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(['--dir', dir], piped(catalogue))
+
+    expect(run.code).toBe(1)
+    expect(run.err).toContain('import/unsafe-name')
+    expect(run.err).toContain('`Ledger: Entry`')
+    // Not an exception three frames down with a path in it: the run finished,
+    // said which table, and wrote everything it could. ADR 0026.
+    expect(await readdir(join(dir, 'tables'))).toEqual(['orders.md'])
+  })
+
+  test('points at the row of the catalogue it came from', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const { environment, written } = captureEnvironment()
+    const code = await runImport(
+      ['--dir', dir],
+      createOutput(environment, { json: true, noColor: true }),
+      piped(catalogue),
+    )
+    expect(code).toBe(1)
+    const report = JSON.parse(written.out) as {
+      diagnostics: { code: string; at: { in: string; jsonPath: string } }[]
+    }
+    expect(report.diagnostics.map((d) => d.code)).toEqual(['import/unsafe-name'])
+    expect(report.diagnostics[0]?.at).toEqual({ in: 'document', jsonPath: '$.tables[0].name' })
+  })
+})
+
+describe('a foreign key to a table the export does not contain', () => {
+  test('is a warning, and no dangling ref reaches the file', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(
+      ['--dir', dir],
+      piped(
+        postgresFile([
+          table('orders', {
+            columns: [
+              { column_name: 'id', format_type: 'bigint', not_null: true },
+              { column_name: 'customer_id', format_type: 'bigint', not_null: true },
+            ],
+            foreign_keys: [
+              {
+                constraint_name: 'orders_customer_id_fkey',
+                columns: ['customer_id'],
+                referenced_schema: 'public',
+                referenced_table: 'customers',
+                referenced_columns: ['id'],
+                on_delete: 'a',
+                on_update: 'a',
+              },
+            ],
+          }),
+        ]),
+      ),
+    )
+
+    expect(run.code).toBe(0)
+    expect(run.err).toContain('import/reference-not-exported')
+    expect(run.err).toContain('`public.customers`')
+    expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).not.toContain('ref:')
+  })
+})
+
+describe('the command line', () => {
+  test('rejects a bare word, because it could be either of the two paths', async () => {
+    const run = await runCli(['import', 'db-model'])
+    expect(run.code).toBe(2)
+    expect(run.err).toContain('--file')
+    expect(run.err).toContain('--dir')
+  })
+
+  test('--engine overrides the file and never does it silently', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(
+      ['--dir', dir, '--engine', 'sqlserver'],
+      piped(postgresFile([table('orders')])),
+    )
+    expect(run.err).toContain('import/engine-overridden')
+  })
+
+  test('is listed in the root help, so somebody can find it', async () => {
+    const run = await runCli([])
+    expect(run.out).toContain('import')
+  })
+})

@@ -165,6 +165,34 @@ export type ImportDiagnosticCode =
    * the case it was added for.
    */
   | 'import/conflicting-fields'
+  // The three below are raised by `dbmd import` rather than by the contract:
+  // they are about the model the document became, which is a thing only the
+  // caller that builds one can see. ADR 0029.
+  /**
+   * A catalogue name that no filesystem would accept as a file, so the table
+   * has nowhere to be written.
+   *
+   * ADR 0026 says why this code exists here and nowhere else. The writer
+   * reports it as a `WriteSkip` because a name is a fact about the model rather
+   * than about the disk, and no *reader* can ever raise it, because the
+   * filesystem refuses the name before dbmd is involved. An importer takes its
+   * names from a database catalogue, which has no such rule, so it is the one
+   * caller that can hold a table called `Ledger: Entry`.
+   */
+  | 'import/unsafe-name'
+  /**
+   * A foreign key whose referenced table is not in the file, so there is no
+   * `ref:` to write. A partial export rather than a broken model, which is why
+   * it is a warning and why the ref is dropped instead of being written and
+   * left for `dbmd check` to find.
+   */
+  | 'import/reference-not-exported'
+  /**
+   * Two tables that would be written to one file. A model directory is flat
+   * (ADR 0003), so two schemas with a table of the same name collide, and
+   * writing both would silently keep whichever was written last.
+   */
+  | 'import/name-collision'
 
 /**
  * Every code dbmd can emit. `dbmd check --json` prints diagnostics from both
