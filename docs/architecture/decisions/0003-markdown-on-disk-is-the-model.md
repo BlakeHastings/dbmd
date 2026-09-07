@@ -286,3 +286,29 @@ The cost is real and is named in `docs/format.md` under what the format does not
 have: a model imported from a database cannot tell you whether dropping an index
 would drop a constraint with it. If somebody wants it, the way out is a second
 key on the index entry, never a second meaning for `unique`.
+
+## The "model, not a migration" line, read again by 0046
+
+Appended because that line is the one this record is cited for, and a reader who
+stops at the appendix above would still think `on delete` is unsayable.
+
+**"This is a model, not a migration" stands, word for word.** What moved is
+where the line under it was found to be. The appendix deferred `on delete` on
+the grounds that this line "is the thing that would have to be revisited to
+accept it", and that turned out to be the wrong place to look. The line is not
+between structure and behaviour. It cannot be: `default: now()` is in this
+record's own example, and a default is an expression the engine executes.
+
+ADR 0046 puts it where the risk actually is. dbmd may record any fact a
+catalogue reports and a person can read, because carrying it is the whole of
+what dbmd does with it. What it may never do is produce a statement a database
+will execute. So `on delete:` and `on update:` are keys, taking the five
+standard actions as a closed vocabulary, and nothing about writing them down
+emits a line of DDL.
+
+Two sentences in the appendix above are corrected there rather than here. It
+filed `on delete` beside `check` constraints, and they are different questions:
+a referential action is a closed vocabulary dbmd can read, and a check
+constraint is engine text it cannot. It also said `isUniqueConstraint` "is the
+same question as `on delete` and gets the same answer". The answers have now
+parted, and 0046 says why the two were never the same question.

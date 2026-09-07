@@ -514,6 +514,173 @@ columns:
   })
 })
 
+/**
+ * The two keys that say what the engine does rather than what it holds.
+ *
+ * They live on the `Ref` rather than beside it, so a model cannot hold an action
+ * that is about nothing, and the vocabulary is closed because the standard's is:
+ * ADR 0046 is why that is the one place this format checks a word against a list.
+ */
+describe('on delete and on update', () => {
+  test('both are read onto the ref they are written beside', async () => {
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+    on delete: restrict
+    on update: cascade
+  - name: address_id
+    type: uuid
+    ref: addresses.id
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([])
+    expect(model.tables[0]?.columns[0]?.ref).toEqual({
+      table: 'customers',
+      column: 'id',
+      onDelete: 'restrict',
+      onUpdate: 'cascade',
+    })
+    // Absent rather than `no action`: the file did not say, and a catalogue
+    // that says `NO ACTION` is making a different statement.
+    expect(model.tables[0]?.columns[1]?.ref).toEqual({ table: 'addresses', column: 'id' })
+  })
+
+  test('all five are accepted and nothing else is', async () => {
+    for (const action of ['no action', 'restrict', 'cascade', 'set null', 'set default']) {
+      const { model, diagnostics } = await withModel({
+        'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+    on delete: ${action}
+---
+`,
+      })
+
+      expect(lines(diagnostics)).toEqual([])
+      expect(model.tables[0]?.columns[0]?.ref?.onDelete).toBe(action)
+    }
+  })
+
+  test('a word outside the five is an error naming the five, and no action is kept', async () => {
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+    on delete: banana
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:8 error not-in-vocabulary: `on delete: banana` is not a referential ' +
+        'action; write one of `no action`, `restrict`, `cascade`, `set null`, `set default`',
+    ])
+    expect(model.tables[0]?.columns[0]?.ref).toEqual({ table: 'customers', column: 'id' })
+    // An error, so the file holds something the object does not, so the writer
+    // may not save over it. A warning here would delete the line on the next save.
+    expect(model.tables[0]?.complete).toBe(false)
+  })
+
+  test('SQL Server spelling is not a second spelling: `setNull` is not one of the five', async () => {
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+    on delete: setNull
+---
+`,
+    })
+
+    expect(diagnostics.map((d) => d.code)).toEqual(['not-in-vocabulary'])
+  })
+
+  test('a value YAML resolved to something other than a string says so', async () => {
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+    on delete: true
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:8 error field-wrong-type: `on delete` must be a string, but YAML read ' +
+        '`true` as a boolean; write one of `no action`, `restrict`, `cascade`, `set null`, ' +
+        '`set default`',
+    ])
+  })
+
+  test('an action with no ref is about nothing, and is an error rather than a dropped line', async () => {
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: status
+    type: text
+    on delete: cascade
+    on update: banana
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:7 error field-missing: `on delete` says what happens to this row when ' +
+        'the row it points at is deleted, and this column has no `ref:` for it to be about; ' +
+        'add the `ref:`, or delete this key',
+      'tables/orders.md:8 error field-missing: `on update` says what happens to this row when ' +
+        'the key it points at changes, and this column has no `ref:` for it to be about; ' +
+        'add the `ref:`, or delete this key',
+    ])
+    // The vocabulary is not also complained about: without a ref the value
+    // cannot matter, and two sentences about one line is how a check stops
+    // being read.
+    expect(diagnostics.map((d) => d.code)).not.toContain('not-in-vocabulary')
+    expect(model.tables[0]?.complete).toBe(false)
+  })
+
+  test('a malformed ref is reported once, and the actions do not add a second complaint', async () => {
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: customer_id
+    type: uuid
+    ref: customers
+    on delete: cascade
+---
+`,
+    })
+
+    expect(diagnostics.map((d) => d.code)).toEqual(['ref-malformed'])
+  })
+})
+
 describe('group membership is declared by the member', () => {
   test('a group has its members computed and never stores them', async () => {
     const { model } = await readModel(fixtureModel)
@@ -604,7 +771,7 @@ columns:
     })
 
     expect(lines(diagnostics)).toEqual([
-      'tables/orders.md:7 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, pk, ref, type',
+      'tables/orders.md:7 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, on delete, on update, pk, ref, type',
     ])
   })
 
@@ -840,7 +1007,7 @@ describe('never throwing, and always in the same order', () => {
       'tables/coerced.md:8 error field-wrong-type: `name` must be a string, but YAML read `null` as null; quote it',
       'tables/coerced.md:11 error field-wrong-type: `type` must be a string, but YAML read `true` as a boolean; quote it',
       'tables/coerced.md:14 error field-wrong-type: `default` must be a string, but YAML read `0` as a number; quote it so that it survives as SQL text, and quote it twice if it is a SQL string literal: `default: "\'pending\'"`',
-      'tables/coerced.md:15 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, pk, ref, type',
+      'tables/coerced.md:15 warning unknown-key: `unqiue` means nothing on a column; known keys are default, name, nullable, on delete, on update, pk, ref, type',
       'tables/empty-frontmatter.md error frontmatter-empty: the frontmatter is empty, so the file declares nothing',
       'tables/no-frontmatter.md error frontmatter-absent: no frontmatter: the file does not start with a `---` line',
       'tables/shipments.md:12 error group-unknown: `group: shipping` names no file at groups/shipping.md',

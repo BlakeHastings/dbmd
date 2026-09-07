@@ -95,6 +95,39 @@ Prose.
 `)
   })
 
+  test('a referential action is written under the ref it is about, in SQL order', () => {
+    // The column's canonical order ends `ref`, `on delete`, `on update`, which
+    // is the order the clauses appear in DDL. The words are the file's, not the
+    // contract's `setNull`: ADR 0046.
+    expect(
+      serialiseObject(
+        table({
+          columns: [
+            {
+              name: 'customer_id',
+              type: 'uuid',
+              nullable: false,
+              ref: { table: 'customers', column: 'id', onDelete: 'set null', onUpdate: 'cascade' },
+            },
+            // No key at all where the model holds no action, rather than
+            // `on delete: no action`: absent and `no action` are two facts.
+            { name: 'address_id', type: 'uuid', ref: { table: 'addresses', column: 'id' } },
+          ],
+        }),
+      ),
+    ).toContain(`columns:
+  - name: customer_id
+    type: uuid
+    nullable: false
+    ref: customers.id
+    on delete: set null
+    on update: cascade
+  - name: address_id
+    type: uuid
+    ref: addresses.id
+---`)
+  })
+
   test('a note carries its size and a table does not', () => {
     const note: Note = {
       kind: 'note',

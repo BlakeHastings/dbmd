@@ -70,8 +70,10 @@ import type {
   Note,
   ObjectKind,
   Ref,
+  ReferentialAction,
   Table,
 } from '../../model/types.js'
+import { REFERENTIAL_ACTIONS } from '../../model/types.js'
 import type { GroupPatch, NotePatch, TablePatch, WireModel } from '../wire.js'
 import type { Selected } from './canvas.js'
 import {
@@ -132,6 +134,18 @@ interface ColumnRow {
   readonly nullable: HTMLSelectElement
   readonly default: HTMLInputElement
   readonly ref: HTMLInputElement
+  /**
+   * The two referential actions, and the row they sit on, which is hidden while
+   * the `ref` field holds nothing to be about.
+   *
+   * They are shown rather than carried invisibly, which is the choice ADR 0016
+   * takes everywhere: a panel that holds a fact it does not display is a panel
+   * that deletes it the first time somebody retypes the ref, and the developer
+   * would find out from a diff. ADR 0046.
+   */
+  readonly actions: HTMLDivElement
+  readonly onDelete: HTMLSelectElement
+  readonly onUpdate: HTMLSelectElement
   readonly notes: HTMLParagraphElement
   /** What this column was called when the panel was drawn, for the ref warning. */
   readonly was: string
@@ -784,6 +798,16 @@ export class Inspector {
       'ref (table.column)',
     )
 
+    const actions = el('div', 'flags actions')
+    const onDelete = actionField(actions, 'on delete', column.ref?.onDelete)
+    const onUpdate = actionField(actions, 'on update', column.ref?.onUpdate)
+    // Hidden rather than absent, so that typing a ref reveals it without the
+    // row being rebuilt under the cursor, which is decision 2 at the top of this
+    // file. An action with no ref is a diagnostic in the reader, so the panel
+    // simply never offers one.
+    actions.hidden = column.ref === undefined
+    item.append(actions)
+
     const buttons = el('div', 'row-buttons')
     const up = iconButton('↑', 'Move up')
     const down = iconButton('↓', 'Move down')
@@ -803,6 +827,9 @@ export class Inspector {
       nullable,
       default: fallback,
       ref,
+      actions,
+      onDelete,
+      onUpdate,
       notes,
       was: column.name,
     }
@@ -812,6 +839,8 @@ export class Inspector {
     }
     pk.addEventListener('change', () => this.commitColumns())
     nullable.addEventListener('change', () => this.commitColumns())
+    onDelete.addEventListener('change', () => this.commitColumns())
+    onUpdate.addEventListener('change', () => this.commitColumns())
     up.addEventListener('click', () => this.moveColumn(row, -1))
     down.addEventListener('click', () => this.moveColumn(row, 1))
     remove.addEventListener('click', () => this.askToRemoveColumn(row))
@@ -898,12 +927,22 @@ export class Inspector {
       if (text === '') said.push('this column has no name, and will be written as an empty one')
 
       const ref = parseRef(row.ref.value)
+      // The two action fields belong to the ref and go with it: a column with no
+      // ref has nothing for them to be about, which is an error in the reader,
+      // so the panel hides them rather than writing one.
+      row.actions.hidden = ref === 'absent' || ref === 'malformed'
       if (ref === 'malformed') {
         said.push(
           `\`${row.ref.value.trim()}\` is not a ref: write \`table.column\`. Until it is, no ref is being saved on this column`,
         )
       } else if (ref !== 'absent') {
-        column.ref = ref
+        const onDelete = actionOf(row.onDelete)
+        const onUpdate = actionOf(row.onUpdate)
+        column.ref = {
+          ...ref,
+          ...(onDelete === undefined ? {} : { onDelete }),
+          ...(onUpdate === undefined ? {} : { onUpdate }),
+        }
       }
 
       if (text !== row.was && row.was !== '') {
@@ -1504,6 +1543,41 @@ function textField(
   input.dataset['field'] = key
   parent.append(input)
   return input
+}
+
+/**
+ * One referential action, as a select whose empty option is "the file does not
+ * say".
+ *
+ * Absent and `no action` are different facts (ADR 0046), so "unsaid" is an
+ * option of its own rather than the same thing as the standard's default, and
+ * the shape is the `nullable` select's for the same reason: a closed vocabulary
+ * with a nothing in it.
+ */
+function actionField(
+  parent: HTMLElement,
+  key: 'on delete' | 'on update',
+  value: ReferentialAction | undefined,
+): HTMLSelectElement {
+  const select = el('select')
+  const unsaid = el('option', '', `${key}: unsaid`)
+  unsaid.value = ''
+  select.append(unsaid)
+  for (const action of REFERENTIAL_ACTIONS) {
+    const option = el('option', '', `${key}: ${action}`)
+    option.value = action
+    select.append(option)
+  }
+  select.value = value ?? ''
+  select.setAttribute('aria-label', key)
+  select.dataset['field'] = key
+  parent.append(select)
+  return select
+}
+
+/** What a select holds, or nothing when it holds the unsaid option. */
+function actionOf(select: HTMLSelectElement): ReferentialAction | undefined {
+  return REFERENTIAL_ACTIONS.find((action) => action === select.value)
 }
 
 function iconButton(glyph: string, label: string): HTMLButtonElement {

@@ -31,13 +31,23 @@
  */
 
 import { isFileName } from '../model/paths.js'
-import type { Column, Index, IndexKey, Model, Ref, RefEdge, Table } from '../model/types.js'
+import type {
+  Column,
+  Index,
+  IndexKey,
+  Model,
+  Ref,
+  RefEdge,
+  ReferentialAction,
+  Table,
+} from '../model/types.js'
 import type {
   Column as CatalogColumn,
   ColumnType,
   Index as CatalogIndex,
   IndexKey as CatalogIndexKey,
   IntrospectionDocument,
+  ReferentialAction as CatalogAction,
   Table as CatalogTable,
 } from './contract.js'
 import type { Diagnostic } from './diagnostics.js'
@@ -249,11 +259,37 @@ function refsOf(table: CatalogTable, context: Context): Map<string, Ref> {
       // in name order. The format has one slot and this is the deterministic
       // half of that; `docs/format.md` names the loss.
       if (refs.has(column)) return
-      refs.set(column, { table: foreignKey.referencedTable, column: referenced })
+      refs.set(column, {
+        table: foreignKey.referencedTable,
+        column: referenced,
+        // What the catalogue said, and nothing when it said nothing. Both
+        // engines report `NO ACTION` on a constraint whose DDL never mentioned
+        // one, so a clean import writes two more lines per referencing column;
+        // that is the catalogue's answer rather than dbmd's, and absent means
+        // the provider had nothing to report. ADR 0046.
+        ...(foreignKey.onDelete === undefined ? {} : { onDelete: ACTION[foreignKey.onDelete] }),
+        ...(foreignKey.onUpdate === undefined ? {} : { onUpdate: ACTION[foreignKey.onUpdate] }),
+      })
     })
   })
 
   return refs
+}
+
+/**
+ * The wire's spelling to the file's, which is the whole of the mapping.
+ *
+ * Two spellings on purpose, and the asymmetry is ADR 0022's: a contract is
+ * written by a provider and reads as code, a model file is written by a person
+ * and reads as SQL. A `Record` rather than a function so that adding an action
+ * to either union without adding it here does not compile. ADR 0046.
+ */
+const ACTION: Readonly<Record<CatalogAction, ReferentialAction>> = {
+  noAction: 'no action',
+  restrict: 'restrict',
+  cascade: 'cascade',
+  setNull: 'set null',
+  setDefault: 'set default',
 }
 
 /**

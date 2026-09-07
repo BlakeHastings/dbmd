@@ -211,6 +211,24 @@ describe('what a rename is about to touch', () => {
     const moved = withRefsRetargeted(addresses, 'addresses', 'delivery_points')
     expect(moved[2]?.ref).toEqual({ table: 'delivery_points', column: 'id' })
   })
+
+  it('moves the table name and nothing else about the ref', () => {
+    // A rename that rebuilt the ref from its two halves would delete the
+    // referential action from every file it touched, and the developer would
+    // find out from a diff two days later. ADR 0046.
+    const columns = [
+      {
+        name: 'customer_id',
+        type: 'uuid',
+        ref: { table: 'customers', column: 'id', onDelete: 'restrict' as const },
+      },
+    ]
+    expect(withRefsRetargeted(columns, 'customers', 'clients')[0]?.ref).toEqual({
+      table: 'clients',
+      column: 'id',
+      onDelete: 'restrict',
+    })
+  })
 })
 
 /**

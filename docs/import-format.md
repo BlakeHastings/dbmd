@@ -232,12 +232,17 @@ it means dropping the constraint and that is worth being able to see.
 **A model file has no room for that distinction and an import drops it.**
 `unique: true` is written from `isUnique` alone, and omitted when it is false.
 Whether a `UNIQUE` constraint or a `CREATE UNIQUE INDEX` put the index there is
-how the uniqueness was *declared* rather than what is true of the rows, which
-makes it the same question as `on delete` and gives it the same answer in a tool
-that describes a schema and never generates DDL. The appendix to
+how the uniqueness was *declared* rather than what is true of the rows, and
+nothing in dbmd reads it. The appendix to
 [ADR 0003](architecture/decisions/0003-markdown-on-disk-is-the-model.md) is the
 argument, and `docs/format.md` names the loss under what the format does not
 have.
+
+That appendix called this the same question as `on delete` and it is not, which
+[ADR 0046](architecture/decisions/0046-a-key-may-say-what-the-engine-does.md)
+settles: a referential action changes what happens to rows and is carried, while
+a unique index and a unique constraint are one fact about the rows under two
+names.
 
 **An index key is a column or an expression, and exactly one of the two.** An
 `IndexKey` carries `column`, naming a column of the table, or `expression`,
@@ -518,6 +523,15 @@ which is the rule this page already states for expressions applied to a type.
 relationship on the referring column and has no registry to put a constraint in,
 so a composite key arrives as two refs, paired by position. The constraint's name
 and the fact that the two refs are one constraint are not carried.
+
+**`onDelete` and `onUpdate` are carried, onto every ref the key produces.**
+`noAction` becomes `on delete: no action` and is written rather than assumed,
+because a field the contract omits and a field reporting `NO ACTION` are
+different facts and both catalogues report the second one on every constraint.
+So a clean import of a real schema carries two extra lines per referencing
+column, which is the cost
+[ADR 0046](architecture/decisions/0046-a-key-may-say-what-the-engine-does.md)
+accepts on purpose.
 
 **The document says strictly more than a model file can hold, and the surplus is
 dropped rather than diagnosed.** `checkConstraints`, `includedColumns`,

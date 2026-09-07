@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { readModel, splitFrontmatter } from '../../src/model/read.js'
 import { writeModel } from '../../src/model/write.js'
+import { REFERENTIAL_ACTIONS } from '../../src/model/types.js'
 import type { Group, Layout, Model, Note, Table } from '../../src/model/types.js'
 import { canonicalModel, exampleShop, snapshot, untidyModel, withCopy } from './fixtures.js'
 
@@ -263,7 +264,19 @@ function generateModel(seed: number): Model {
       ...(maybe() ? { pk: maybe() } : {}),
       ...(maybe() ? { nullable: maybe() } : {}),
       ...(maybe() ? { default: pick(AWKWARD) } : {}),
-      ...(maybe() ? { ref: { table: pick(OBJECT_NAMES), column: pick(REF_PARTS) } } : {}),
+      ...(maybe()
+        ? {
+            ref: {
+              table: pick(OBJECT_NAMES),
+              column: pick(REF_PARTS),
+              // Each independently absent, because absent is a third state
+              // beside the five and it is the one a hand-written file is
+              // mostly in. ADR 0046.
+              ...(maybe() ? { onDelete: pick(REFERENTIAL_ACTIONS) } : {}),
+              ...(maybe() ? { onUpdate: pick(REFERENTIAL_ACTIONS) } : {}),
+            },
+          }
+        : {}),
     })),
     indexes: Array.from({ length: count(2) }, () => ({
       name: pick(AWKWARD),

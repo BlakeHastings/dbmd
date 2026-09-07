@@ -99,6 +99,22 @@ export type ModelDiagnosticCode =
   /** A key holds the wrong sort of value: a boolean where a string was wanted. */
   | 'field-wrong-type'
   /**
+   * A value of the right sort, outside the closed list its key accepts. The
+   * message names the list.
+   *
+   * The mirror of `import/not-in-vocabulary`, unprefixed because it is the model
+   * half, and rare on purpose: the format has one closed vocabulary and does not
+   * want a second lightly. A column type is deliberately unchecked, because the
+   * set is the engine's and dbmd does not know it; a referential action is these
+   * five words in the standard and in both catalogues, so a sixth is a fact
+   * nothing could carry rather than a spelling dbmd has not heard of. ADR 0046.
+   *
+   * An error rather than a warning, for `superseded-key`'s reason: the author
+   * wrote something they meant, dbmd cannot hold it, and a warning would leave
+   * the object complete so the next save would delete the line.
+   */
+  | 'not-in-vocabulary'
+  /**
    * A required name or list is present and says nothing: `name: ""`, a name
    * that is only whitespace, or an index whose `columns` is `[]`.
    *

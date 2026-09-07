@@ -43,7 +43,10 @@ caring how the address was typed.
 `display_name` to placeholders and stamps `anonymised_at`. The row has to
 survive because `orders` points at it and the finance export replays whole
 quarters: deleting a customer would change a number in a report that was already
-signed off. When you write anything that shows a customer to a human, check
+signed off. The three tables that point here all say `on delete: restrict`, so
+the sentence above is not only a convention: an erasure that reached a `delete`
+by mistake fails loudly against a customer who has ever ordered, instead of
+taking their orders with them. When you write anything that shows a customer to a human, check
 `anonymised_at` first, because a table full of `deleted-4f2a@invalid` is
 alarming in a support tool that does not expect it.
 
