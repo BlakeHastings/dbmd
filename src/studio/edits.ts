@@ -27,19 +27,32 @@
  * which would make an edit to it vanish silently. So an edit to such a table is
  * refused here, out loud, rather than accepted and then dropped one layer down.
  *
- * What is not here is the watcher. A file edited by hand while the studio is
- * running is not noticed until the next flush re-reads, and a flush will write
- * the studio's version over it. That is dbmd-33, and it is the reason the
- * re-read exists here at all rather than being invented there.
+ * ADR 0019 added the fourth, and it is the one that is easy to get wrong:
+ *
+ * **A file that changed on disk since the session read it is a file the session
+ * will not write.** The check is `readModel` immediately before the write, and
+ * it compares what the disk says now with what the session adopted, per file.
+ * It is deliberately not the watcher's job. The watcher is a live update and
+ * `fs.watch` is allowed to be late, to coalesce, or to be unsupported; the
+ * refusal has to hold anyway, because the window it closes is the debounce
+ * itself. A refused write is dropped rather than retried, the disk's version is
+ * adopted in its place, and the refusal is reported on the status until the
+ * studio successfully writes that file again. ADR 0019 argues why losing the
+ * drag is the right way round.
+ *
+ * The two halves are separable and are separately testable: the watcher never
+ * writes and never refuses, and the refusal never needs the watcher to have
+ * fired.
  */
 
 import { access, rm } from 'node:fs/promises'
 import { readModel } from '../model/read.js'
-import { writeModel } from '../model/write.js'
-import type { Diagnostic, Model, Table } from '../model/types.js'
-import { directoryOfKind } from '../model/paths.js'
+import { serialiseModelFile, serialiseObject, writeModel } from '../model/write.js'
+import type { CanvasObject, Diagnostic, Model, ReadResult, Table } from '../model/types.js'
+import { MODEL_FILE, directoryOfKind } from '../model/paths.js'
 import { isSafeSegment, resolveWithin } from './safe-path.js'
-import type { TablePatch, WireStatus, WireWrite } from './wire.js'
+import { ModelWatcher } from './watch.js'
+import type { TablePatch, WireConflict, WireStatus, WireWrite } from './wire.js'
 
 /**
  * A refusal with the status the HTTP layer should send.
@@ -68,10 +81,20 @@ export type EditRefusalCode =
   | 'table-exists'
   /** The reader could not build the table from its file, so a write would truncate it. */
   | 'incomplete'
+  /** The file changed on disk since the session read it, so acting on it would lose that change. */
+  | 'conflicted'
 
 export interface EditsOptions {
   /** How long an edit waits for the next one before it is written. ADR 0004. */
   readonly debounceMs?: number
+  /** How long a burst of filesystem events is collected before one re-read. ADR 0019. */
+  readonly watchDebounceMs?: number
+  /**
+   * Watch the model directory for changes made outside the studio. On by
+   * default: it is the live update ADR 0004 promised. A test that wants to
+   * prove the write-time refusal holds without it turns it off.
+   */
+  readonly watch?: boolean
   /** Narration, one line at a time, without the newline. ADR 0006 sends it to stderr. */
   readonly log?: (message: string) => void
 }
@@ -80,13 +103,32 @@ export interface EditsOptions {
 const DEFAULT_DEBOUNCE_MS = 250
 
 export class Edits {
+  /** What the session serves: the disk as it last read it, plus its own unwritten edits. */
   private model: Model
   private diagnostics: readonly Diagnostic[]
-  /** The files this session has edited, as `writeModel` names them. Empty means idle. */
+  /**
+   * The disk as the session last read it, with none of its own edits in it.
+   *
+   * This is the baseline the write-time check compares against, and it is a
+   * second field rather than a recomputation because `model` is mutated by
+   * every patch and the question "did this file change underneath us" needs the
+   * version the edit was made against, not the edited one.
+   */
+  private adopted: ReadResult
+  /** A fingerprint of what is being served, so a re-read that changed nothing is not a change. */
+  private print: string
+  /** The files this session has edited and has not written yet. Empty means idle. */
   private edited = new Set<string>()
+  /** The files a write is in flight for. Empty except inside `write`. */
+  private writing = new Set<string>()
+  /** Writes refused because the file moved underneath them, keyed by path. */
+  private readonly refusals = new Map<string, WireConflict>()
   private timer: NodeJS.Timeout | undefined
   private last: WireWrite | null = null
   private failure: string | null = null
+  /** Bumped whenever a re-read changed what is served. The client's cue to redraw. */
+  private revision = 0
+  private watcher: ModelWatcher | undefined
   /** Flushes run one at a time, so a timer firing during a close cannot interleave. */
   private queue: Promise<void> = Promise.resolve()
 
@@ -94,20 +136,29 @@ export class Edits {
     readonly dir: string,
     private readonly debounceMs: number,
     private readonly log: (message: string) => void,
-    read: { model: Model; diagnostics: readonly Diagnostic[] },
+    read: ReadResult,
   ) {
     this.model = read.model
     this.diagnostics = read.diagnostics
+    this.adopted = read
+    this.print = fingerprint(read.model, read.diagnostics)
   }
 
   static async open(dir: string, options: EditsOptions = {}): Promise<Edits> {
     const read = await readModel(dir)
-    return new Edits(
+    const edits = new Edits(
       dir,
       options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
       options.log ?? (() => {}),
       read,
     )
+    if (options.watch ?? true) {
+      edits.watcher = ModelWatcher.open(dir, () => void edits.reload(), {
+        ...(options.watchDebounceMs === undefined ? {} : { debounceMs: options.watchDebounceMs }),
+        log: edits.log,
+      })
+    }
+    return edits
   }
 
   snapshot(): { model: Model; diagnostics: readonly Diagnostic[] } {
@@ -115,7 +166,15 @@ export class Edits {
   }
 
   status(): WireStatus {
-    return { lastWrite: this.last, pendingWrite: this.edited.size > 0, writeError: this.failure }
+    return {
+      lastWrite: this.last,
+      pendingWrite: this.edited.size > 0,
+      writeError: this.failure,
+      // Sorted, because ADR 0006 wants the same request to produce the same
+      // bytes and a Map's order is insertion order.
+      conflicts: [...this.refusals.values()].sort((a, b) => (a.path < b.path ? -1 : 1)),
+      revision: this.revision,
+    }
   }
 
   table(name: string): Table {
@@ -146,6 +205,12 @@ export class Edits {
     }
     const next = applyPatch(current, patch)
     this.model = { ...this.model, tables: replace(this.model.tables, next) }
+    // The session's own edit is folded into what it knows it is serving, so
+    // that reading it back off the disk afterwards is not a change. `revision`
+    // answers "did something happen that I did not ask for", and a client that
+    // was told to redraw after every one of its own drags would be told to
+    // redraw sixty times a second.
+    this.print = fingerprint(this.model, this.diagnostics)
     this.schedule(fileOf(name))
     return next
   }
@@ -184,6 +249,7 @@ export class Edits {
       )
     }
     this.model = { ...this.model, tables: sortByName([...this.model.tables, created]) }
+    this.print = fingerprint(this.model, this.diagnostics)
     this.edited.add(fileOf(name))
     await this.flush()
     return created
@@ -197,16 +263,32 @@ export class Edits {
   async removeTable(name: string): Promise<void> {
     this.table(name)
     const target = this.fileFor(name)
+    const path = fileOf(name)
+    // The same check a write gets, for the same reason and more so: deleting a
+    // file somebody has just been typing into is the one thing here that `git
+    // checkout` cannot undo if the file was never committed.
+    //
+    // Before the flush rather than inside it, because a flush re-reads and
+    // would quietly make the change on disk the new baseline, which is the
+    // shape the whole defect had.
+    const disk = await readModel(this.dir)
+    if (renderOf(disk.model, path) !== renderOf(this.adopted.model, path)) {
+      await this.serialise(() => this.absorb(disk))
+      throw new EditRefused(409, 'conflicted', changedUnderneath(path, 'deleting it'))
+    }
     // Anything already queued is written first, in order, so a pending edit to
     // this table cannot land after the file is gone and recreate it.
     await this.flush()
-    this.model = {
-      ...this.model,
-      tables: this.model.tables.filter((table) => table.name !== name),
-    }
-    await rm(target, { force: true })
-    this.log(`removed ${fileOf(name)}`)
-    await this.refresh()
+    await this.serialise(async () => {
+      this.model = {
+        ...this.model,
+        tables: this.model.tables.filter((table) => table.name !== name),
+      }
+      this.print = fingerprint(this.model, this.diagnostics)
+      await rm(target, { force: true })
+      this.log(`removed ${path}`)
+      await this.adopt()
+    })
   }
 
   /** Write anything pending, now, and re-read. Idempotent when nothing is pending. */
@@ -220,6 +302,8 @@ export class Edits {
 
   /** Stop the timer and land whatever it was waiting to write. */
   async close(): Promise<void> {
+    this.watcher?.close()
+    this.watcher = undefined
     await this.flush()
   }
 
@@ -268,43 +352,247 @@ export class Edits {
   private async write(): Promise<void> {
     // Taken before the write rather than after, so an edit that arrives while it
     // is in flight lands in the next set and gets its own flush.
-    const only = this.edited
+    this.writing = this.edited
     this.edited = new Set()
     try {
-      const result = await writeModel(this.dir, this.model, { only })
-      this.failure = null
-      if (result.written.length > 0) {
-        this.last = { at: new Date().toISOString(), paths: result.written }
-        this.log(`wrote ${result.written.join(', ')}`)
+      // The disk as it is right now, not as the session last saw it. This is
+      // the whole of ADR 0019's refusal: an edit can be a few hundred
+      // milliseconds old by the time its timer fires, and the file it is about
+      // to replace may have been saved by an editor inside that window.
+      const disk = await readModel(this.dir)
+      const refused = [...this.writing].filter(
+        (path) => renderOf(disk.model, path) !== renderOf(this.adopted.model, path),
+      )
+      for (const path of refused) {
+        this.writing.delete(path)
+        this.refusals.set(path, {
+          path,
+          at: new Date().toISOString(),
+          message: changedUnderneath(path, 'writing over it'),
+        })
+        this.log(`refused to write ${path}: it changed on disk since the studio read it`)
       }
-    } catch (error) {
-      // The edit is still in memory, so the files go back in the set and the
-      // next flush retries. Saying nothing here is the failure the writer's own
-      // notes warn about: telling the developer their work is saved when it is
-      // not.
-      for (const file of only) this.edited.add(file)
-      this.failure = error instanceof Error ? error.message : String(error)
-      this.log(`write failed: ${this.failure}`)
+      // The disk's version replaces the refused edit rather than sitting beside
+      // it. ADR 0004 says there is no state but the files, and a rejected edit
+      // kept in memory would be exactly that second state: the next flush would
+      // find the disk matching its baseline again and write it after all.
+      if (refused.length > 0) await this.absorb(disk)
+
+      if (this.writing.size === 0) return
+      try {
+        const result = await writeModel(this.dir, this.model, { only: this.writing })
+        this.failure = null
+        if (result.written.length > 0) {
+          this.last = { at: new Date().toISOString(), paths: result.written }
+          this.log(`wrote ${result.written.join(', ')}`)
+        }
+        // A file the studio has just written is a file it has caught up with,
+        // so the refusal that was standing against it has been answered.
+        for (const path of result.written) this.refusals.delete(path)
+      } catch (error) {
+        // The edit is still in memory, so the files go back in the set and the
+        // next flush retries. Saying nothing here is the failure the writer's own
+        // notes warn about: telling the developer their work is saved when it is
+        // not.
+        for (const file of this.writing) this.edited.add(file)
+        this.failure = error instanceof Error ? error.message : String(error)
+        this.log(`write failed: ${this.failure}`)
+      }
+    } finally {
+      this.writing = new Set()
     }
   }
 
   private async adopt(): Promise<void> {
-    const read = await readModel(this.dir)
-    // An edit that arrived while the directory was being read is newer than
-    // what the read found, so the read is dropped rather than overwriting it.
-    if (this.edited.size > 0) return
-    this.model = read.model
-    this.diagnostics = read.diagnostics
+    await this.absorb(await readModel(this.dir))
   }
 
-  private async refresh(): Promise<void> {
-    await this.serialise(() => this.adopt())
+  /**
+   * Take a fresh read as the truth, keeping only the edits not written yet.
+   *
+   * The previous version of this dropped a read outright when an edit had
+   * arrived while it was in flight, which was right about the edit and wrong
+   * about every other file: a hand edit to `customers.md` was thrown away
+   * because a drag of `orders` was pending. Keeping the pending files from
+   * memory and taking the rest from disk is the same protection, per file.
+   */
+  private async absorb(read: ReadResult): Promise<void> {
+    const pending = new Set(
+      [...this.edited, ...this.writing]
+        .map(tableNameOf)
+        .filter((name): name is string => name !== undefined),
+    )
+    // The baseline for a file with an unwritten edit stays frozen at what the
+    // disk said when that edit was made. Taking the fresh read for it would be
+    // the whole defect back again: a reload triggered by the hand edit would
+    // quietly make the hand edit the thing the pending write is "unchanged"
+    // against, and the write would go through and delete it.
+    const baseline = keeping(read.model, this.adopted.model, pending)
+    // `carryForward` reads the model being replaced, so it has to run before
+    // that model is replaced.
+    const served = keeping(
+      { ...read.model, tables: await this.carryForward(read.model.tables) },
+      this.model,
+      pending,
+    )
+    this.adopted = { model: baseline, diagnostics: read.diagnostics }
+    this.model = served
+    this.diagnostics = read.diagnostics
+    const print = fingerprint(this.model, this.diagnostics)
+    if (print === this.print) return
+    this.print = print
+    this.revision += 1
+  }
+
+  /**
+   * The watcher's whole effect: look again, and adopt if anything moved.
+   *
+   * It never writes and never refuses. A wake-up caused by the studio's own
+   * save re-reads a directory that says what the session already says, the
+   * fingerprint matches, and nothing happens; that is what keeps a write from
+   * bouncing back as an external change without needing to remember what was
+   * written.
+   */
+  private async reload(): Promise<void> {
+    await this.serialise(async () => {
+      const read = await readModel(this.dir)
+      if (fingerprint(read.model, read.diagnostics) === this.print) return
+      const before = this.revision
+      await this.absorb(read)
+      if (this.revision !== before) this.log('reloaded: the model changed on disk')
+    })
+  }
+
+  /**
+   * Tables the reader no longer produces, kept as they last were.
+   *
+   * ADR 0004: a hand edit that is invalid mid-keystroke will be seen by the
+   * watcher, and the studio reports the parse failure and keeps showing the
+   * last good version rather than emptying the canvas. A file halfway through
+   * being typed is the ordinary state of a file, not a deletion, and the two
+   * are told apart by asking whether the file is still there. A table whose
+   * file is gone is gone; a table whose file is there and no longer parses is
+   * kept.
+   *
+   * The kept table is marked incomplete, which is what it now is: the reader
+   * could not build it from its file. That is not cosmetic. It is the flag
+   * `writeModel` skips on and the flag `patchTable` refuses on, so a table
+   * shown from memory cannot be written back over the file it no longer
+   * matches.
+   */
+  private async carryForward(fresh: readonly Table[]): Promise<readonly Table[]> {
+    const names = new Set(fresh.map((table) => table.name))
+    const missing = this.model.tables.filter((table) => !names.has(table.name))
+    if (missing.length === 0) return fresh
+    const carried: Table[] = []
+    for (const table of missing) {
+      // Only ever a handful, and only when something has stopped parsing, so
+      // this costs nothing in the case that happens every keystroke.
+      const target = resolveWithin(this.dir, ...table.path.split('/'))
+      if (target !== undefined && (await exists(target))) {
+        carried.push({ ...table, complete: false })
+      }
+    }
+    if (carried.length === 0) return fresh
+    return sortByName([...fresh, ...carried])
+  }
+}
+
+/**
+ * `fresh`, with the named tables taken from `held` instead of from it.
+ *
+ * The one operation both halves of a re-read need, and they need it for
+ * opposite-looking reasons that are the same reason. What is served keeps the
+ * unwritten edit, because throwing away a developer's drag because somebody
+ * saved an unrelated file would be its own kind of losing work. What the write
+ * compares against keeps the pre-edit version, because the question it asks is
+ * "has this file moved since the edit was made", and refreshing the baseline
+ * from a disk that had already moved is how that question quietly answers no.
+ */
+function keeping(fresh: Model, held: Model, names: ReadonlySet<string>): Model {
+  if (names.size === 0) return fresh
+  return {
+    ...fresh,
+    tables: sortByName([
+      ...fresh.tables.filter((table) => !names.has(table.name)),
+      ...held.tables.filter((table) => names.has(table.name)),
+    ]),
   }
 }
 
 /** Where a table's file is, in the words `writeModel` uses for it. */
 function fileOf(name: string): string {
   return `${directoryOfKind('table')}/${name}.md`
+}
+
+/** The table a `tables/x.md` path names, or `undefined` if it names something else. */
+function tableNameOf(path: string): string | undefined {
+  const prefix = `${directoryOfKind('table')}/`
+  if (!path.startsWith(prefix) || !path.endsWith('.md')) return undefined
+  return path.slice(prefix.length, -'.md'.length)
+}
+
+/**
+ * What one file of a model says, as canonical text, or `undefined` for a file
+ * the model has no object for.
+ *
+ * Canonical text rather than the bytes on disk, because a hand-written model is
+ * rarely canonical and comparing bytes would call every file a conflict. Both
+ * sides of every comparison go through this, so what is being compared is what
+ * the two versions of the file *mean*, which is the question worth asking: a
+ * developer who retyped `'pending'` as `"pending"` has not changed the model
+ * and should not have their drag refused for it.
+ */
+function renderOf(model: Model, path: string): string | undefined {
+  if (path === MODEL_FILE) return serialiseModelFile(model)
+  const objects: readonly CanvasObject[] = [...model.tables, ...model.notes, ...model.groups]
+  for (const object of objects) {
+    if (`${directoryOfKind(object.kind)}/${object.name}.md` !== path) continue
+    return renderObject(object)
+  }
+  return undefined
+}
+
+/**
+ * An object as canonical text, with whether the reader managed to read all of
+ * it folded in.
+ *
+ * The flag has to be part of it. An object the reader could not fully build
+ * renders to less than its file holds, so a file being typed into can render
+ * identically to the last version that parsed, and a comparison that only saw
+ * the text would call the two the same file.
+ */
+function renderObject(object: CanvasObject): string {
+  return object.complete ? serialiseObject(object) : `incomplete\n${serialiseObject(object)}`
+}
+
+/**
+ * A whole model as one string, for "did anything change" and nothing else.
+ *
+ * Diagnostics are in it because a file can change in a way that leaves every
+ * object identical and still has something new to say: an unknown key is a
+ * warning and no object at all, and a page that did not redraw would never show
+ * it.
+ */
+function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
+  const objects: readonly CanvasObject[] = [...model.tables, ...model.notes, ...model.groups]
+  return JSON.stringify([
+    serialiseModelFile(model),
+    model.complete,
+    objects.map((object) => [
+      `${directoryOfKind(object.kind)}/${object.name}.md`,
+      renderObject(object),
+    ]),
+    diagnostics,
+  ])
+}
+
+/** One sentence, in one place, because the status and the refusal have to agree. */
+function changedUnderneath(path: string, action: string): string {
+  return (
+    `\`${path}\` changed on disk after the studio read it, so ${action} would lose that change. ` +
+    `The studio has reloaded the file and dropped its own edit to it; make the edit again if you still want it`
+  )
 }
 
 function applyPatch(table: Table, patch: TablePatch): Table {

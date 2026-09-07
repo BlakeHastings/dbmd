@@ -40,6 +40,11 @@ Serve a model directory on loopback and open it in a browser. Every edit made
 in the page is written back to the markdown, debounced, so the model on disk is
 the state and "git diff" is what you changed.
 
+It watches the directory while it runs, so editing a file in your editor is the
+same feature seen from the other side. If a file changes on disk while the
+studio has an unwritten edit to it, the studio keeps the change on disk, drops
+its own edit and says so rather than writing over your work.
+
   directory       the model directory, defaulting to ${DEFAULT_DIRECTORY}
 
 Options:

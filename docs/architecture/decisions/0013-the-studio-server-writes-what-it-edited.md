@@ -90,3 +90,19 @@ cross-origin mutation behind a preflight this server never answers.
 - **A flush becomes slow enough to feel.** Then the re-read is the thing to
   narrow first, to the files that were written, and the reason it is not narrowed
   today is that nobody has measured a model where it matters.
+
+## Refined by 0019
+
+The consequence above that says "the server is not the watcher", and that a
+studio edit will write over a hand edit until dbmd-33 closes the gap, is no
+longer true. ADR 0019 closes it, and closes it at the write rather than in the
+watcher: the session re-reads immediately before writing and refuses any file
+that no longer says what the edit was made against. Everything else here stands,
+including that the in-memory model is a cache of the directory, that a write is
+followed by a re-read, and that the session writes only the files it edited.
+
+The one clause 0019 does amend rather than extend is "a read is dropped rather
+than adopted if an edit arrived while it was in flight". That was right about the
+edit and wrong about every other file: a hand edit to `customers.md` was thrown
+away because a drag of `orders` was pending. A read is now adopted file by file,
+keeping only the ones with unwritten edits.

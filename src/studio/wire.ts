@@ -46,6 +46,24 @@ export interface WireWrite {
   readonly paths: readonly string[]
 }
 
+/**
+ * A write the studio refused because the file had moved underneath it.
+ *
+ * ADR 0019. This is not an error and not a diagnostic: the model is fine, the
+ * file is fine, and the only thing that went wrong is that two people edited
+ * the same table and the studio chose the one on disk. It is on the status
+ * rather than in `diagnostics` because a diagnostic is a fact about the model
+ * that `dbmd check` would report too, and this is a fact about this session.
+ */
+export interface WireConflict {
+  /** The file, relative and slash-separated, exactly as a write reports one. */
+  readonly path: string
+  /** ISO 8601, UTC, when the studio noticed. */
+  readonly at: string
+  /** What happened and what to do about it, in words meant for a person. */
+  readonly message: string
+}
+
 /** On every response, so the client can say where the model stands (ADR 0004). */
 export interface WireStatus {
   readonly lastWrite: WireWrite | null
@@ -53,6 +71,23 @@ export interface WireStatus {
   readonly pendingWrite: boolean
   /** The message from the last write that threw, cleared by the next that did not. */
   readonly writeError: string | null
+  /**
+   * Edits this session dropped rather than write over a change on disk, sorted
+   * by path. One entry stands until the studio successfully writes that file
+   * again, which is what happens when the developer makes the edit a second
+   * time on top of what the file now says.
+   */
+  readonly conflicts: readonly WireConflict[]
+  /**
+   * How many times the model changed on disk underneath this session.
+   *
+   * The client's cue to re-fetch and redraw, and the reason it is a counter
+   * rather than a boolean is that a page which missed one update must not have
+   * to be told twice: comparing the number it drew with the number it just got
+   * answers "am I stale" without any state on the server about who has seen
+   * what. It starts at 0 and never goes down for the life of a session.
+   */
+  readonly revision: number
 }
 
 export interface WireModel {
