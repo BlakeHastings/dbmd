@@ -94,6 +94,26 @@ describe('validateIntrospectionDocument', () => {
     ])
   })
 
+  it('rejects a primary key that names no columns, and says to omit it instead', () => {
+    const result = validateIntrospectionDocument(
+      document(table({ primaryKey: { name: 'pk_orders', columns: [] } })),
+    )
+    expect(result.ok).toBe(false)
+    expect(formatDiagnostics(result.diagnostics)).toEqual([
+      'error $.tables[0].primaryKey.columns [import/empty-value] a primary key names no columns; omit `primaryKey` for a table that has none',
+    ])
+  })
+
+  it('rejects an index that names no key columns', () => {
+    const result = validateIntrospectionDocument(
+      document(table({ indexes: [{ name: 'ix_orders', columns: [], isUnique: false }] })),
+    )
+    expect(result.ok).toBe(false)
+    expect(formatDiagnostics(result.diagnostics)).toEqual([
+      'error $.tables[0].indexes[0].columns [import/empty-value] an index names no key columns',
+    ])
+  })
+
   it('holds a table to a schema, because a default schema is still a schema', () => {
     const result = validateIntrospectionDocument(document({ name: 'orders', columns: [] }))
     expect(result.ok).toBe(false)

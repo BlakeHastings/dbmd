@@ -62,4 +62,16 @@ describe('readEnvelope', () => {
     const withoutKey = readEnvelope({ dbmdIntrospection: 1 })
     expect(withNull.diagnostics).toEqual(withoutKey.diagnostics)
   })
+
+  it('rejects an empty engine rather than handing an empty provider id to the registry', () => {
+    // This is the case a Postgres fixture produces when pasted with `--engine
+    // sqlserver`: `engine` is present and a string, just the wrong one, and an
+    // empty string is the shape that slips past `missing-field` and
+    // `wrong-type` alike.
+    const result = readEnvelope({ dbmdIntrospection: 1, engine: '' })
+    expect(result.ok).toBe(false)
+    expect(formatDiagnostics(result.diagnostics)).toEqual([
+      'error $.engine [import/empty-value] `engine` is an empty string',
+    ])
+  })
 })
