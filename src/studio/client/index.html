@@ -66,7 +66,19 @@
       #canvas {
         position: absolute;
         inset: 0;
+        /* `clip` rather than `hidden`, and it is a correctness fix rather than a
+           preference. `hidden` still makes this a scroll container, and the
+           scene inside it extends ten thousand pixels either way, so anything
+           that scrolls an element into view — the browser focusing a box, or a
+           robot clicking one — moves the content under a `scrollLeft` this page
+           knows nothing about. ADR 0015 says pan is the transform and nothing
+           else; a scrolled host makes that false, and every screen-to-model
+           conversion silently wrong by the scroll offset. Measured at 811px on
+           Edge while driving this page. `clip` is the same clipping with no
+           scroll box to move, so the assumption is true rather than hoped for.
+           `hidden` first, so a browser without `clip` still clips. */
         overflow: hidden;
+        overflow: clip;
         cursor: grab;
         /* Pointer events only reach us if the browser is not busy scrolling. */
         touch-action: none;
@@ -74,6 +86,11 @@
       }
       #canvas.panning {
         cursor: grabbing;
+      }
+      /* Placement is the canvas's one mode, so it says so for as long as it
+         lasts, where the developer is looking rather than on the button. */
+      #canvas.placing {
+        cursor: crosshair;
       }
 
       .scene {
@@ -205,6 +222,16 @@
       }
       .toolbar button:hover {
         background: var(--page);
+      }
+      .toolbar button[aria-pressed='true'] {
+        background: var(--accent);
+        color: var(--surface);
+      }
+      .toolbar .divider {
+        width: 1px;
+        align-self: stretch;
+        margin: 0 2px;
+        background: var(--line);
       }
       #zoom-level {
         min-width: 3.2em;
@@ -412,6 +439,10 @@
         <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
         <button id="zoom-reset" type="button">100%</button>
         <button id="zoom-fit" type="button">Fit</button>
+        <span class="divider"></span>
+        <!-- Pressed while the next click on the canvas is a placement, which is
+             a mode, and a mode has to be legible from outside itself. -->
+        <button id="add-table" type="button" aria-pressed="false">Add table</button>
       </div>
     </main>
     <aside id="inspector" hidden></aside>

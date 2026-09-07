@@ -24,16 +24,17 @@
  * - **dbmd-34, notes and groups**, attaches inside the canvas as two more
  *   layers, and the reason it is not two more calls here is ADR 0005: a group
  *   has no coordinates, so it is drawn from its members rather than fetched.
- * - **dbmd-38, adding and removing whole tables**, attaches to the toolbar and
- *   to `reload` below; the routes and the composition it needs are the ones the
- *   rename already uses.
+ * - **dbmd-38, adding and removing whole tables**, is the toolbar's `Add table`
+ *   and the panel's `Delete`, and both land in `reload` below, because both move
+ *   a file rather than editing one. ADR 0021.
  */
 
 import { Canvas } from './canvas.js'
 import { Inspector } from './inspector.js'
 import { fromWireModel, withTable } from './model.js'
 import { placeTables } from './place.js'
-import { fetchModel, renameTable, TableWriter } from './write.js'
+import { NEW_TABLE_COLUMNS } from './tables.js'
+import { createTable, deleteTable, fetchModel, renameTable, TableWriter } from './write.js'
 // The two values this page imports from outside its own directory. ADR 0014
 // says a consumer that only wants to print where a diagnostic points should not
 // have to ask what kind of location it is holding, and ADR 0017 says the
@@ -42,9 +43,11 @@ import { locationText, sortDiagnostics } from '../../diagnostics.js'
 import { validate } from '../../model/validate.js'
 import type { Diagnostic, Table } from '../../model/types.js'
 import type { WireModel, WireModelResponse, WireStatus } from '../wire.js'
+import type { Point } from './geometry.js'
 
 const canvasHost = required('canvas')
 const inspectorHost = required('inspector')
+const addTableButton = required('add-table')
 const statusText = required('status-text')
 const selectionText = required('selection')
 const diagnosticsList = required('diagnostics')
@@ -88,6 +91,12 @@ const inspector = new Inspector(inspectorHost, {
   onRename: (from, to) => {
     void rename(from, to)
   },
+  onCreate: (name, at) => {
+    void create(name, at)
+  },
+  onDelete: (name) => {
+    void remove(name)
+  },
 })
 
 const canvas = new Canvas(canvasHost, {
@@ -98,6 +107,15 @@ const canvas = new Canvas(canvasHost, {
   },
   onViewport: (viewport) => {
     zoomLevel.textContent = `${Math.round(viewport.scale * 100)}%`
+  },
+  onPlace: (at) => {
+    showArmed()
+    // Whatever was selected is not what this press was about, and closing its
+    // panel is what makes room for the form. `select` reaches `onSelect`, which
+    // calls `inspector.show`, so the form is opened after it and not before.
+    canvas.select(null)
+    inspector.place(at)
+    selectionText.textContent = `New table at ${at.x}, ${at.y}.`
   },
 })
 
@@ -150,6 +168,60 @@ function adoptTable(next: Table): void {
   showDiagnostics()
 }
 
+/**
+ * Write a new table's file, then re-read and select it.
+ *
+ * Deliberately the same shape as `rename`: a create moves a file rather than
+ * editing one, so the page adopts what the reader found rather than patching its
+ * copy. The selection at the end is what puts the inspector on the new table, so
+ * the name is typed once here and everything else is typed in the panel.
+ */
+async function create(name: string, at: Point): Promise<void> {
+  statusText.textContent = `Creating tables/${name}.md.`
+  statusText.dataset['tone'] = 'plain'
+  try {
+    await createTable({ name, layout: { x: at.x, y: at.y }, columns: NEW_TABLE_COLUMNS })
+  } catch (error) {
+    // The server's own words, in the form the name was typed into. `safe-path`
+    // refuses a name a file cannot have and says why; a status line at the far
+    // corner of the page is not where that sentence is read (ADR 0021).
+    statusText.textContent = `Could not create ${name}: ${messageOf(error)}`
+    statusText.dataset['tone'] = 'bad'
+    inspector.placementRefused(name, messageOf(error))
+    return
+  }
+  await reload()
+  canvas.select(name)
+}
+
+/**
+ * Delete a table's file. The only thing this page does that destroys one.
+ *
+ * `settle` first, for the reason a rename settles: a patch still in flight
+ * against this name would arrive after the file has gone, and the server would
+ * answer a refusal about a table that no longer exists rather than writing
+ * anything. The selection is dropped before the request, so the panel does not
+ * spend the round trip showing a table that is being deleted.
+ */
+async function remove(name: string): Promise<void> {
+  canvas.select(null)
+  statusText.textContent = `Deleting tables/${name}.md.`
+  statusText.dataset['tone'] = 'plain'
+  try {
+    await writer.settle(name)
+    await deleteTable(name)
+  } catch (error) {
+    statusText.textContent = `Could not delete ${name}: ${messageOf(error)}`
+    statusText.dataset['tone'] = 'bad'
+    return
+  }
+  await reload()
+  // After the reload, because that one shows the last write, and a removal is
+  // not a write: the file is gone and nothing in `WireStatus` says so.
+  statusText.textContent = `Deleted tables/${name}.md. Undo is git checkout, if it was committed.`
+  statusText.dataset['tone'] = 'plain'
+}
+
 async function rename(from: string, to: string): Promise<void> {
   statusText.textContent = `Renaming ${from} to ${to}.`
   statusText.dataset['tone'] = 'plain'
@@ -171,13 +243,54 @@ function wireToolbar(): void {
   required('zoom-in').addEventListener('click', () => canvas.zoomStep(1))
   required('zoom-reset').addEventListener('click', () => canvas.zoomTo(1))
   required('zoom-fit').addEventListener('click', () => canvas.fit())
+  addTableButton.addEventListener('click', () => {
+    canvas.arm(!canvas.placing)
+    showArmed()
+  })
   document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    if (canvas.placing) {
+      canvas.arm(false)
+      showArmed()
+      return
+    }
     // Not while typing in the panel: Escape there is the field's own, and
     // closing the inspector out from under a half-typed value is a lost edit.
-    if (event.key !== 'Escape') return
     if (inspectorHost.contains(document.activeElement)) return
     canvas.select(null)
   })
+}
+
+/** What the status line said before placement borrowed it, or null. */
+let borrowedLine: { readonly text: string; readonly tone: string } | null = null
+
+/**
+ * Say whether the next click on the canvas places a table.
+ *
+ * A mode has to be visible from wherever the developer is looking, which is the
+ * canvas rather than the button, so the cursor is a crosshair for as long as it
+ * lasts (`canvas.ts`) and the status line says what the crosshair is for.
+ *
+ * The line is borrowed and given back rather than recomputed. Arming and then
+ * cancelling produces no response to redraw from, and remembering the rendered
+ * line is one string; remembering the `WireStatus` it came from is a copy of a
+ * type that grows.
+ */
+function showArmed(): void {
+  addTableButton.setAttribute('aria-pressed', String(canvas.placing))
+  if (canvas.placing) {
+    borrowedLine ??= {
+      text: statusText.textContent ?? '',
+      tone: statusText.dataset['tone'] ?? 'plain',
+    }
+    statusText.textContent = 'Click the canvas where the new table goes. Escape cancels.'
+    statusText.dataset['tone'] = 'plain'
+    return
+  }
+  if (borrowedLine === null) return
+  statusText.textContent = borrowedLine.text
+  statusText.dataset['tone'] = borrowedLine.tone
+  borrowedLine = null
 }
 
 /**

@@ -76,6 +76,15 @@ export interface CanvasHandlers {
   readonly onMove: (table: string, position: Point) => void
   /** A table was selected, or the background was clicked. The inspector opens here. */
   readonly onSelect: (table: string | null) => void
+  /**
+   * A point was pointed at while placement was armed, in whole model pixels.
+   *
+   * `layout` is the one thing about a new table the server cannot invent (ADR
+   * 0015: a position the developer did not choose is computed, never stored), so
+   * a create starts with the pointer rather than with a form. Placement is
+   * disarmed before this is called, so the handler can open whatever it likes.
+   */
+  readonly onPlace: (at: Point) => void
   /** Pan or zoom changed, so a readout can follow it. */
   readonly onViewport: (viewport: Viewport) => void
 }
@@ -131,6 +140,8 @@ export class Canvas {
   private drag: Drag | undefined
   private selected: string | null = null
   private frame: number | undefined
+  /** Armed by `arm`: the next press names a spot instead of grabbing a box. */
+  private armed = false
 
   /**
    * A box changed shape, so its rows moved and its edges have to be re-measured.
@@ -262,6 +273,24 @@ export class Canvas {
     this.handlers.onSelect(table)
   }
 
+  /**
+   * Whether the next press names a spot for a new table rather than grabbing.
+   *
+   * The canvas's only mode, and it lasts one press. Everything else here is a
+   * gesture that means the same thing whenever it is made, which is worth
+   * keeping: a mode the developer forgot they were in is a click that did
+   * something they did not ask for. This one shows a crosshair the whole time it
+   * is on, is turned off by the press that uses it, and Escape cancels it.
+   */
+  get placing(): boolean {
+    return this.armed
+  }
+
+  arm(on: boolean): void {
+    this.armed = on
+    this.host.classList.toggle('placing', on)
+  }
+
   zoomStep(direction: 1 | -1): void {
     const rect = this.host.getBoundingClientRect()
     this.setViewport(
@@ -306,6 +335,18 @@ export class Canvas {
     if (event.button !== 0) return
     const rect = this.host.getBoundingClientRect()
     const origin = { x: rect.left, y: rect.top }
+
+    // Placement first, and without capturing the pointer or changing the
+    // selection: this press is a coordinate rather than a gesture, and a box
+    // that happens to be under it is not what was being pointed at.
+    if (this.armed) {
+      this.arm(false)
+      this.handlers.onPlace(
+        round(toModel({ x: event.clientX, y: event.clientY }, origin, this.view)),
+      )
+      return
+    }
+
     const element = event.target instanceof Element ? event.target.closest('.box') : null
     const name = element instanceof HTMLElement ? (element.dataset['table'] ?? null) : null
     const box = name === null ? undefined : this.boxes.get(name)
