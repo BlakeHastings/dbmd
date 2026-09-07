@@ -1074,11 +1074,53 @@ type PointableKind = 'table' | 'note' | 'group' | 'column'
 /** The kinds whose names are one per file, and so unique in the document. */
 const UNIQUE_BY_NAME = new Set<PointableKind>(['table', 'note', 'group'])
 
+/**
+ * Say, in the accessibility tree, what this object is and what it is called.
+ *
+ * This is a second call rather than two more lines inside `nameForPointing`,
+ * and the separation is the point. That function writes what one development
+ * tool reads; this one writes what a person hears. Neither is derived from the
+ * other, so a change to what the toolbar wants can never change what somebody
+ * is told about the drawing. ADR 0065.
+ *
+ * Measured on 2026-09-07 against `examples/shop`, in the accessibility tree
+ * Edge computes, which is the data a screen reader speaks from. Before this,
+ * every table was an `article` with no name at all and the group was an
+ * anonymous `generic`, while the toolbar and the footer around them carried
+ * fourteen names between them. After it, `article "table addresses"` and
+ * `group "group warehouse"`.
+ *
+ * **A name is added here and nothing is taken away.** `article` and `group`
+ * take their name from the author and never from their contents, so this
+ * names the box without hiding the header, the rows or the prose inside it,
+ * and the same snapshot shows all of them still there. That is what makes it a
+ * different question from the `aria-label` ADR 0064 measured and refused, which
+ * was a development label written on an element for a tool's benefit.
+ *
+ * The words are the footer's words. Selecting a box writes `Selected table
+ * addresses.` into the status line, which is a live region, so a person hears
+ * the same phrase from the announcement and from the box it is about.
+ *
+ * A group is a `div` and an unroled `div` is a `generic`, which cannot carry a
+ * name at all: the label would be computed and then dropped. So it is given
+ * the role its own header already describes. A table and a note are `article`
+ * elements already and are left as they are.
+ *
+ * A column is deliberately not named here. Its row is a `listitem` whose
+ * `title` already reads `customer_id uuid → customers.id`, which was in the
+ * tree before this change and says everything the row says on screen.
+ */
+function nameForReading(element: HTMLElement, kind: ObjectKind, name: string): void {
+  if (kind === 'group') element.setAttribute('role', 'group')
+  element.setAttribute('aria-label', `${kind} ${name}`)
+}
+
 function renderTable(table: Table, said: string | undefined): HTMLElement {
   const element = document.createElement('article')
   element.className = table.complete ? 'box' : 'box broken'
   element.dataset['table'] = table.name
   nameForPointing(element, 'table', table.name)
+  nameForReading(element, 'table', table.name)
 
   const header = document.createElement('header')
   header.textContent = table.name
@@ -1163,6 +1205,7 @@ function renderNote(note: Note, said: string | undefined): HTMLElement {
   if (!note.complete) element.classList.add('broken')
   element.dataset['note'] = note.name
   nameForPointing(element, 'note', note.name)
+  nameForReading(element, 'note', note.name)
   element.title = note.path
 
   if (!note.complete) {
@@ -1206,6 +1249,7 @@ function renderGroupShell(group: Group): HTMLElement {
   element.className = `group ${tintClass(group.color)}`
   element.dataset['group'] = group.name
   nameForPointing(element, 'group', group.name)
+  nameForReading(element, 'group', group.name)
 
   const header = document.createElement('header')
   const label = document.createElement('span')

@@ -847,7 +847,16 @@
       <ul id="diagnostics" hidden></ul>
       <p class="line">
         <span id="status-text">Loading the model.</span>
-        <span id="selection"></span>
+        <!-- Selecting a box changes its border, and a border is not something
+             everybody gets. This sentence was already written here on every
+             selection; `role="status"` is what makes it spoken, and it is the
+             only thing on the page that says what is selected. `Canvas.select`
+             returns early when the selection has not actually changed, so it is
+             one announcement per selection and not one per press. Its neighbour
+             is deliberately not a live region: `showStatus` rewrites that on
+             every heartbeat poll, and a write in progress polls until it
+             finishes. ADR 0065. -->
+        <span id="selection" role="status"></span>
       </p>
     </footer>
     <script type="module" src="./main.js"></script>
