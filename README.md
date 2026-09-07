@@ -177,7 +177,7 @@ shortcut that builds and then opens this repository's own `examples/shop`, which
 is the fastest way to get the picture above onto your own screen.
 [`CONTRIBUTING.md`](CONTRIBUTING.md) takes that from a clean clone.
 
-## The four commands
+## The five commands
 
 In the order you meet them. Every block below is real output, and all of it is
 on stderr: **stdout is data and stderr is narration**, in every command, so
@@ -199,6 +199,86 @@ The format is written down at https://github.com/BlakeHastings/dbmd/blob/main/do
 If this repository runs Prettier, add db-model/ to its .prettierignore.
 Prettier rewrites the prose in these files, and the prose is the point.
 ```
+
+**`dbmd import`** turns the JSON printed by an introspection query into a model
+directory, the other way in besides `dbmd init`. `--file <path>` says which file
+to read, defaulting to standard input so a pipe works; `--dir <path>` says where
+to write, defaulting to `db-model` like every other command; `--engine <id>`
+overrides the engine the file says it is.
+
+```
+$ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
+Imported 2 tables from postgres into shop-model, 3 files:
+  _model.md
+  tables/order_line.md
+  tables/orders.md
+
+Run "dbmd check shop-model" to read it, and "dbmd studio shop-model" to arrange it.
+Every table body says nobody has documented it yet. That line is the prompt.
+```
+
+`shop-model/tables/orders.md` is then this, in full, and it is the first diff
+anybody reviews:
+
+```markdown
+---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: bigint
+    pk: true
+    nullable: false
+  - name: tenant_id
+    type: integer
+    nullable: false
+  - name: code
+    type: character varying(32)
+    nullable: false
+  - name: placed_at
+    type: timestamp with time zone
+    nullable: false
+    default: now()
+  - name: total
+    type: numeric(12,2)
+    nullable: false
+    default: '0'
+  - name: notes
+    type: text
+    nullable: true
+indexes:
+  - name: orders_tenant_id_code_key
+    columns: [tenant_id, code]
+    unique: true
+layout: { x: 340, y: 40 }
+---
+
+One row per placed order.
+
+Imported from `public.orders`.
+```
+
+`character varying(32)` is Postgres's own name for the column with its modifier
+put back on, not a normalised `string` and not a shortened `varchar(32)`; a SQL
+Server import spells its own columns the same way, down to `nvarchar(max)`.
+[ADR 0029](docs/architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md)
+is why. "One row per placed order." is the one line of prose the source
+database already had on this table; a table with none gets a line saying so,
+because a paragraph invented out of the frontmatter above it would say nothing
+a reader could not already see two lines up.
+
+It refuses to write into a directory that already exists and is not empty:
+
+```
+$ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
+dbmd: shop-model already exists and is not empty, so import has left it alone.
+Re-importing over a model without losing the prose and the layout in it is dbmd-42, and it is not built yet.
+Import into a new directory with --dir, or empty this one first.
+```
+
+That is "not built yet" rather than "not allowed": re-importing over a model
+without losing what a person wrote by hand is a separate, harder decision, and
+this is where it is left rather than guessed at.
 
 **`dbmd studio [directory]`** serves that directory on loopback and opens it in
 a browser. The URL it bound to is printed on stderr, and with the default port,
@@ -281,10 +361,13 @@ expensive, so they are here rather than three clicks away.
 model file is text the format carries and nothing ever executes it, and there is
 no migration anywhere in this tool.
 
-**It does not connect to a database.** Not to read one and not to write one. The
-import path, which is not finished, reads a JSON file that a person produced by
-running a query themselves, and the query is something `dbmd` hands you rather
-than something it runs.
+**It does not connect to a database.** Not to read one and not to write one.
+`dbmd import` reads a JSON file that a person produced by running a query
+themselves, with whatever client they already trust, and hands back what it
+printed. The query itself lives with the provider that emits it, one file per
+engine under `src/import/providers/`, written as a comment block meant to be
+read and pasted whole; printing it from `dbmd` rather than the source tree is
+still open work.
 
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md)
 and [ADR 0007](docs/architecture/decisions/0007-engines-are-providers.md) are

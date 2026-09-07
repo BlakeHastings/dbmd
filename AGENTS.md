@@ -61,15 +61,21 @@ npm run check
 ```
 
 `npm run check` is typecheck, format check, decision-record numbering, the
-reviewable-diff check, tests, a build, and a smoke test over the packed tarball,
-in that order. It is the only mechanical gate and it is exactly what CI runs, so
-a green local run and a green CI run mean the same thing. CI runs it twice, once
-on Node 22 and once on Node 24, so the version you are standing on is the half
-of it your local run covers. ADR 0032.
+reviewable-diff check, tests, a build, a smoke test over the packed tarball, and
+one deliberate break of that smoke test, in that order. It is the only mechanical
+gate and it is exactly what CI runs, so a green local run and a green CI run mean
+the same thing. CI runs it twice, once on Node 22 and once on Node 24, so the
+version you are standing on is the half of it your local run covers. ADR 0032.
 
-The last of those, `npm run check:pack`, packs the package, installs it into a
-temporary directory and drives the installed binary, because the source tree has
-everything and the tarball is what ships. ADR 0024.
+`npm run check:pack` packs the package, installs it into a temporary directory
+and drives the installed binary, because the source tree has everything and the
+tarball is what ships. ADR 0024.
+
+`npm run check:guards` then breaks it on purpose, in a copy of the tree, and
+fails unless it refuses. Every other guard here is broken on purpose too, in
+`test/guards/broken-on-purpose.test.ts`, which runs with the rest of the suite.
+A guard that never fires looks exactly like a guard that cannot, and one of these
+spent weeks in the second state. ADR 0034.
 
 Individually: `npm run typecheck`, `npm run format`, `npm run test`,
 `npm run build`.
