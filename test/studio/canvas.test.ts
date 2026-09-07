@@ -22,8 +22,10 @@ import {
 } from '../../src/studio/client/edges.js'
 import {
   EMPTY_GROUP,
+  GROUP_CLEARANCE,
   GROUP_PADDING,
   groupBoxes,
+  groupPath,
   type GroupBox,
 } from '../../src/studio/client/groups.js'
 import {
@@ -493,6 +495,146 @@ describe('a group has no coordinates', () => {
     expect(Number.isFinite(box.rect.y)).toBe(true)
   })
 })
+
+/**
+ * What a group's box covers that never joined it (ADR 0035).
+ *
+ * The item this answers cost somebody a model: an agent laying out
+ * `examples/shop` wanted a three-member group, worked out on paper that its
+ * bounding box would reach over a fourth table, and shipped a smaller group in
+ * a corner instead. The geometry is not the problem and is unchanged here; the
+ * silence was. These are the facts that make the picture say what the files
+ * say, and every one of them is the sort a screenshot cannot prove: that the
+ * answer is recomputed rather than remembered, and that it says the same thing
+ * twice running.
+ */
+describe('a group says what it covers that is not in it', () => {
+  const at = (x: number, y: number): Rect => ({ x, y, w: 200, h: 100 })
+
+  // Two members far enough apart that the box between them is wide open, which
+  // is the arrangement the item is about.
+  const members = new Map<string, readonly string[]>([['billing', ['orders', 'payments']]])
+  const spread = new Map<string, Rect>([
+    ['orders', at(100, 100)],
+    ['payments', at(900, 100)],
+  ])
+
+  function billing(rects: ReadonlyMap<string, Rect>, notes?: ReadonlyMap<string, Rect>): GroupBox {
+    const box = groupBoxes(['billing'], members, rects, notes)[0]
+    if (box === undefined) throw new Error('no box for billing')
+    return box
+  }
+
+  it('names a table the box reaches over that never declared the group', () => {
+    const box = billing(new Map(spread).set('products', at(500, 100)))
+    expect(box.outsiders.map((outsider) => outsider.name)).toEqual(['products'])
+    expect(box.outsiders[0]?.kind).toBe('table')
+  })
+
+  it('never names a member, however far inside the box it sits', () => {
+    // The box exists because of these two. A box that reported its own members
+    // as strangers would be worse than one that said nothing.
+    expect(billing(spread).outsiders).toEqual([])
+  })
+
+  it('names a note, because a note can never be a member', () => {
+    // ADR 0005 gives membership to tables alone, so a note dropped into a
+    // convenient gap is always a stranger and reads like a member.
+    const notes = new Map<string, Rect>([['why-orders-are-never-deleted', at(500, 120)]])
+    const box = billing(spread, notes)
+    expect(box.outsiders.map((outsider) => [outsider.kind, outsider.name])).toEqual([
+      ['note', 'why-orders-are-never-deleted'],
+    ])
+  })
+
+  it('leaves alone what the box does not reach, including what only touches it', () => {
+    // The right edge of the box is `900 + 200 + GROUP_PADDING`. A table whose
+    // left edge is exactly there shares an edge and no area, and the fill is
+    // not under it, so there is nothing to say about it.
+    const edge = 900 + 200 + GROUP_PADDING
+    const outside = new Map(spread).set('far', at(edge, 100))
+    expect(billing(outside).outsiders).toEqual([])
+    const over = new Map(spread).set('far', at(edge - 1, 100))
+    expect(billing(over).outsiders.map((outsider) => outsider.name)).toEqual(['far'])
+  })
+
+  it('gives the stranger a clearing larger than itself, clipped to the box', () => {
+    const box = billing(new Map(spread).set('products', at(500, 100)))
+    const clearing = box.outsiders[0]?.rect
+    expect(clearing).toEqual({
+      x: 500 - GROUP_CLEARANCE,
+      y: 100 - GROUP_CLEARANCE,
+      w: 200 + GROUP_CLEARANCE * 2,
+      h: 100 + GROUP_CLEARANCE * 2,
+    })
+
+    // A stranger straddling the edge gets a bite out of the side rather than a
+    // hole hanging outside the shape, which would paint fill where there is no
+    // box (`fill-rule: evenodd` counts crossings, and it would count one).
+    const straddling = billing(new Map(spread).set('products', at(1000, 100)))
+    const bite = straddling.outsiders[0]?.rect
+    expect(bite?.x).toBeGreaterThanOrEqual(straddling.rect.x)
+    expect((bite?.x ?? 0) + (bite?.w ?? 0)).toBeLessThanOrEqual(
+      straddling.rect.x + straddling.rect.w,
+    )
+  })
+
+  it('follows a table dragged into the box, because it is recomputed rather than kept', () => {
+    // The whole of the answer to the item. Nothing wrote a file, no group
+    // gained a coordinate, and the same function with fresher rectangles says
+    // something different because the arrangement is different.
+    const away = new Map(spread).set('products', at(500, 4000))
+    expect(billing(away).outsiders).toEqual([])
+    const dragged = new Map(away).set('products', at(500, 100))
+    expect(billing(dragged).outsiders.map((outsider) => outsider.name)).toEqual(['products'])
+  })
+
+  it('lists tables before notes and each in name order, on every call', () => {
+    const rects = new Map(spread)
+    rects.set('zebra', at(500, 100))
+    rects.set('anteater', at(560, 100))
+    const notes = new Map<string, Rect>([
+      ['zulu', at(400, 140)],
+      ['alpha', at(460, 140)],
+    ])
+    const once = billing(rects, notes)
+    expect(once.outsiders.map((outsider) => outsider.name)).toEqual([
+      'anteater',
+      'zebra',
+      'alpha',
+      'zulu',
+    ])
+    expect(billing(rects, notes)).toEqual(once)
+  })
+
+  it('says nothing about an empty group, whatever is sitting on its placeholder', () => {
+    // A placeholder is not a claim about the arrangement: it is a group file
+    // that still exists saying so. It has no members to be a stranger to.
+    const box = groupBoxes(['billing'], new Map([['billing', []]]), spread)[0]
+    expect(box?.members).toEqual([])
+    expect(box?.outsiders).toEqual([])
+  })
+
+  it('draws one closed shape for the box and one more for each clearing', () => {
+    // `fill-rule: evenodd` over one path is what makes a clearing an absence
+    // rather than a patch of background colour painted over the top, which
+    // would rub out an overlapping group's fill as well as this one's.
+    const plain = billing(spread)
+    expect(countOf(groupPath(plain), 'Z')).toBe(1)
+    const covered = billing(
+      new Map(spread).set('products', at(500, 100)),
+      new Map([['why', at(400, 140)]]),
+    )
+    expect(covered.outsiders).toHaveLength(2)
+    expect(countOf(groupPath(covered), 'Z')).toBe(3)
+    // Local to the box's own top-left, because the element is placed there.
+    expect(groupPath(covered).startsWith('M0.5 0.5')).toBe(true)
+  })
+})
+
+function countOf(text: string, character: string): number {
+  return [...text].filter((each) => each === character).length
+}
 
 describe('the colour palette', () => {
   it('paints a name from the list, and nothing else', () => {

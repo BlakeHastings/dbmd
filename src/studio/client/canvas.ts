@@ -71,7 +71,7 @@ import {
   type Rect,
   type Viewport,
 } from './geometry.js'
-import { groupBoxes, GROUP_HEADER, type GroupBox } from './groups.js'
+import { groupBoxes, groupPath, GROUP_HEADER, type GroupBox, type Outsider } from './groups.js'
 import { parseMarkdown, type Block, type Span } from './markdown.js'
 import { tintClass } from './palette.js'
 
@@ -847,14 +847,28 @@ export class Canvas {
     for (const [name, box] of this.boxes) {
       rects.set(name, { x: box.position.x, y: box.position.y, w: box.size.w, h: box.size.h })
     }
+    const noteRects = new Map<string, Rect>()
+    for (const [name, held] of this.notes) noteRects.set(name, held.rect)
     return groupBoxes(
       this.groups.map((group) => group.name),
       members,
       rects,
+      noteRects,
     )
   }
 
-  /** Put every group element where its computed box says, and say if it is empty. */
+  /**
+   * Put every group element where its computed box says, say if it is empty,
+   * and say what it is covering that is not in it.
+   *
+   * The shape is rebuilt here on every draw rather than kept, for the reason
+   * the rectangle is: a group's fill is a fact about where its members are this
+   * frame, and a cached one is the stored coordinate ADR 0005 refuses wearing a
+   * different hat. The count on the header is written from the same value in
+   * the same pass, so the number and the picture cannot disagree, and both move
+   * while a table is being dragged into the box rather than after it lands
+   * (ADR 0035).
+   */
   private drawGroups(): void {
     for (const box of this.computeGroupBoxes()) {
       const element = this.groupElements.get(box.name)
@@ -865,6 +879,20 @@ export class Canvas {
       element.classList.toggle('empty', box.members.length === 0)
       const caption = element.querySelector<HTMLElement>('.group-empty')
       if (caption !== null) caption.hidden = box.members.length > 0
+
+      const shape = element.querySelector<SVGSVGElement>('.group-shape')
+      const path = shape?.firstElementChild
+      if (shape !== null && shape !== undefined && path !== null && path !== undefined) {
+        shape.setAttribute('viewBox', `0 0 ${box.rect.w} ${box.rect.h}`)
+        path.setAttribute('d', groupPath(box))
+      }
+
+      const covers = element.querySelector<HTMLElement>('.group-covers')
+      if (covers !== null) {
+        covers.hidden = box.outsiders.length === 0
+        covers.textContent = coversText(box.outsiders)
+        covers.title = coversTitle(box.name, box.outsiders)
+      }
     }
   }
 
@@ -1062,19 +1090,59 @@ function renderGroupShell(group: Group): HTMLElement {
   element.dataset['group'] = group.name
 
   const header = document.createElement('header')
-  header.textContent = group.label ?? group.name
-  header.title = `${group.path} — drag to move every member`
+  const label = document.createElement('span')
+  label.className = 'group-label'
+  label.textContent = group.label ?? group.name
+  label.title = `${group.path} — drag to move every member`
+  // What the box covers that is not in it, filled in by `drawGroups` because it
+  // is a fact about this frame's arrangement rather than about the file, and it
+  // changes under a drag that never touches `groups/`.
+  const covers = document.createElement('span')
+  covers.className = 'group-covers'
+  covers.hidden = true
+  header.append(label, covers)
   element.append(header)
 
   const area = document.createElement('div')
   area.className = 'group-area'
+  // The fill and the outline are one path so that a clearing is a hole in the
+  // region rather than a patch of background painted on top of it (ADR 0035).
+  const shape = document.createElementNS(SVG, 'svg')
+  shape.setAttribute('class', 'group-shape')
+  shape.setAttribute('preserveAspectRatio', 'none')
+  const path = document.createElementNS(SVG, 'path')
+  path.setAttribute('fill-rule', 'evenodd')
+  shape.append(path)
   const empty = document.createElement('p')
   empty.className = 'group-empty'
   empty.hidden = true
   empty.textContent = `Nothing declares \`group: ${group.name}\`. Put a table in it from the table's panel.`
-  area.append(empty)
+  area.append(shape, empty)
   element.append(area)
   return element
+}
+
+/**
+ * The count on a group's header, or nothing when the box covers only its own.
+ *
+ * A count rather than a list, because the header is a drag handle and a label
+ * bar that grew to name four tables would cover the thing it is a label for.
+ * The names are on the tooltip, and the picture is on the canvas.
+ */
+function coversText(outsiders: readonly Outsider[]): string {
+  if (outsiders.length === 0) return ''
+  return outsiders.length === 1 ? 'covers 1 non-member' : `covers ${outsiders.length} non-members`
+}
+
+/** The same fact, named, for the hover. */
+function coversTitle(group: string, outsiders: readonly Outsider[]): string {
+  if (outsiders.length === 0) return ''
+  const named = outsiders.map((outsider) => `${outsider.kind} ${outsider.name}`).join(', ')
+  return (
+    `This box is the bounding box of the tables that declare \`group: ${group}\`, ` +
+    `and it reaches over ${named}, which do not. ` +
+    `They are cut out of it rather than moved: a group has no coordinates (ADR 0005).`
+  )
 }
 
 /** Blocks as elements. Text nodes only: nothing here parses HTML. */

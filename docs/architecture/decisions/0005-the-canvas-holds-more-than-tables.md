@@ -153,3 +153,26 @@ before doing it rather than after.
   only when asked for, because the moment it exists it can disagree with reality.
 - **The number of kinds passes about six.** Then a directory per kind is a lot of
   directories and the flat-with-`kind` design deserves another look.
+
+## Appended 2026-09-07: a consequence this record did not list
+
+Added by ADR 0035 rather than edited into the text above, so that what was
+argued in August is still readable as it was argued.
+
+**A computed bounding box costs the author of a member the work of reasoning
+about a non-member's enclosure**, and that cost falls on whoever is arranging
+the canvas rather than on whoever wrote the format. It is not in the
+consequences table above and it should have been. The bill has been paid once
+already: the agent that laid out `examples/shop` wanted a group over `orders`,
+`order_items` and `shipments`, worked the box out on paper, saw it would reach
+over `products`, and shipped a smaller group instead.
+
+Neither argument for no-coordinates is weakened by this. A stored box can still
+disagree with its members and still puts a shared file in the path of every
+layout change, and this cost is if anything a second reason not to store one:
+it lands on the same person, who would then have two things to keep true rather
+than one. **The `layout`-on-a-group revisit path above is still the way out and
+still costs what it says it costs.** ADR 0035 answers the enclosure problem
+without taking it, by drawing the box so that what it covers and does not hold
+is visible.
+
