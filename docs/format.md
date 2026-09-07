@@ -701,6 +701,20 @@ A note has no name key. Its file name is its identity, and it is the only thing
 in the file that is not the note itself, so name the file something that reads
 in a list: `why-invoices-are-never-deleted.md`, not `note-3.md`.
 
+The body is rendered on the canvas rather than shown as source, and edited as
+plain text in the panel, so what reaches the file is the characters you typed.
+The studio understands headings, paragraphs, bullet lists, fenced code and
+inline code, bold and italic, and shows anything else as the characters it is
+made of.
+
+**On `color`, and why this table says "not validated".** The studio offers seven
+names — `amber`, `rose`, `violet`, `blue`, `teal`, `green`, `slate` — and never
+a hex value, because `color: amber` is a diff a reviewer learns something from
+and `color: "#fbbf24"` is not. The format is deliberately wider than that list:
+a file that says `color: seafoam` reads, writes and round-trips unchanged, and
+the studio draws it plainly and says so rather than rewriting it. [ADR
+0030][adr30] has the argument.
+
 ## `groups/<name>.md`
 
 A grouping box: a labelled region drawn around the tables that joined it.
@@ -724,7 +738,7 @@ where being wrong costs money that has already been counted.
 | --- | --- | --- | --- |
 | `kind` | yes | `group` | |
 | `label` | no | string | What the box is called on the canvas. |
-| `color` | no | string | Carried through. Not validated. |
+| `color` | no | string | Carried through. Not validated. Same palette as a note. |
 
 Two things a group file deliberately cannot say:
 
@@ -735,6 +749,11 @@ Two things a group file deliberately cannot say:
 - **It has no coordinates.** A group's box is the bounding box of its members
   plus padding, computed when it is drawn. A `layout:` here is an `unknown-key`
   warning and is ignored. [ADR 0005][adr5] has both arguments.
+
+Both of those are what the studio does as well as what the file says. Dragging a
+group's header there moves its members and writes one `layout` line in each
+member's own file; the group file is not touched at all, and there is nothing in
+the interface that would write a position into it. [ADR 0030][adr30].
 
 An empty group, one nothing declares itself a member of, is legal and is almost
 always a rename that went wrong, so it is a `group-empty` **warning** rather
@@ -1124,6 +1143,7 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr26]: architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md
 [adr27]: architecture/decisions/0027-an-empty-name-is-a-warning-because-an-error-means-loss.md
 [adr29]: architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md
+[adr30]: architecture/decisions/0030-a-group-is-drawn-and-a-colour-is-a-name.md
 [adr31]: architecture/decisions/0031-the-first-parse-error-is-the-earliest-one.md
 [adr33]: architecture/decisions/0033-a-composite-foreign-key-is-judged-as-a-set.md
 [prettier]: https://prettier.io

@@ -12,9 +12,11 @@
  *
  * What is here instead is back-pressure. An interaction produces an edit per
  * pointer event or per keystroke, and this sends one request at a time per
- * table, coalescing everything that arrives while a request is in flight into
+ * object, coalescing everything that arrives while a request is in flight into
  * one patch. So the server hears from us continuously, never more than one
- * request deep, and the last thing it hears is what the table actually says.
+ * request deep per object, and the last thing it hears about each is what that
+ * object actually says. A group drag is several objects and therefore several
+ * of those queues at once, which is exactly right: they are separate files.
  *
  * The loop condition is the thing worth reading twice: it drains until what was
  * sent is as new as what is wanted, rather than sending what it was handed. That
@@ -48,9 +50,11 @@
  * only as fresh as its oldest half.
  */
 
-import type { Table } from '../../model/types.js'
+import type { CanvasObject, Group, Layout, Note, ObjectKind, Table } from '../../model/types.js'
 import {
   REVISION_HEADER,
+  type GroupPatch,
+  type NotePatch,
   type TablePatch,
   type WireModel,
   type WireModelResponse,
@@ -59,12 +63,45 @@ import {
 import type { Point } from './geometry.js'
 import { referrersTo, withRefsRetargeted } from './model.js'
 
+/**
+ * A patch for whichever kind of object is being edited.
+ *
+ * The three shapes are disjoint enough that a union would need a discriminator
+ * on every call site, and the kind is already carried beside it everywhere this
+ * appears: `patch(kind, name, patch)` names both. `wire.ts` is what refuses a
+ * key the wrong kind sent, which is where that refusal belongs, because a
+ * client that got it wrong should be told by the thing that knows the format.
+ */
+export type ObjectPatch = TablePatch | NotePatch | GroupPatch
+
 export interface WriteHandlers {
   /** The revision the page has drawn. Read per edit, not per request. */
   readonly revision: () => number
   /** Every response carries the write status; this is how the status line moves. */
   readonly onStatus: (status: WireStatus) => void
-  readonly onFailure: (table: string, failure: RequestFailed) => void
+  readonly onFailure: (kind: ObjectKind, name: string, failure: RequestFailed) => void
+}
+
+/**
+ * One object, addressed the way the writer queues it.
+ *
+ * A key rather than two maps, because everything below treats a note and a
+ * table identically: one request at a time each, coalesced, named by the same
+ * revision. `:` is the separator because `safe-path.ts` refuses it in a name,
+ * so two objects cannot collide here. Deliberately not a control character: a
+ * NUL in a source file makes it binary to git and the diff disappears, which
+ * has happened in this repository twice.
+ */
+function keyOf(kind: ObjectKind, name: string): string {
+  return `${kind}:${name}`
+}
+
+function kindOf(key: string): ObjectKind {
+  return key.slice(0, key.indexOf(':')) as ObjectKind
+}
+
+function nameOf(key: string): string {
+  return key.slice(key.indexOf(':') + 1)
 }
 
 /**
@@ -90,13 +127,18 @@ export class RequestFailed extends Error {
   }
 }
 
-/** What the server answered a mutation with: the table, and where the writes stand. */
-interface TableResponse extends WireStatus {
-  readonly table: Table
+/** What the server answered a mutation with: the object, and where the writes stand. */
+interface ObjectResponse extends WireStatus {
+  readonly table?: Table
+  readonly note?: Note
+  readonly group?: Group
 }
 
-export class TableWriter {
-  private readonly wanted = new Map<string, { patch: TablePatch; revision: number; base: number }>()
+export class ObjectWriter {
+  private readonly wanted = new Map<
+    string,
+    { patch: ObjectPatch; revision: number; base: number }
+  >()
   private readonly sent = new Map<string, number>()
   private readonly drains = new Map<string, Promise<void>>()
   /**
@@ -121,58 +163,76 @@ export class TableWriter {
     return this.drains.size > 0
   }
 
-  /** A box moved. The only edit the canvas makes, and it is an ordinary patch. */
-  move(table: string, position: Point): void {
-    this.patch(table, { layout: { x: position.x, y: position.y } })
+  /** A box or a note moved, or a note was resized. An ordinary patch either way. */
+  move(kind: 'table' | 'note', name: string, layout: Layout): void {
+    this.patch(kind, name, { layout })
   }
 
-  patch(table: string, patch: TablePatch): void {
-    const held = this.wanted.get(table)
+  /**
+   * A group was dragged: every member that moved, in one go.
+   *
+   * Several requests and one write. Each member is its own file and therefore
+   * its own patch, but they all arrive inside the server's debounce window, so
+   * the flush that follows writes them together and `writeModel`'s `only` set
+   * holds exactly the members that moved (ADR 0015). The group's own file is
+   * not in it and cannot be: nothing here has a patch for a group's position,
+   * because a group has no position (ADR 0005).
+   */
+  moveGroup(moved: readonly { readonly name: string; readonly position: Point }[]): void {
+    for (const member of moved) {
+      this.patch('table', member.name, { layout: { x: member.position.x, y: member.position.y } })
+    }
+  }
+
+  patch(kind: ObjectKind, name: string, patch: ObjectPatch): void {
+    const key = keyOf(kind, name)
+    const held = this.wanted.get(key)
     const base = this.handlers.revision()
     this.revisions += 1
-    this.wanted.set(table, {
+    this.wanted.set(key, {
       patch: { ...held?.patch, ...patch },
       revision: this.revisions,
       // The older of the two: a merged patch carries content computed from both
       // models, so it is only as fresh as the staler half of it.
       base: held === undefined ? base : Math.min(held.base, base),
     })
-    void this.drain(table)
+    void this.drain(key)
   }
 
   /**
-   * Everything already handed to this writer for `table`, on disk or refused.
+   * Everything already handed to this writer for one object, on disk or refused.
    *
    * A rename is three requests over two file names (see `renameTable`), and a
    * patch still in flight against the old name would land after the file it
    * names has gone. This is the one place that has to wait, and it waits on the
    * drain rather than on a timer.
    */
-  async settle(table: string): Promise<void> {
+  async settle(kind: ObjectKind, name: string): Promise<void> {
+    const key = keyOf(kind, name)
     // Loop rather than await once: a patch that arrived while the drain was
     // finishing starts a second one, and the caller wants both.
     for (;;) {
-      const running = this.drains.get(table)
+      const running = this.drains.get(key)
       if (running === undefined) return
       await running
     }
   }
 
-  private drain(table: string): Promise<void> {
-    const running = this.drains.get(table)
+  private drain(key: string): Promise<void> {
+    const running = this.drains.get(key)
     if (running !== undefined) return running
-    const started = this.run(table).finally(() => this.drains.delete(table))
-    this.drains.set(table, started)
+    const started = this.run(key).finally(() => this.drains.delete(key))
+    this.drains.set(key, started)
     return started
   }
 
-  private async run(table: string): Promise<void> {
+  private async run(key: string): Promise<void> {
     try {
       for (;;) {
-        const want = this.wanted.get(table)
+        const want = this.wanted.get(key)
         if (want === undefined) return
-        if (this.sent.get(table) === want.revision) return
-        // The table the server answers with is deliberately not fed back into
+        if (this.sent.get(key) === want.revision) return
+        // The object the server answers with is deliberately not fed back into
         // the page. A `PATCH` applies the patch this page just sent to the model
         // this page already had, so the answer is what the page computed, and
         // adopting it would rebuild a box on every keystroke of somebody's prose
@@ -180,21 +240,21 @@ export class TableWriter {
         // answered by the page re-reading it (ADR 0025), not by an echo, and the
         // patch that was computed from the old one is refused rather than fed
         // back.
-        this.handlers.onStatus(await patchTable(table, want.patch, want.base))
-        this.sent.set(table, want.revision)
+        this.handlers.onStatus(await patchObject(kindOf(key), nameOf(key), want.patch, want.base))
+        this.sent.set(key, want.revision)
       }
     } catch (error) {
       const failure =
         error instanceof RequestFailed ? error : new RequestFailed('unreachable', messageOf(error))
       // A stale patch is not a patch to retry. It was computed from a model
-      // that is gone, so keeping it would mean the next edit to this table
+      // that is gone, so keeping it would mean the next edit to this object
       // sending the old column list along with the new one, which is the defect
       // this guard exists for wearing a second hat.
       if (failure.isStale) {
-        this.wanted.delete(table)
-        this.sent.delete(table)
+        this.wanted.delete(key)
+        this.sent.delete(key)
       }
-      this.handlers.onFailure(table, failure)
+      this.handlers.onFailure(kindOf(key), nameOf(key), failure)
     }
   }
 }
@@ -260,7 +320,7 @@ export class RenameStopped extends Error {
  * the same place.
  */
 export async function renameTable(
-  writer: TableWriter,
+  writer: ObjectWriter,
   model: WireModel,
   from: string,
   to: string,
@@ -285,7 +345,7 @@ export async function renameTable(
     )
   }
 
-  await writer.settle(from)
+  await writer.settle('table', from)
   await createTable(
     {
       name: to,
@@ -307,8 +367,8 @@ export async function renameTable(
     if (name === from) continue
     const referrer = model.tables.find((held) => held.name === name)
     if (referrer === undefined) continue
-    writer.patch(name, { columns: withRefsRetargeted(referrer.columns, from, to) })
-    await writer.settle(name)
+    writer.patch('table', name, { columns: withRefsRetargeted(referrer.columns, from, to) })
+    await writer.settle('table', name)
     await check()
     landed.push(`tables/${name}.md`)
   }
@@ -346,25 +406,46 @@ export async function flushWrites(): Promise<WireStatus> {
   return (await answer(response)) as WireStatus
 }
 
-/** A new table's file, written immediately rather than debounced (ADR 0013). */
-export async function createTable(
-  body: TablePatch & { readonly name: string },
+/** A new object's file, written immediately rather than debounced (ADR 0013). */
+export async function createObject(
+  kind: ObjectKind,
+  body: ObjectPatch & { readonly name: string },
   base: number,
-): Promise<TableResponse> {
-  const response = await fetch('/api/table', {
+): Promise<CanvasObject> {
+  const response = await fetch(`/api/${kind}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
     body: JSON.stringify(body),
   })
-  return (await answer(response)) as TableResponse
+  const created = (await answer(response)) as ObjectResponse
+  // The server answers under the kind's own key, which is what makes the
+  // response readable in a `curl` without knowing what was asked for.
+  const object = created[kind]
+  if (object === undefined) throw new RequestFailed('unknown', `the server created no ${kind}`)
+  return object
 }
 
-export async function deleteTable(name: string, base: number): Promise<WireStatus> {
-  const response = await fetch(`/api/table/${encodeURIComponent(name)}`, {
+export async function createTable(
+  body: TablePatch & { readonly name: string },
+  base: number,
+): Promise<CanvasObject> {
+  return createObject('table', body, base)
+}
+
+export async function deleteObject(
+  kind: ObjectKind,
+  name: string,
+  base: number,
+): Promise<WireStatus> {
+  const response = await fetch(`/api/${kind}/${encodeURIComponent(name)}`, {
     method: 'DELETE',
     headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
   })
   return (await answer(response)) as WireStatus
+}
+
+export async function deleteTable(name: string, base: number): Promise<WireStatus> {
+  return deleteObject('table', name, base)
 }
 
 /**
@@ -380,15 +461,20 @@ export async function deleteTable(name: string, base: number): Promise<WireStatu
  */
 const KEEPALIVE_LIMIT_BYTES = 48 * 1024
 
-async function patchTable(table: string, patch: TablePatch, base: number): Promise<TableResponse> {
+async function patchObject(
+  kind: ObjectKind,
+  name: string,
+  patch: ObjectPatch,
+  base: number,
+): Promise<ObjectResponse> {
   const body = JSON.stringify(patch)
-  const response = await fetch(`/api/table/${encodeURIComponent(table)}`, {
+  const response = await fetch(`/api/${kind}/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
     body,
     keepalive: body.length <= KEEPALIVE_LIMIT_BYTES,
   })
-  return (await answer(response)) as TableResponse
+  return (await answer(response)) as ObjectResponse
 }
 
 /** The parsed body, or a throw carrying the server's own words for the refusal. */

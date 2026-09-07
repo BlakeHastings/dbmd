@@ -12,7 +12,7 @@ review is a normal pull request.
 
 ## One picture and one file, and they are the same thing
 
-![The dbmd studio: eight tables of the examples/shop model on a canvas, the shipments table selected and outlined, and an editing panel on the right headed "shipments / tables/shipments.md" showing its name and its columns](docs/media/studio-shipments.png)
+![The dbmd studio: eight tables of the examples/shop model on a canvas with two amber sticky notes and a violet box labelled "Written by the depot handheld" drawn round two of the tables, the shipments table selected and outlined with its relationships highlighted, and an editing panel on the right headed "shipments / tables/shipments.md" showing its name, its group and its columns](docs/media/studio-shipments.png)
 
 That is `dbmd studio` open on [`examples/shop`](examples/shop), a coffee
 roastery's order book. `shipments` is selected, so the panel on the right is
@@ -114,6 +114,21 @@ Dragging a box is the same idea from the other end. It rewrites the one
 files whose boxes moved and never reads as a schema change.
 [ADR 0003](docs/architecture/decisions/0003-markdown-on-disk-is-the-model.md)
 argues the format from that requirement and three others.
+
+The canvas holds two other kinds of thing, and both are what make it a diagram
+rather than a schema dump. A **sticky note** is a file under `notes/`: prose
+with a position and a colour, rendered on the canvas, which is where the reason
+for something that is nowhere in the schema gets written down. A **group** is a
+file under `groups/` and is a box drawn round the tables that declared
+themselves members of it, with `group: warehouse` in each of their own files. A
+group has no coordinates at all: its box is worked out from its members every
+time it is drawn, so dragging it writes one `layout` line per table that moved
+and never touches the group's file, and two branches adding a table to the same
+group touch two different files.
+[ADR 0005](docs/architecture/decisions/0005-the-canvas-holds-more-than-tables.md)
+argues that from the merge story, and
+[ADR 0030](docs/architecture/decisions/0030-a-group-is-drawn-and-a-colour-is-a-name.md)
+is what the studio does about it.
 
 ## Your editor and the canvas, at the same time
 

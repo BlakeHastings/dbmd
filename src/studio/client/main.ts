@@ -34,27 +34,32 @@
  * next moment when nothing is in the middle of happening. Nothing is lost by
  * waiting, because an edit made in the meantime is refused rather than applied.
  *
- * - **dbmd-34, notes and groups**, attaches inside the canvas as two more
- *   layers, and the reason it is not two more calls here is ADR 0005: a group
- *   has no coordinates, so it is drawn from its members rather than fetched.
- * - **dbmd-38, adding and removing whole tables**, is the toolbar's `Add table`
- *   and the panel's `Delete`, and both land in `reload` below, because both move
- *   a file rather than editing one. ADR 0021.
+ * **Notes and groups are the same wiring one kind along.** ADR 0005 made a kind
+ * a directory and a set of keys, so a note patch and a group patch go through
+ * the same writer, name the same revision and land in the same debounce as a
+ * table's. The two places they are not the same are both ADR 0005 showing
+ * through: a group is created without pointing at a spot, because it has no
+ * coordinates to be pointed at, and a group drag arrives here as a batch of
+ * member moves rather than as a move of the group. ADR 0030.
+ *
+ * **Adding and removing whole objects lands in `reload`**, because all of them
+ * move a file rather than editing one. ADR 0021.
  */
 
-import { Canvas } from './canvas.js'
+import { Canvas, type Selected } from './canvas.js'
 import { Inspector } from './inspector.js'
 import { fromWireModel, withTable } from './model.js'
 import { placeTables } from './place.js'
 import { NEW_TABLE_COLUMNS } from './tables.js'
 import {
+  createObject,
   createTable,
-  deleteTable,
+  deleteObject,
   fetchModel,
+  ObjectWriter,
   renameTable,
   RenameStopped,
   RequestFailed,
-  TableWriter,
 } from './write.js'
 // The two values this page imports from outside its own directory. ADR 0014
 // says a consumer that only wants to print where a diagnostic points should not
@@ -62,13 +67,15 @@ import {
 // validator is a pure function of a model, which is what lets it run here.
 import { locationText, sortDiagnostics } from '../../diagnostics.js'
 import { validate } from '../../model/validate.js'
-import type { Diagnostic, Table } from '../../model/types.js'
+import type { Diagnostic, Group, Note, ObjectKind, Table } from '../../model/types.js'
 import type { WireConflict, WireModel, WireModelResponse, WireStatus } from '../wire.js'
 import type { Point } from './geometry.js'
 
 const canvasHost = required('canvas')
 const inspectorHost = required('inspector')
 const addTableButton = required('add-table')
+const addNoteButton = required('add-note')
+const addGroupButton = required('add-group')
 const statusText = required('status-text')
 const selectionText = required('selection')
 const diagnosticsList = required('diagnostics')
@@ -113,6 +120,8 @@ let readerDiagnostics: readonly Diagnostic[] = []
  * made from it is made against. ADR 0025.
  */
 let drawn = 0
+/** Whether anything has been drawn yet, so the first draw can fit the view. */
+let drawnOnce = false
 /** The server has moved and this page has not caught up with it yet. */
 let stale = false
 /**
@@ -136,7 +145,7 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
   statusText.dataset['tone'] = tone
 }
 
-const writer = new TableWriter({
+const writer = new ObjectWriter({
   revision: () => drawn,
   onStatus: (status) => {
     // An edit that landed is the answer to whatever was refused before it.
@@ -145,7 +154,7 @@ const writer = new TableWriter({
     showStatus(status)
     if (status.pendingWrite) pollStatus()
   },
-  onFailure: (table, failure) => {
+  onFailure: (kind, table, failure) => {
     if (failure.isStale) {
       // Not "could not write": nothing failed. The page was holding a model the
       // files had moved on from, and the edit was refused rather than written
@@ -164,15 +173,36 @@ const writer = new TableWriter({
       catchUp()
       return
     }
-    say(`Could not write ${table}: ${failure.message}`, 'bad')
+    say(`Could not write ${kind} ${table}: ${failure.message}`, 'bad')
   },
 })
+
+/**
+ * Which kind the armed press is about to place, or null when nothing is armed.
+ *
+ * The canvas has one mode and it is "the next press is a coordinate"; what that
+ * coordinate is for is this page's business, so the kind lives here. A group is
+ * never in this variable, because a group is not placed at all (ADR 0005).
+ */
+let arming: 'table' | 'note' | null = null
 
 const inspector = new Inspector(inspectorHost, {
   model: () => model,
   onPatch: (name, patch, next) => {
     adoptTable(next)
-    writer.patch(name, patch)
+    writer.patch('table', name, patch)
+  },
+  onPatchNote: (name, patch, next) => {
+    model = { ...model, notes: model.notes.map((held) => (held.name === name ? next : held)) }
+    canvas.updateNote(next)
+    writer.patch('note', name, patch)
+    showDiagnostics()
+  },
+  onPatchGroup: (name, patch, next) => {
+    model = { ...model, groups: model.groups.map((held) => (held.name === name ? next : held)) }
+    canvas.updateGroup(next)
+    writer.patch('group', name, patch)
+    showDiagnostics()
   },
   onRename: (from, to) => {
     void rename(from, to)
@@ -180,28 +210,52 @@ const inspector = new Inspector(inspectorHost, {
   onCreate: (name, at) => {
     void create(name, at)
   },
-  onDelete: (name) => {
-    void remove(name)
+  onCreateNote: (name, at, color) => {
+    void createNote(name, at, color)
+  },
+  onCreateGroup: (name, label, color) => {
+    void createGroup(name, label, color)
+  },
+  onDelete: (kind, name) => {
+    void remove(kind, name)
   },
 })
 
 const canvas = new Canvas(canvasHost, {
-  onMove: (table, position) => writer.move(table, position),
-  onSelect: (table) => {
-    selectionText.textContent = table === null ? '' : `Selected ${table}.`
-    inspector.show(table)
+  onMove: (kind, name, layout) => {
+    writer.move(kind, name, layout)
+    // The note's panel shows where it is, and a drag is the thing that changes
+    // that. One line of text, so it is not the panel redraw rule 2 forbids.
+    if (kind === 'note') inspector.noteMoved(name, layout)
+  },
+  onGroupMove: (group, moved) => {
+    writer.moveGroup(moved)
+    // Said here rather than left to the status line, because the status line
+    // will name the files and this is the sentence that says the group's own
+    // file is not one of them. ADR 0005 is the whole of why that is worth
+    // saying out loud in the interface and not only in a record.
+    say(
+      `Moved ${group}: ${moved.length} member${moved.length === 1 ? '' : 's'} moved, so ${moved.length} table file${moved.length === 1 ? '' : 's'} change. groups/${group}.md is not written: a group has no coordinates.`,
+    )
+  },
+  onSelect: (selected) => {
+    selectionText.textContent =
+      selected === null ? '' : `Selected ${selected.kind} ${selected.name}.`
+    inspector.show(selected)
   },
   onViewport: (viewport) => {
     zoomLevel.textContent = `${Math.round(viewport.scale * 100)}%`
   },
   onPlace: (at) => {
+    const kind = arming
+    arming = null
     showArmed()
     // Whatever was selected is not what this press was about, and closing its
     // panel is what makes room for the form. `select` reaches `onSelect`, which
     // calls `inspector.show`, so the form is opened after it and not before.
     canvas.select(null)
-    inspector.place(at)
-    selectionText.textContent = `New table at ${at.x}, ${at.y}.`
+    inspector.place(kind ?? 'table', at)
+    selectionText.textContent = `New ${kind ?? 'table'} at ${at.x}, ${at.y}.`
   },
 })
 
@@ -228,11 +282,25 @@ async function reload(): Promise<void> {
 }
 
 function adopt(response: WireModelResponse): void {
+  const first = !drawnOnce
   model = response.model
   readerDiagnostics = response.diagnostics
   drawn = response.revision
   stale = false
-  canvas.show(model.tables, placeTables(model.tables))
+  canvas.show(
+    { tables: model.tables, notes: model.notes, groups: model.groups },
+    placeTables(model.tables),
+  )
+  // Only the first draw. A later reload is a change somebody made to a file,
+  // and moving the developer's view because a neighbour saved `orders.md` would
+  // be the same kind of theft `busy` exists to prevent. The first one is
+  // different: nobody has chosen a view yet, and fitting is also what keeps the
+  // model's first box out from under the zoom toolbar, which sits at (12, 12)
+  // and used to overlap the table at (40, 40) that `dbmd init` writes.
+  if (first) {
+    drawnOnce = true
+    canvas.fit()
+  }
   // The panel is rebuilt from the model that just arrived, and it has to be:
   // its rows are the previous model's values held as DOM, and `commitColumns`
   // reads the whole list out of them. A panel left standing over an adopted
@@ -348,15 +416,24 @@ async function peek(): Promise<void> {
  * already shows it, and rebuilding a field under the cursor is how an editor
  * eats a keystroke.
  *
- * The box is redrawn only when the columns are a different list, because the
- * columns and the name are the whole of what a box draws. A prose edit produces
- * a table whose column list is the same array, so typing a paragraph rebuilds no
- * DOM at all and reroutes no edges.
+ * The box is redrawn only when the columns are a different list or the table
+ * joined or left a group, because those are the whole of what a box draws and
+ * what the canvas has to know about it. A prose edit produces a table whose
+ * column list is the same array and the same `group`, so typing a paragraph
+ * rebuilds no DOM at all and reroutes no edges.
+ *
+ * `group` is in that condition and was not, and the symptom was the one this
+ * item is about: joining a table to a group from the panel wrote the line into
+ * the file and left the group drawn as an empty placeholder until the next
+ * reload, so the picture disagreed with the file it had just written. Seen by
+ * driving it.
  */
 function adoptTable(next: Table): void {
   const shown = model.tables.find((table) => table.name === next.name)
   model = withTable(model, next)
-  if (shown === undefined || shown.columns !== next.columns) canvas.update(next)
+  if (shown === undefined || shown.columns !== next.columns || shown.group !== next.group) {
+    canvas.update(next)
+  }
   showDiagnostics()
 }
 
@@ -386,27 +463,88 @@ async function create(name: string, at: Point): Promise<void> {
     return
   }
   await reload()
-  canvas.select(name)
+  canvas.select({ kind: 'table', name })
 }
 
 /**
- * Delete a table's file. The only thing this page does that destroys one.
+ * Write a new note's file, then re-read and select it.
+ *
+ * Born empty, and the panel is what fills it in: a note's body is the note, and
+ * a file written with a paragraph nobody typed would be the studio putting
+ * words in somebody's model.
+ */
+async function createNote(name: string, at: Point, color: string | null): Promise<void> {
+  say(`Creating notes/${name}.md.`)
+  try {
+    await createObject(
+      'note',
+      {
+        name,
+        layout: { x: at.x, y: at.y },
+        ...(color === null ? {} : { color }),
+      },
+      drawn,
+    )
+  } catch (error) {
+    say(`Could not create ${name}: ${messageOf(error)}`, 'bad')
+    inspector.placementRefused(name, messageOf(error))
+    return
+  }
+  await reload()
+  canvas.select({ kind: 'note', name })
+}
+
+/**
+ * Write a new group's file. No coordinates, and nothing in it yet.
+ *
+ * The sentence afterwards is the one thing a person needs to know next, because
+ * an empty group draws as a placeholder and `dbmd check` warns about it, and
+ * both of those look like something went wrong until you know that joining is a
+ * line in the table's file.
+ */
+async function createGroup(name: string, label: string, color: string | null): Promise<void> {
+  say(`Creating groups/${name}.md.`)
+  try {
+    await createObject(
+      'group',
+      {
+        name,
+        ...(label.trim() === '' ? {} : { label: label.trim() }),
+        ...(color === null ? {} : { color }),
+      },
+      drawn,
+    )
+  } catch (error) {
+    say(`Could not create ${name}: ${messageOf(error)}`, 'bad')
+    inspector.placementRefused(name, messageOf(error))
+    return
+  }
+  await reload()
+  canvas.select({ kind: 'group', name })
+  say(
+    `Created groups/${name}.md. Nothing is in it yet, so it draws as an empty box and dbmd reports group-empty: put a table in it from that table's panel.`,
+  )
+}
+
+/**
+ * Delete an object's file. The only thing this page does that destroys one.
  *
  * `settle` first, for the reason a rename settles: a patch still in flight
  * against this name would arrive after the file has gone, and the server would
- * answer a refusal about a table that no longer exists rather than writing
+ * answer a refusal about an object that no longer exists rather than writing
  * anything. The selection is dropped before the request, so the panel does not
- * spend the round trip showing a table that is being deleted.
+ * spend the round trip showing something that is being deleted.
  */
-async function remove(name: string): Promise<void> {
+async function remove(kind: ObjectKind, name: string): Promise<void> {
+  const path = `${kind}s/${name}.md`
   canvas.select(null)
-  say(`Deleting tables/${name}.md.`)
+  say(`Deleting ${path}.`)
   try {
-    await writer.settle(name)
-    await deleteTable(name, drawn)
+    await writer.settle(kind, name)
+    await deleteObject(kind, name, drawn)
   } catch (error) {
     say(`Could not delete ${name}: ${messageOf(error)}`, 'bad')
-    // A delete refused because the model moved leaves a page showing a table
+    // A delete refused because the model moved leaves a page showing something
     // the developer was told they were deleting. Re-reading is what puts the
     // question back where they can ask it again.
     if (error instanceof RequestFailed && error.isStale) await reload()
@@ -417,7 +555,7 @@ async function remove(name: string): Promise<void> {
   // not a write: the file is gone and nothing in `WireStatus` says so. Held
   // rather than written, because the next heartbeat renders the status again
   // and a sentence nothing on the status can reconstruct would go with it.
-  say(`Deleted tables/${name}.md. Undo is git checkout, if it was committed.`)
+  say(`Deleted ${path}. Undo is git checkout, if it was committed.`)
 }
 
 async function rename(from: string, to: string): Promise<void> {
@@ -443,7 +581,7 @@ async function rename(from: string, to: string): Promise<void> {
   // A rename moves files, so the whole directory is re-read rather than one
   // table patched: what the reader found is what the rest of the page must see.
   await reload()
-  canvas.select(to)
+  canvas.select({ kind: 'table', name: to })
 }
 
 function wireToolbar(): void {
@@ -451,14 +589,23 @@ function wireToolbar(): void {
   required('zoom-in').addEventListener('click', () => canvas.zoomStep(1))
   required('zoom-reset').addEventListener('click', () => canvas.zoomTo(1))
   required('zoom-fit').addEventListener('click', () => canvas.fit())
-  addTableButton.addEventListener('click', () => {
-    canvas.arm(!canvas.placing)
+  addTableButton.addEventListener('click', () => armFor('table'))
+  addNoteButton.addEventListener('click', () => armFor('note'))
+  // Not armed and not a placement: a group has no coordinates to point at (ADR
+  // 0005), so it goes straight to the form.
+  addGroupButton.addEventListener('click', () => {
+    canvas.arm(false)
+    arming = null
     showArmed()
+    canvas.select(null)
+    inspector.draftGroup()
+    selectionText.textContent = 'New group.'
   })
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return
     if (canvas.placing) {
       canvas.arm(false)
+      arming = null
       showArmed()
       return
     }
@@ -484,14 +631,22 @@ let borrowedLine: { readonly text: string; readonly tone: string } | null = null
  * line is one string; remembering the `WireStatus` it came from is a copy of a
  * type that grows.
  */
+function armFor(kind: 'table' | 'note'): void {
+  const already = canvas.placing && arming === kind
+  arming = already ? null : kind
+  canvas.arm(!already)
+  showArmed()
+}
+
 function showArmed(): void {
-  addTableButton.setAttribute('aria-pressed', String(canvas.placing))
+  addTableButton.setAttribute('aria-pressed', String(canvas.placing && arming === 'table'))
+  addNoteButton.setAttribute('aria-pressed', String(canvas.placing && arming === 'note'))
   if (canvas.placing) {
     borrowedLine ??= {
       text: statusText.textContent ?? '',
       tone: statusText.dataset['tone'] ?? 'plain',
     }
-    statusText.textContent = 'Click the canvas where the new table goes. Escape cancels.'
+    statusText.textContent = `Click the canvas where the new ${arming ?? 'table'} goes. Escape cancels.`
     statusText.dataset['tone'] = 'plain'
     return
   }

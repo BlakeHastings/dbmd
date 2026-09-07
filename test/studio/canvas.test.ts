@@ -20,6 +20,18 @@ import {
   type RoutedEdge,
   type TableBox,
 } from '../../src/studio/client/edges.js'
+import {
+  EMPTY_GROUP,
+  GROUP_PADDING,
+  groupBoxes,
+  type GroupBox,
+} from '../../src/studio/client/groups.js'
+import {
+  PALETTE,
+  PLAIN_TINT,
+  tintClass,
+  unknownColorNote,
+} from '../../src/studio/client/palette.js'
 
 /**
  * The canvas without a browser.
@@ -386,5 +398,118 @@ describe('edges', () => {
     const edge = only(routeEdges([ordersToCustomers], canvas))
     expect(starts(edge.d).x).toBeGreaterThan(orders.x + orders.w)
     expect(ends(edge.d).x).toBeLessThan(customers.x)
+  })
+})
+
+/**
+ * A group's box, which is the one thing on this canvas that is computed and
+ * never stored.
+ *
+ * This is the half of dbmd-34 a screenshot cannot prove. A picture shows a box
+ * around three tables; what it cannot show is that the box came out of the
+ * three tables rather than out of a file, which is the difference between ADR
+ * 0005 being implemented and ADR 0005 being drawn.
+ */
+describe('a group has no coordinates', () => {
+  const at = (x: number, y: number): Rect => ({ x, y, w: 200, h: 100 })
+
+  function oneBox(boxes: readonly GroupBox[]): GroupBox {
+    const box = boxes[0]
+    if (box === undefined || boxes.length !== 1) {
+      throw new Error(`one group box was expected, got ${boxes.length}`)
+    }
+    return box
+  }
+
+  const three = new Map<string, Rect>([
+    ['orders', at(100, 100)],
+    ['invoices', at(400, 100)],
+    ['payments', at(100, 300)],
+  ])
+  const members = new Map<string, readonly string[]>([
+    ['billing', ['orders', 'invoices', 'payments']],
+  ])
+
+  it('is the bounding box of its members plus padding', () => {
+    const box = oneBox(groupBoxes(['billing'], members, three))
+    expect(box.rect).toEqual({
+      x: 100 - GROUP_PADDING,
+      y: 100 - GROUP_PADDING,
+      w: 500 + GROUP_PADDING * 2,
+      h: 300 + GROUP_PADDING * 2,
+    })
+  })
+
+  it('follows a member that moved, because it is recomputed rather than kept', () => {
+    // The whole of the drag: the same function, fresher rectangles, and nothing
+    // anywhere holding on to the previous answer.
+    const dragged = new Map(three).set('payments', at(100, 900))
+    const box = oneBox(groupBoxes(['billing'], members, dragged))
+    expect(box.rect.h).toBe(900 + 100 - 100 + GROUP_PADDING * 2)
+  })
+
+  it('is the same box for the same members, on every call and every machine', () => {
+    expect(groupBoxes(['billing'], members, three)).toEqual(groupBoxes(['billing'], members, three))
+  })
+
+  it('skips a member the canvas has no box for rather than bounding the origin', () => {
+    // A table that declared `group:` and did not parse has no box. Treating a
+    // missing rectangle as (0, 0) would swell the group all the way to the
+    // origin, which is a lie about where the group is rather than a gap in it.
+    const missing = new Map(three)
+    missing.delete('payments')
+    const box = oneBox(groupBoxes(['billing'], members, missing))
+    expect(box.rect.x).toBe(100 - GROUP_PADDING)
+    expect(box.rect.y).toBe(100 - GROUP_PADDING)
+  })
+
+  it('gives an empty group a placeholder box below the content, not nothing', () => {
+    // A group whose last member left has not been deleted, and a canvas that
+    // drew nothing would say it had.
+    const box = oneBox(groupBoxes(['billing'], new Map([['billing', []]]), three))
+    expect(box.members).toEqual([])
+    expect(box.rect.w).toBe(EMPTY_GROUP.w)
+    expect(box.rect.h).toBe(EMPTY_GROUP.h)
+    expect(box.rect.y).toBeGreaterThan(300 + 100)
+  })
+
+  it('puts two empty groups in different places, in the order it was given them', () => {
+    const boxes = groupBoxes(
+      ['a', 'b'],
+      new Map([
+        ['a', []],
+        ['b', []],
+      ]),
+      three,
+    )
+    expect(boxes.map((box) => box.name)).toEqual(['a', 'b'])
+    expect(boxes[0]?.rect.y).toBe(boxes[1]?.rect.y)
+    expect(boxes[0]?.rect.x).toBeLessThan(boxes[1]?.rect.x ?? 0)
+  })
+
+  it('places an empty group somewhere even when there is no content at all', () => {
+    const box = oneBox(groupBoxes(['billing'], new Map([['billing', []]]), new Map()))
+    expect(Number.isFinite(box.rect.x)).toBe(true)
+    expect(Number.isFinite(box.rect.y)).toBe(true)
+  })
+})
+
+describe('the colour palette', () => {
+  it('paints a name from the list, and nothing else', () => {
+    expect(tintClass('amber')).toBe('tint-amber')
+    expect(tintClass(undefined)).toBe(PLAIN_TINT)
+  })
+
+  it('draws a colour it does not know plainly, and says so rather than rewriting it', () => {
+    // `docs/format.md` carries `color` through without validating it, so a model
+    // that says `color: seafoam` has to open. Refusing it here would make the
+    // studio a narrower reader than `dbmd check`.
+    expect(tintClass('seafoam')).toBe(PLAIN_TINT)
+    expect(unknownColorNote('seafoam')).toContain('seafoam')
+    expect(unknownColorNote('amber')).toBeUndefined()
+  })
+
+  it('offers names rather than hex values, because the diff is the point', () => {
+    for (const color of PALETTE) expect(color).toMatch(/^[a-z]+$/)
   })
 })

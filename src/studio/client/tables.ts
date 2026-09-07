@@ -60,10 +60,25 @@ const STEM = 'new_table'
  * table called `new_table` that got renamed on the spot.
  */
 export function suggestTableName(taken: readonly string[]): string {
+  return suggestName(STEM, taken, '_')
+}
+
+/**
+ * A name nothing of that kind in this model has, built from a stem.
+ *
+ * The same argument as `suggestTableName` and the same function, because a note
+ * called `new-note` that somebody kept is exactly as unhelpful as a table
+ * called `new_table` that somebody kept, and the answer is the same: a
+ * suggestion that obviously wants replacing. The separator differs because the
+ * conventions do: a table is named like a database table and a note or a group
+ * is named like a file somebody will read in a list (`docs/format.md` asks for
+ * `why-invoices-are-never-deleted.md`, not `note-3.md`).
+ */
+export function suggestName(stem: string, taken: readonly string[], separator = '-'): string {
   const held = new Set(taken.map(folded))
-  if (!held.has(STEM)) return STEM
+  if (!held.has(folded(stem))) return stem
   for (let n = 2; ; n += 1) {
-    const candidate = `${STEM}_${n}`
+    const candidate = `${stem}${separator}${n}`
     if (!held.has(folded(candidate))) return candidate
   }
 }

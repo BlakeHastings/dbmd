@@ -10,6 +10,8 @@
 export { startStudio } from './server.js'
 export type { Studio, StudioOptions } from './server.js'
 export type {
+  GroupPatch,
+  NotePatch,
   TablePatch,
   WireConflict,
   WireModel,

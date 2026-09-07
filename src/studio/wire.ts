@@ -152,6 +152,36 @@ export interface TablePatch {
   readonly body?: string
 }
 
+/**
+ * An edit to a note: where it is, what colour it is, and what it says.
+ *
+ * `null` on `layout` or `color` removes the key, the same as on a table. There
+ * is no `label`, because a note has no name but its file name and no title but
+ * its first line: the body *is* the note (ADR 0005).
+ */
+export interface NotePatch {
+  readonly layout?: Layout | null
+  readonly color?: string | null
+  readonly body?: string
+}
+
+/**
+ * An edit to a group: what it is called, what colour it is, and its prose.
+ *
+ * **There is deliberately no `layout` here and no `members`.** A group's box is
+ * the bounding box of its members plus padding, computed on every render and
+ * never stored, and membership is declared by each member in its own file (ADR
+ * 0005). Both absences are the merge story the format is arranged around, so
+ * they are refused here rather than accepted and dropped: a client that sent
+ * either is a client whose author believed something about this format that is
+ * not true, and the sentence it gets back is where they find out.
+ */
+export interface GroupPatch {
+  readonly label?: string | null
+  readonly color?: string | null
+  readonly body?: string
+}
+
 /** A refusal, in the words the caller will see. */
 export interface PatchError {
   readonly error: string
@@ -258,15 +288,133 @@ export function parseTablePatch(input: unknown): Parsed<TablePatch> {
   return { value: patch }
 }
 
+const NOTE_KEYS = ['layout', 'color', 'body'] as const
+
+export function parseNotePatch(input: unknown): Parsed<NotePatch> {
+  const map = asMap(input, 'the request body')
+  if (isPatchError(map)) return map
+  const object = map.value
+
+  for (const key of Object.keys(object)) {
+    if (!(NOTE_KEYS as readonly string[]).includes(key)) {
+      return bad(`unknown key \`${key}\`; a note patch takes ${NOTE_KEYS.join(', ')}`)
+    }
+  }
+
+  const patch: { layout?: Layout | null; color?: string | null; body?: string } = {}
+  if (object['layout'] !== undefined) {
+    if (object['layout'] === null) patch.layout = null
+    else {
+      const layout = parseLayout(object['layout'], 'layout')
+      if (isPatchError(layout)) return layout
+      patch.layout = layout.value
+    }
+  }
+  const color = parseColor(object['color'])
+  if (isPatchError(color)) return color
+  if (color.value !== undefined) patch.color = color.value
+  if (object['body'] !== undefined) {
+    const body = asString(object['body'], 'body')
+    if (isPatchError(body)) return body
+    patch.body = body.value
+  }
+  return { value: patch }
+}
+
+const GROUP_KEYS = ['label', 'color', 'body'] as const
+
+export function parseGroupPatch(input: unknown): Parsed<GroupPatch> {
+  const map = asMap(input, 'the request body')
+  if (isPatchError(map)) return map
+  const object = map.value
+
+  for (const key of Object.keys(object)) {
+    if ((GROUP_KEYS as readonly string[]).includes(key)) continue
+    // Named rather than lumped in with the general refusal, because these two
+    // are the mistakes somebody actually makes, and "unknown key `layout`" is
+    // the answer that sends them looking for a typo instead of reading ADR
+    // 0005. dbmd-34's whole trap is a group that acquires coordinates.
+    if (key === 'layout') {
+      return bad(
+        'a group has no coordinates: its box is the bounding box of its members plus padding, ' +
+          'computed on every render and never stored (ADR 0005). Move its members instead',
+      )
+    }
+    if (key === 'members' || key === 'tables') {
+      return bad(
+        `a group never lists its members: a table joins one with \`group: <name>\` in its own file, ` +
+          `which is what makes two branches adding to the same group two files rather than one line (ADR 0005). ` +
+          `Send \`{ "group": "<name>" }\` to PATCH /api/table/<table> instead`,
+      )
+    }
+    return bad(`unknown key \`${key}\`; a group patch takes ${GROUP_KEYS.join(', ')}`)
+  }
+
+  const patch: { label?: string | null; color?: string | null; body?: string } = {}
+  if (object['label'] !== undefined) {
+    if (object['label'] === null) patch.label = null
+    else {
+      const label = asString(object['label'], 'label')
+      if (isPatchError(label)) return label
+      patch.label = label.value
+    }
+  }
+  const color = parseColor(object['color'])
+  if (isPatchError(color)) return color
+  if (color.value !== undefined) patch.color = color.value
+  if (object['body'] !== undefined) {
+    const body = asString(object['body'], 'body')
+    if (isPatchError(body)) return body
+    patch.body = body.value
+  }
+  return { value: patch }
+}
+
+/**
+ * `color`, which is a name and not a hex value, or `null` to remove the key.
+ *
+ * The set of names is deliberately not checked here. `docs/format.md` says the
+ * value is carried through and not validated, so a model that says
+ * `color: seafoam` reads, writes and round-trips; the studio draws an unknown
+ * name plainly and says so in the panel rather than refusing an edit to a file
+ * it can read. A server that had an opinion here would be a second, narrower
+ * format than the one the reader implements.
+ */
+function parseColor(input: unknown): Parsed<string | null | undefined> {
+  if (input === undefined) return { value: undefined }
+  if (input === null) return { value: null }
+  const color = asString(input, 'color')
+  if (isPatchError(color)) return color
+  return { value: color.value }
+}
+
 /** A new table: the same patch, plus the name the file will be called. */
 export function parseNewTable(input: unknown): Parsed<{ name: string; patch: TablePatch }> {
+  return parseNew(input, 'table', parseTablePatch)
+}
+
+/** A new note: a name, and everything a note patch can say. */
+export function parseNewNote(input: unknown): Parsed<{ name: string; patch: NotePatch }> {
+  return parseNew(input, 'note', parseNotePatch)
+}
+
+/** A new group: a name, a label and a colour. Never a position (ADR 0005). */
+export function parseNewGroup(input: unknown): Parsed<{ name: string; patch: GroupPatch }> {
+  return parseNew(input, 'group', parseGroupPatch)
+}
+
+function parseNew<T>(
+  input: unknown,
+  kind: string,
+  parsePatch: (rest: unknown) => Parsed<T>,
+): Parsed<{ name: string; patch: T }> {
   const map = asMap(input, 'the request body')
   if (isPatchError(map)) return map
   const { name: rawName, ...rest } = map.value
-  if (rawName === undefined) return bad('a new table needs a `name`')
+  if (rawName === undefined) return bad(`a new ${kind} needs a \`name\``)
   const name = asString(rawName, 'name')
   if (isPatchError(name)) return name
-  const patch = parseTablePatch(rest)
+  const patch = parsePatch(rest)
   if (isPatchError(patch)) return patch
   return { value: { name: name.value, patch: patch.value } }
 }
