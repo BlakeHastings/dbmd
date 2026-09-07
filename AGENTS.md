@@ -170,6 +170,16 @@ elsewhere on the page is not one. This file and `docs/ci.md` are not checked,
 because neither promises the full list. `dbmd import` and `dbmd query` each
 shipped over a README that had not heard of them. ADR 0043.
 
+**A `--json` payload shown on a page is a run.** Every plain ` ```json ` fence
+on `README.md`, `docs/import-format.md`, `docs/ci.md` and `docs/format.md` is a
+report some command printed, and `test/docs/payloads.test.ts` runs the command
+and compares. Adding one means adding the case beside it that says which command
+line it came from, because the count is checked per page and an unclaimed fence
+is red. The comparison is the JSON value rather than the bytes, so Prettier
+reindenting a block on `README.md` is not a failure and a moved key is. A block
+that shows only part of a value says so inside itself, the way
+`docs/import-format.md` cuts `sql`. ADR 0066.
+
 ## Conventions
 
 - TypeScript, ESM, Node 22 or later. `"type": "module"`, `NodeNext` resolution,
