@@ -345,3 +345,49 @@ the next flush re-reads. The developer's next edit to any other table clears it.
 That is `fs.watch` being what this record already says it is rather than a new
 thing, and the same "revisit when" applies: polling `stat` is the answer if it
 turns out to bite.
+
+## Amended again by dbmd-062, one re-read after the amendment above
+
+"The delete route raises `unreadable` where it used to raise `conflicted`" is
+true of the delete that amendment was driven with and false of the same delete a
+moment later, and the difference is the paragraph directly above this one.
+
+The delete's refusal is the write's refusal: it compares the file on disk with
+the version the session adopted. An unreadable file is missing from the first
+side, which is what makes the two differ and what the amendment saw. Let a
+flush, a watcher wake-up, or the studio's own write re-read the directory while
+the file is still unreadable, and it is missing from the second side as well.
+The two sides agree, the refusal has nothing left to refuse, and the delete goes
+on to an `rm` the operating system will not honour:
+
+    DELETE /api/table/orders 500
+    {
+      "error": "EBUSY: resource busy or locked, unlink 'C:\\Users\\...\\tables\\orders.md'",
+      "code": "internal"
+    }
+
+**A 500 body is output, and [ADR 0006](0006-one-cli-three-callers.md) rule 4
+forbids an absolute path in output.** That is what made this worth stopping for
+rather than the status code beside it: the studio was printing where somebody
+keeps their files, which is the one thing the reader is careful never to do.
+
+### What changed
+
+**The reader is asked before the comparison rather than after it.** `saidAbout`
+answers from the diagnostics of the read just taken, and that answer does not
+depend on what the session happens to have absorbed, which is the property the
+comparison lacks. So a delete asks it of every read and refuses `unreadable` on
+a yes, whatever the comparison then says. A difference with no `file-unreadable`
+behind it is still `conflicted`, in the words it has always used: the two
+refusals are told apart by the question the writer already asks, one line
+earlier, and neither of them moved.
+
+**The 500 underneath them stopped naming the machine too.** A file that reads
+perfectly and still will not unlink is what a handle opened for sharing gives on
+Windows; no refusal can see that coming, and the unhandled case was the last
+place in the studio that printed a system error's message verbatim. It prints
+`errnoText` now, which is where rule 4 and the words beside an errno already
+live and what the reader's own catch blocks use. The status stays 500, because
+something really did go wrong; only the borrowed sentence goes. This is a net
+under the refusals rather than a substitute for one, and a filesystem failure a
+request can predict still belongs in a refusal with a code and a relative path.
