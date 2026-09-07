@@ -111,11 +111,13 @@ disagree eventually.
   does not contact the registry for a verdict, and it exits 0 on a package that a
   real publish would refuse. It is a listing, useful for seeing what ships and
   useless as a gate.
-- **ADR 0024's `private: true` paragraph is superseded by this record.** It stays
-  as written, per the convention in
-  [`README.md`](README.md) in this directory, because the argument in it is the
-  argument this was weighed against and it is still the right argument for a
-  package nobody has decided to publish.
+- **ADR 0024's `private: true` paragraph is superseded by this record.** Not one
+  word of it is edited, per the convention in [`README.md`](README.md) in this
+  directory, because the argument in it is the argument this was weighed against
+  and it is still the right argument for a package nobody has decided to publish.
+  0024 carries an appended section saying which two things in it this supersedes,
+  so a reader landing there is not told current policy by a record that has been
+  overtaken.
 - **ADR 0028's placeholder is now a chosen number.** Its **Revisit when** asked
   for exactly this: the "not on npm" section of `docs/ci.md` comes out and the
   placeholder becomes the real first version. The workflow in this repository

@@ -110,3 +110,40 @@ decision, and it belongs to the owner rather than to this item.
 - **The client bundle stops being the largest thing in the tarball.** The
   source-map trade above is a trade about one file, and a different `dist/`
   makes it a different trade.
+
+## Superseded in one paragraph by 0051, once the owner decided to publish
+
+Appended rather than edited, because the paragraph corrected below is the
+argument the decision to publish was weighed against, and it is still the right
+argument for a package nobody has decided to publish.
+
+The first entry in **Revisit when** above is the one that fired. Asked for the
+fifth time, on 2026-09-07, the owner answered: _"Yes let's publish to npm"_.
+[ADR 0051](0051-the-first-release-is-a-tag-a-person-pushes.md) is that decision,
+and two things above are superseded by it:
+
+- **"`private: true` stays" no longer holds.** The line is out of
+  `package.json`. Everything that paragraph says about what it was protecting
+  against remains true; what changed is that somebody with the standing to weigh
+  it did.
+- **The last consequence, "a version that is not `0.0.0` is now the only thing
+  between this and a publish", has been spent.** The version is `0.1.0`, chosen
+  in 0051, and what stands between this repository and a publish now is a
+  repository secret and a pushed tag.
+
+**The accidental-publish argument did not evaporate; it moved.** What the
+`private` line did in one word, three things now do in a file. Publishing runs
+only on a pushed `v*` tag, so no merge and no agent working an issue can reach
+the registry. `.github/workflows/release.yml` refuses a tag whose version
+disagrees with `package.json`, and refuses a tag on a commit that is not an
+ancestor of `origin/main`, so a release cannot carry a number nobody chose or
+code the merge gate never saw. Whether that is as good as a line that made the
+operation impossible is a fair question and the answer is no: it is a smaller
+target rather than no target, and what makes up the difference is that one person
+holds the token.
+
+**Everything else in this record stands.** `check:pack` is unchanged in kind and
+now reads two more fields, `private` and `bin`, out of the manifest inside the
+tarball, for the reason this record gives for everything else it looks at: the
+tarball is what ships, and a package that installs and runs can still be one that
+npm refuses to publish.
