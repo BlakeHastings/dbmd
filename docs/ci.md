@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - run: npx --yes dbmd@0.1.0 check db-model
 
   diagram:
@@ -49,7 +49,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
       - run: npx --yes dbmd@0.1.0 export --stdout db-model > "$RUNNER_TEMP/db-model.md"
       - uses: actions/upload-artifact@v7
         with:
@@ -99,6 +99,22 @@ queue and it buys the property that a green build stays green for a reason.
 does not already have. It skips the question when nothing is attached to
 stdin, which is true in a runner today, but a recipe whose correctness rests
 on that is a recipe that hangs for six hours the first time it is not.
+
+## Why the recipe names Node 24
+
+`node-version: 24` is a claim about **your** runner rather than about `dbmd`.
+Two separate things go into it.
+
+`dbmd` needs Node 22 or later; `package.json` says so in `engines`, and that is
+the floor rather than the recommendation. So 22 would resolve and run. The
+recipe names 24 because it is the Active LTS on the day this was written, and a
+recipe people copy into a fresh repository should hand them the version that is
+still getting features rather than the oldest one that works.
+
+Change it to whatever your repository already standardises on, as long as it is
+22 or later. What is worth not doing is leaving a version in there long after it
+stops receiving security fixes, which is how this page had `20` in it: Node 20
+reached end of life on 2026-04-30 and nothing in a green build says so.
 
 ## Why the diagram job uses `--stdout`
 
