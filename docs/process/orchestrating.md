@@ -241,36 +241,53 @@ directory**, because CI will never notice and your local run will.
 **Remove an agent's worktree when its branch has landed.** `git worktree remove
 --force <path>` then `git worktree prune`.
 
-## Hold every merge while anything is rebasing
+## Hold every merge while anything is rebasing, and count from the ask
 
-Seen three times in one session, which is past the threshold, and the third time
-was after writing the rule down and agreeing with it.
+**Broken four times, three of them after the rule was written down and agreed
+with.** The rule is one sentence and the failures are all in what counts as
+"rebasing", so the sentence has never been the problem.
 
-The mechanism is simple and the mistake is not carelessness. A branch comes back
-rebased and green. Merging it is the obviously correct thing to do with it. But
-if another branch is mid-rebase at that moment, the merge makes that one stale
-again, and its agent reports a rebase that was already obsolete before it
-finished. Each occurrence costs a full round trip: a message, a rebase, a
-re-verification, and a report.
+**The rule.** While any branch is rebasing, no branch merges. Not "unless it
+looks safe", not "unless they touch different files": the merge wrapper judges
+the green against what would land rather than against the branch point, so file
+overlap is irrelevant. It is a queue with one lane.
 
-It happened to dbmd-25 and dbmd-44 within minutes of each other, and then to
-dbmd-48 an hour later, after the rule was already understood.
+**The cost is asymmetric.** Holding costs a few minutes of nothing merging.
+Not holding costs one round trip per agent mid-rebase, and those are not free: a
+rebase puts a tree you already reviewed back into motion, so the review has to be
+redone against what actually landed.
 
-**The rule that actually works is a state rather than a judgement.** While any
-branch is rebasing, no branch merges. Not "unless it looks safe", not "unless
-they touch different files", because the merge wrapper judges the green against
-what would land rather than against the branch point, so file overlap is
-irrelevant. It is a queue with one lane.
+### Why it keeps failing, in the order the reasons were found
 
-The cost of holding is a few minutes of nothing merging. The cost of not holding
-is one round trip per agent in flight, and the round trips are not free: a rebase
-puts a tree you already reviewed back into motion, so the review has to be redone
-against what actually landed.
+**The cost is invisible at the moment of the decision.** Merging is one command
+with a clean success line. The rebase it causes surfaces minutes later in
+somebody else's report as ordinary timing. Nothing connects the two, so nothing
+weighs them. That is why `merge-pr.mjs` now prints the branches a merge is about
+to make stale, before it merges: dbmd-nm5, landed in #150. It is deliberately
+not a gate, because merging while others are open is often right and the
+alternative is a queue that never drains.
 
-**Tell the agent when it happens anyway.** If a merge does land under somebody
-mid-rebase, say so immediately rather than letting them finish, report, and be
-sent back. That turns two round trips into one and is the difference between an
-orchestrator who noticed and one who did not.
+**Building is not rebasing.** Merging while agents are still building is normal
+and costs one rebase each, which is the price of parallelism. That distinction
+is what makes the rule keepable rather than paralysing.
+
+**Asking for a rebase starts one, and this is the one that is invisible.** The
+fourth breach was sending an agent a message asking it to rebase and then running
+a merge on a different pull request in the same breath. The rule names a state
+and I read it as one I could observe. There is nothing to observe: no branch has
+moved, no report has arrived, and the agent may not have taken its next turn yet.
+**Count from the moment you send the message**, because that is the only part of
+it you can see.
+
+### When it happens anyway
+
+**Tell the agent immediately** rather than letting them finish, report and be
+sent back. That turns two round trips into one.
+
+**And check what you tell them.** Twice on 2026-09-07 the list of what had moved
+was assembled from memory and was wrong, once naming a commit that had not merged
+yet and then did. A stale list in a rebase instruction is worse than no list,
+because the agent checks against it. Read it from `git log`.
 
 ## Green checks are not a report, and merging on them cost a pull request
 
@@ -367,37 +384,6 @@ So: two documents beside the records, and one test for which is which.
 **The tell that a paragraph is in the wrong file is that it would still be worth
 reading next month.** A handoff paragraph should not be.
 
-## The hold-every-merge rule broke twice in one afternoon
-
-The section above says to hold every merge while anything is rebasing. On
-2026-09-07 I broke it twice, the second time within an hour of writing about the
-first, and that time it cost two agents a rebase and one of them two.
-
-**The instruction was present, correct and mine, and it did not work.** That is
-the same shape as the reporting rule further up: an instruction is not a control,
-and the answer to a rule broken by accident and repeatedly is a linter, a hook or
-a type rather than a firmer sentence.
-
-**The mechanism is that the cost is invisible at the moment of the decision.**
-Merging is one command with a clean success line. The rebase it causes shows up
-minutes later, in somebody else's report, as a thing that reads like ordinary
-timing. Nothing connects the two, so nothing weighs them.
-
-`merge-pr.mjs` already asks the API whether the pull request in front of it is
-mergeable, and in the same breath it could ask which others are open. Every one
-of those is a branch it is about to make stale, by its own refusal's definition.
-Printing them before it merges puts the cost in front of the person paying it.
-That is **dbmd-nm5**, and it is deliberately not a gate: merging while others are
-open is often right, because the alternative is a queue that never drains. What
-is wrong is that the cost is currently paid by somebody who is not in the room.
-
-**Until that lands, the practical version is narrower than the rule above and
-easier to keep:** an agent that has been sent back is *rebasing*, and the window
-between sending it back and its report is the one to keep clear. Merging while
-agents are still *building* is normal and costs one rebase each, which is the
-price of parallelism. Merging while one is rebasing costs that agent a second
-round trip for nothing.
-
 ## Never write an item id from memory, and the reason is a shell habit
 
 Twice on 2026-09-07 I put an id into something durable and it was wrong. Once
@@ -420,36 +406,6 @@ later, and they have less context to recover with.
 The same applies to quoting an id in a pull request comment. Both of today's
 were caught by chance rather than by anything checking, and nothing checks:
 `check:commands` reads backticked commands, not item ids.
-
-## A force flag exists to get past something, and the something was holding something
-
-Twice on 2026-09-07 I reached for a flag whose whole job is to override an
-objection, and both times the objection was the last thing standing between me
-and a piece of work that existed nowhere else.
-
-**`git worktree remove --force`.** An agent's only file was untracked. I took a
-patch with `git diff HEAD`, which does not see untracked files, so the patch came
-out zero bytes. I did not look at it, and the removal was the last copy. Recorded
-as b-fac #182.
-
-**`git reset --hard origin/main`.** A checkout had just refused because
-`.beads/issues.jsonl` was dirty, and the dirt was an item I had filed twenty
-minutes earlier and not yet committed. The reset threw it away. It was
-recoverable only because beads keeps a database behind the export and I could
-re-run `bd export`, which is a property of that tool rather than anything I did.
-
-The shape is the same both times and it is not carelessness about the flag. It
-is that **the refusal was the notification.** Git had already told me something
-was there; the flag's purpose is to stop it telling me, and I used the flag
-because the refusal read as an obstacle to the thing I was doing rather than as
-information about the thing I was about to lose.
-
-So: **when a git command refuses and a `--force` or `--hard` would clear it, read
-what it named before you clear it.** Both refusals printed the path. One line of
-`git status --porcelain`, or one `cat` of the patch you claim to have taken, is
-the whole cost. And prefer the flagless route where one exists: `git stash` and
-`git worktree remove` without `--force` both fail loudly instead of quietly, and
-failing loudly is the behaviour being overridden.
 
 ## A stale instruction outlives a stale fact, because it reads as current
 
@@ -488,85 +444,61 @@ So, when writing into either file:
   neither of which is a judgement call. Do that before trusting a summary of
   where the work stands, including your own.
 
-## Every listing is a window, and I have now reported three of them as censuses
+## Every tool that answers partially answers without saying so
 
-The same mistake three times on 2026-09-07, with three different tools:
+Nine failures on 2026-09-07 from one idea: a command gave part of an answer and
+nothing in the output said it was a part. They looked like nine unrelated
+mistakes and were diagnosed as such, one at a time.
 
-- **`bd create ... | tail -2`** cut the line carrying the new item's id, so the
-  id I used afterwards was the one I expected rather than the one I got. Twice,
-  into durable documents.
-- **`bd list | tail`** showed the low-priority end of a sorted list, so a P2
-  under a P0 epic sorted to the top where I never looked, and I twice announced
-  that nothing was left but the owner's decisions.
-- **`gh run list --limit 100`** against a branch with **140 runs**. I reported
-  "100 runs on main, four failed" as a finding, in a pull request whose subject
-  was that nobody counts these. There were seven, and the three I missed were
-  below the window.
+### Three shapes, and the tool differs every time
 
-The tool differs every time and the shape does not: **a command that returns
-part of a list returns it without saying so.** `tail` says nothing about what it
-dropped. `--limit 100` says nothing about there being 140. Neither prints an
-ellipsis, neither exits non-zero, and the output of a truncated listing is
-indistinguishable from the output of a complete one.
+**A listing is a window.** `gh run list --limit 100` against a branch with 140
+runs returns 100 and says nothing about the other 40. I reported "four red builds
+on `main`" in a pull request whose subject was that nobody counts these. There
+were seven. `bd list | tail` showed the low-priority end of a sorted list, so a
+P2 under a P0 epic never appeared, and I twice announced that nothing was left
+but the owner's decisions.
 
-The habit that fixes it is not "be careful". It is:
+**A pipe replaces the exit code.** A pipeline reports the last command's status,
+so `cmd | tail -30` is always zero. `npm run check 2>&1 | tail -30` reported a
+run with 27 failing tests as passing. Worse, `cmd | tail -1 && next` runs `next`
+whatever `cmd` did: that ran a `git reset --hard` after a checkout had refused,
+and ran a branch deletion after a merge had refused.
 
-- **Ask for the total before you quote a count.** `gh run list --limit 200 |
-  wc -l` against `--limit 100` is one extra command and it is the whole check.
-  If the two numbers are equal you have a census; if they differ you have a
-  window and you have to say so.
-- **Never `tail` a command whose interesting output is at the top.** `bd create`
-  prints the id first. A sorted `bd list` puts the highest priority first. Both
-  of those are the reason to read the whole thing.
-- **Say "of the last N" when that is what you looked at.** A windowed number is
-  still useful. A windowed number described as a total is a false claim that
-  survives review, because nothing in it looks wrong.
+**A status query answers about the wrong thing.** After a force-push,
+`gh pr checks` reports `no checks reported` for a while, and a loop counting
+pending entries counts zero and calls the branch ready. Moments later it reports
+the **previous** commit's five passes: right count, right states, wrong commit.
+`--watch` returns immediately on results that had already finished.
 
-The cost is on record: the seventh red build on `main` was the post-merge run of
-the pull request that reported four, and I did not notice for about an hour.
+### What they share
 
-## `| tail` caused three different failures today, and they did not look related
+**Absence and staleness are reported as success.** None of these prints an
+ellipsis, exits non-zero, or differs in shape from a complete answer. That is the
+same failure as the red builds on `main` that nothing was watching, turned on the
+person who was fixing it.
 
-I pipe commands through `tail` to keep output short. On 2026-09-07 that one
-habit produced three failures that I diagnosed separately, as three unrelated
-mistakes, before noticing they share a cause.
+### The habits that hold
 
-**It cut the answer.** `bd create ... | tail -2` shows the priority and the
-status. The id beads chose is on the first line, so I quoted ids from memory
-twice, into a brief and into two process documents, and both were wrong.
-
-**It replaced the exit code.** `npm run check 2>&1 | tail -30` exits with
-`tail`'s status, not the check's. The check failed with 27 failing tests and I
-reported it as passing, because the harness told me exit code 0 and the harness
-was right about the pipeline.
-
-**It broke a conditional chain.** `git checkout main 2>&1 | tail -1 && git fetch
-&& git reset --hard origin/main`. The checkout refused, because a tracked
-generated file was dirty. `&&` reads the pipeline's status, which is `tail`'s
-zero, so the chain continued and the reset ran on the branch I had failed to
-leave. It moved a branch pointer I meant to keep and discarded the dirty file.
-Nothing was lost, because the commit was already pushed and the file is
-regenerable, and neither of those was something I checked first.
-
-The three look different. One is about content, one is about a status code and
-one is about control flow. **All three are `tail` standing between me and what
-the command actually said**, and none of them announces itself: a truncated
-listing, a substituted exit code and a chain that keeps going are all
-indistinguishable from the thing working.
-
-What to do instead:
-
+- **Ask for the total before quoting a count.** `--limit 200 | wc -l` against
+  `--limit 100` is one extra command and it is the whole check. Equal numbers
+  mean a census; different numbers mean a window, and then say "of the last N".
 - **Never put a pipe between a command and a `&&`.** Run them as separate
-  commands, or chain the unpiped forms. If the output is long, let it be long.
-- **When you need the tail of something you also need the status of**, write the
-  output to a file and read the file. `cmd > out.txt 2>&1; echo $?; tail out.txt`
-  keeps both.
-- **Read the top, not the bottom, of anything that creates something.** `bd
-  create` and most tools that mint an identifier print it first.
+  commands. If you need the tail of something whose status also matters, write it
+  to a file: `cmd > out.txt 2>&1; echo $?; tail out.txt`.
+- **Read the top, not the bottom, of anything that creates something.**
+  `bd create` prints the id it chose on the first line.
+- **Wait by the commit, never by the pull request.** Ask the run listing for runs
+  whose `headSha` starts with what you just pushed, and treat "no run yet" as
+  *keep waiting* rather than as *nothing to wait for*. The check listing is the
+  right tool for reading a verdict and the wrong one for waiting on it, because
+  for a minute after a force-push the pull request and the commit are different
+  things.
 
-This section replaces nothing above it. The listing-is-a-window section and the
-force-flag section are both real and both stand; this is the mechanism two of
-them turned out to share.
+**The merge gate is what made these cheap.** `merge-pr.mjs` refuses a branch
+whose green is stale or which is behind, so every bad reading was refused at the
+merge rather than merged on. The prevention held while the detection was wrong,
+which is the fourth constraint doing its job.
 
 ## The tracked backlog export conflicts between any two branches that file an item
 
@@ -600,109 +532,30 @@ Two consequences worth knowing before you are in the middle of one:
   loop keeps state, and a mechanical conflict with a one-command resolution is
   cheaper than a finding that was never written down.
 
-## Waiting for a check and asking about a check are different, and I conflated them three times
-
-On 2026-09-07, merging a queue of five, I rebased each branch and waited for its
-checks before merging. Three times my wait returned early and wrong, in three
-different ways, all of them the same underlying error.
-
-**A branch with no checks yet has none pending.** After a force-push, GitHub
-reports `no checks reported on the ... branch` for a while. A loop that counts
-pending entries counts zero and concludes the branch is ready. It is not ready;
-nothing has started.
-
-**A branch that was just force-pushed still shows the old commit's checks.**
-`gh pr checks` answered with five passes belonging to the commit I had just
-replaced. The count was right, the states were right, and the run was somebody
-else's.
-
-**`--watch` returns immediately on stale results.** It watched a run that had
-already finished rather than the one about to start.
-
-All three are **absence or staleness reported as success**, which is the same
-shape as the red builds on `main` that nothing was looking at, turned on the
-person who had just merged the fix for it. That is what makes it worth a section
-rather than a shrug: I was holding the lesson in one hand and repeating it with
-the other.
-
-**The version that cannot lie is to poll by the commit.** Ask the run listing for
-runs whose `headSha` starts with the SHA you just pushed, and treat "no run yet"
-as *keep waiting* rather than as *nothing to wait for*:
-
-```bash
-H=$(git rev-parse HEAD | cut -c1-7)
-gh run list --branch "$B" --limit 4 --json headSha,status,conclusion,workflowName
-# filter to headSha starting with $H; 'no run yet' means wait, not proceed
-```
-
-The pull-request check listing is the right tool for *reading* a verdict and the
-wrong one for *waiting* for it, because it answers about the pull request rather
-than about the commit, and after a force-push those are different things for a
-minute or two.
-
-**The merge gate catches this anyway, which is why it cost nothing.**
-`merge-pr.mjs` refuses a branch whose green is stale or which is behind, so every
-one of these three would have been refused at the merge rather than merged on a
-bad reading. That is the fourth constraint doing its job: the prevention held
-while my detection was wrong, and I only noticed because I read the refusal
-instead of retrying past it.
-
-## Asking for a rebase starts one, and the rule counts from the ask
-
-A fourth breach of the hold-every-merge rule, on 2026-09-07, by an orchestrator
-who had read that section hours earlier and written two others about it. The
-mechanism was new, which is the only reason this is worth a heading.
-
-The previous three were the shape that section describes: a branch comes back
-rebased and green, merging it is the obviously correct thing to do with it, and
-another branch is mid-rebase at that moment. This one was different. I sent an
-agent a message asking it to rebase, and then in the same breath ran the merge
-command on a different pull request, and the merge landed while the first agent
-was reading my message.
-
-**The rule says "while any branch is rebasing" and I read that as a state I
-could observe.** It is not. I had just created it. The gap between asking for a
-rebase and a rebase being in progress is zero, and there is nothing to look at
-in between: no branch has moved, no report has arrived, and the agent may not
-have taken its next turn yet. So the state the rule names is invisible at
-exactly the moment it begins.
-
-**Count from the ask, not from the evidence.** The moment you send "please
-rebase", the queue is closed, and it stays closed until that branch lands or the
-agent says it has stopped. Treat the message you send as the event, because it
-is the only part of this you can see.
-
-Two smaller things this cost, both of them avoidable:
-
-- **The list of what moved was wrong in the message I sent.** I told the agent
-  three commits had landed and named them, and one of the three had not merged
-  yet when I wrote it. Then it did. A stale list in a rebase instruction is worse
-  than no list, because the agent checks against it.
-- **The second message had to carry an apology and a correction**, which is a
-  round trip that buys nothing. The rule's own last paragraph is what saved it
-  from being worse: tell them immediately rather than letting them finish,
-  report, and be sent back.
-
 ## The main checkout is read-only, and this is a state rather than a judgement
 
-**Third destruction in one day, after writing two sections about the first two.**
-`git worktree remove --force` took an agent's only file. `git reset --hard` took
-a backlog item that a database happened to hold a second copy of. And then
-`git reset --hard` again took the owner's uncommitted work: a `README.md` edit
-and ten `layout:` lines they had spent an afternoon dragging into place.
+**Three times in one day**, a force flag destroyed work that existed nowhere
+else. The three are worth listing because the third is what proved the first
+two's lesson wrong.
 
-The README came back out of a dangling stash object. **The ten layout files did
-not.** Searched every dangling commit and blob in the repository for their
-coordinates and they were nowhere, because they had never been committed,
-stashed or copied, and the studio that held them had already exited.
+- **`git worktree remove --force`** took an agent's only file. It was untracked,
+  so the patch I had taken with `git diff HEAD` came out zero bytes, and I did
+  not look at it before removing. b-fac #182.
+- **`git reset --hard`** took a backlog item filed twenty minutes earlier. It
+  came back only because beads keeps a database behind the tracked export, which
+  is a property of that tool rather than anything I did.
+- **`git reset --hard`** took the owner's uncommitted work: a `README.md` edit
+  and ten `layout:` lines from an afternoon of dragging boxes. The README came
+  back out of a dangling stash object. **The ten layout files did not**, and are
+  gone.
 
 **The lesson written after the first two was "read what the refusal named before
-you clear it", and it did not work.** It cannot: the refusal names one file, the
-reset destroys eleven, and the one it names is usually the one you were already
-thinking about. Reading it correctly and still losing everything else is the
-normal case rather than the unlucky one.
+you clear it", and it cannot work.** The refusal names one file. The reset
+destroys every uncommitted file. And the one it names is usually the one you were
+already thinking about, so reading it correctly and still losing everything else
+is the normal case rather than the unlucky one.
 
-So the rule is not about care. It is about which directory a command runs in.
+So the rule is about which directory a command runs in, not about care.
 
 **In the main checkout, do exactly four things:**
 
@@ -720,18 +573,23 @@ cd "$SCRATCH/rb<n>" && git rebase origin/main && git push --force-with-lease ...
 git worktree remove "$SCRATCH/rb<n>" --force && git branch -D rb/<n>
 ```
 
-That costs one directory and it removes the whole class. A worktree has no
-foreign uncommitted work in it, so there is nothing in it to lose, and the main
-checkout never moves under whoever else is working in it.
+That costs one directory and removes the whole class. A worktree has no foreign
+uncommitted work in it, so there is nothing in it to lose, and the main checkout
+never moves under whoever else is working in it.
 
-**The reason it has to be a state and not a rule of thumb:** the orchestrator is
-not the only writer. The owner edits files, a studio writes coordinates as boxes
-are dragged, and beads rewrites a tracked export on every backlog write. None of
-those announce themselves, and `git status` at the moment you look is not
-`git status` at the moment the command runs.
+**It has to be a state because the orchestrator is not the only writer.** The
+owner edits files, a studio writes coordinates as boxes are dragged, and beads
+rewrites a tracked export on every backlog write. None of those announce
+themselves, and `git status` at the moment you look is not `git status` at the
+moment the command runs.
+
+**Prefer the flagless route where one exists.** `git stash` and
+`git worktree remove` without `--force` both fail loudly rather than quietly, and
+failing loudly is the behaviour the flag overrides.
 
 **When it happens anyway, say what is gone before saying anything else**, and go
-looking rather than apologising: `git fsck --unreachable` lists dangling commits
-and blobs, dropped stashes among them, and `git cat-file -p` will read any of
-them. That is how the README came back. Search for the *content* rather than for
-the commit, because you will not know which object holds it.
+looking rather than apologising. `git fsck --unreachable` lists dangling commits
+and blobs, dropped stashes among them, and `git cat-file -p` reads any of them.
+That is how the README came back. **Search for the content rather than for a
+commit**, because you will not know which object holds it.
+
