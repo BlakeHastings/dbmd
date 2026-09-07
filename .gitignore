@@ -14,3 +14,7 @@ coverage/
 # Agent worktrees are created inside the repo and would otherwise show up
 # as untracked in every git status on the default branch.
 .claude/worktrees/
+
+# Screenshots and snapshots left behind by driving the studio in a browser,
+# which docs/process/review.md asks a reviewer to do. Evidence, not source.
+.playwright-cli/

@@ -6,67 +6,253 @@
     <title>dbmd studio</title>
     <link rel="icon" href="data:," />
     <style>
+      /*
+        One palette, in one place, because a colour invented per component is a
+        colour that is legible in one theme and not the other. ADR 0005 asks for
+        this once notes and groups arrive; it is cheaper to start here.
+      */
       :root {
         color-scheme: light dark;
+        --page: #f6f6f4;
+        --surface: #ffffff;
+        --ink: #17181a;
+        --muted: #6a6d73;
+        --line: #d6d8dc;
+        --accent: #2f6fd0;
+        --edge: #8a8f98;
+        --key: #b07d00;
+        --bad: #b3261e;
         font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #17181a;
+          --surface: #212328;
+          --ink: #e8e9ec;
+          --muted: #9aa0a8;
+          --line: #383b42;
+          --accent: #74a7f5;
+          --edge: #7c828c;
+          --key: #e0b64a;
+          --bad: #f2857c;
+        }
+      }
+
+      html,
+      body {
+        height: 100%;
       }
       body {
         margin: 0;
-        padding: 1.5rem 2rem 4rem;
-        line-height: 1.5;
+        display: grid;
+        grid-template-rows: 1fr auto;
+        background: var(--page);
+        color: var(--ink);
+        overflow: hidden;
       }
-      h1 {
-        font-size: 1.1rem;
-        margin: 0 0 0.25rem;
+
+      .stage {
+        position: relative;
+        overflow: hidden;
       }
-      .subtitle {
-        margin: 0 0 1.5rem;
-        opacity: 0.7;
-        font-size: 0.9rem;
+
+      #canvas {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        cursor: grab;
+        /* Pointer events only reach us if the browser is not busy scrolling. */
+        touch-action: none;
+        user-select: none;
       }
-      table {
-        border-collapse: collapse;
-        font-size: 0.85rem;
-        margin: 0 0 1.5rem;
-        min-width: 22rem;
+      #canvas.panning {
+        cursor: grabbing;
       }
-      caption {
-        text-align: left;
-        font-weight: 600;
-        padding: 0 0 0.25rem;
-      }
-      td {
-        border-top: 1px solid rgba(128, 128, 128, 0.35);
-        padding: 0.15rem 1rem 0.15rem 0;
-        vertical-align: top;
-      }
-      td.type,
-      .diagnostic code {
-        font-family: ui-monospace, monospace;
-        opacity: 0.8;
-      }
-      .diagnostic {
-        margin: 0 0 0.4rem;
-        font-size: 0.85rem;
-      }
-      .diagnostic.error {
-        color: #b3261e;
-      }
-      #status {
-        position: fixed;
+
+      .scene {
+        position: absolute;
+        top: 0;
         left: 0;
-        right: 0;
-        bottom: 0;
-        padding: 0.4rem 2rem;
-        font-size: 0.8rem;
-        background: Canvas;
-        border-top: 1px solid rgba(128, 128, 128, 0.35);
+        transform-origin: 0 0;
+      }
+
+      svg.edges {
+        position: absolute;
+        left: -10000px;
+        top: -10000px;
+        pointer-events: none;
+      }
+      .edge {
+        fill: none;
+        stroke: var(--edge);
+        stroke-width: 1.5;
+        pointer-events: stroke;
+      }
+      .edge.related {
+        stroke: var(--accent);
+        stroke-width: 2.5;
+      }
+      marker path {
+        fill: var(--edge);
+        /* Follows the edge's own stroke where the browser supports it, so a
+           highlighted edge does not keep a grey arrowhead. */
+        fill: context-stroke;
+      }
+
+      .boxes {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .box {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 220px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+        font-size: 12px;
+        line-height: 1.45;
+        cursor: grab;
+      }
+      .box.dragging {
+        cursor: grabbing;
+        box-shadow: 0 6px 18px rgb(0 0 0 / 22%);
+      }
+      .box.selected {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent);
+      }
+      .box.broken {
+        border-color: var(--bad);
+        cursor: not-allowed;
+      }
+      .box > header {
+        font-weight: 600;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--line);
+        font-family: ui-monospace, monospace;
+      }
+      .box ul {
+        list-style: none;
+        margin: 0;
+        padding: 4px 0;
+      }
+      .box li {
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        padding: 1px 10px;
+        font-family: ui-monospace, monospace;
+      }
+      .box li .type {
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .box li.pk .name::after {
+        content: ' PK';
+        color: var(--key);
+        font-size: 10px;
+      }
+      .box li.fk .type {
+        color: var(--accent);
+      }
+      .box .problem {
+        margin: 0;
+        padding: 6px 10px;
+        color: var(--bad);
+      }
+
+      .toolbar {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        font-size: 12px;
+      }
+      .toolbar button {
+        font: inherit;
+        color: inherit;
+        background: transparent;
+        border: 0;
+        border-radius: 4px;
+        padding: 3px 8px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: var(--page);
+      }
+      #zoom-level {
+        min-width: 3.2em;
+        text-align: center;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      footer {
+        border-top: 1px solid var(--line);
+        background: var(--surface);
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      .line {
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+      }
+      #status-text[data-tone='bad'] {
+        color: var(--bad);
+      }
+      #selection {
+        color: var(--muted);
+      }
+      #diagnostics {
+        list-style: none;
+        margin: 0 0 6px;
+        padding: 0;
+        max-height: 6rem;
+        overflow: auto;
+      }
+      #diagnostics li.error {
+        color: var(--bad);
+      }
+      #diagnostics li.warning {
+        color: var(--muted);
+      }
+      #diagnostics code {
+        font-family: ui-monospace, monospace;
       }
     </style>
   </head>
   <body>
-    <main id="model">Loading the model.</main>
-    <footer id="status"></footer>
+    <main class="stage">
+      <div id="canvas"></div>
+      <div class="toolbar">
+        <button id="zoom-out" type="button" aria-label="Zoom out">&minus;</button>
+        <span id="zoom-level">100%</span>
+        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+        <button id="zoom-reset" type="button">100%</button>
+        <button id="zoom-fit" type="button">Fit</button>
+      </div>
+    </main>
+    <footer>
+      <ul id="diagnostics" hidden></ul>
+      <p class="line">
+        <span id="status-text">Loading the model.</span>
+        <span id="selection"></span>
+      </p>
+    </footer>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
