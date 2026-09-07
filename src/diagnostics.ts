@@ -54,6 +54,15 @@ export type ModelDiagnosticCode =
   | 'model-file-missing'
   /** A directory under the model root that is not a known kind. */
   | 'unknown-kind-directory'
+  /**
+   * `tables`, `notes` or `groups` is there and is a plain file, so the kind it
+   * names can never be read. ADR 0038.
+   *
+   * Distinct from `file-unreadable`, which means a filesystem call failed.
+   * Nothing failed here: the entry was listed successfully and it is simply not
+   * the sort of thing that holds files.
+   */
+  | 'kind-not-a-directory'
   /** The file does not begin with a `---` line. */
   | 'frontmatter-absent'
   /** `---` on the first line and no closing `---` anywhere after it. */
