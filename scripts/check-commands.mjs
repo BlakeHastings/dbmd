@@ -1,4 +1,5 @@
-// Fail when something in this repository names a command that does not exist.
+// Fail when something in this repository names a command that does not exist,
+// and when a command that exists is not documented in `README.md`.
 //
 // WHAT THIS PREVENTS
 // `dbmd query` was named by four error messages in `src/import/contract.ts`, by
@@ -48,6 +49,40 @@
 // edits one. Failing a build over a record naming something since renamed would
 // be asking an author to falsify history. `docs/architecture/decisions/` is
 // excluded, deliberately and in one place, rather than quietly.
+//
+// THE OTHER DIRECTION, AND WHY IT IS NOT A SECOND SCRIPT
+// Everything above fails a name that has no command. Nothing failed a command
+// that has no name, and that went wrong twice in one day. `dbmd import` shipped
+// and left `README.md` saying the import path was unfinished. `dbmd query`
+// shipped and left a heading reading "The five commands" over five entries
+// while the CLI had six, and a sentence still calling the thing it had just
+// built open work. Both passed every check in the gate, and both were found by
+// an agent who had come to do something else.
+//
+// So the registry is read once, here, and asked both questions. A second script
+// would work out the command list a second way, and two lists of one fact that
+// can disagree is the whole defect this file is about.
+//
+// WHY THE HEADING STOPPED COUNTING
+// The count in "The seven commands" is the half that actually broke, and a
+// check that reads a heading and counts the entries under it is a check whose
+// job a rewrite removes. The heading is "The commands" now, and it cannot go
+// stale. What is left is the half worth checking mechanically rather than
+// rewriting away: every command has an entry, and the entry is what a reader
+// was sent there for.
+//
+// WHY `README.md` AND NOTHING ELSE
+// It is the only file that promises to document them all, one bolded entry per
+// command in the order a person meets them. `AGENTS.md` names them in a
+// sentence and `docs/ci.md` names two of them on purpose, and requiring an
+// entry in either would be asking for prose nobody wants. `AGENTS.md` carries a
+// count as well, and it has been right through five commands arriving, because
+// its count and its list are one sentence. The README heading counted entries
+// two hundred lines below it. Distance is what went stale. ADR 0043.
+//
+// The hypothetical marker needs no special case here. A command that exists is
+// not hypothetical, and the marker rule below already fails on the day one
+// becomes real, so the two never meet.
 //
 //   node scripts/check-commands.mjs
 import { execFileSync } from 'node:child_process'
@@ -288,6 +323,32 @@ function markersIn(text) {
 }
 
 // ---------------------------------------------------------------------------
+// What is documented
+// ---------------------------------------------------------------------------
+
+/** The one file that promises an entry for every command. See the header. */
+const DOCUMENTATION = 'README.md'
+
+/**
+ * What documenting a command looks like there: a paragraph opening with the
+ * command in bold code, which is how all seven are already written.
+ *
+ *   **`dbmd refs <table> [directory]`** answers "what points at this table".
+ *
+ * Only the word after `dbmd` is read. The arguments and the flags beside it are
+ * the entry's own business and change without this noticing, which is the line
+ * between checking that a command is documented and reviewing how well.
+ *
+ * An entry always opens a paragraph, so it always begins a line, whatever
+ * Prettier does to the rest of the sentence.
+ */
+const ENTRY = /^\*\*`dbmd ([a-z][a-z0-9-]*)/gm
+
+function documentedCommands() {
+  return new Set([...read(DOCUMENTATION).matchAll(ENTRY)].map((match) => match[1]))
+}
+
+// ---------------------------------------------------------------------------
 // The check
 // ---------------------------------------------------------------------------
 
@@ -358,7 +419,13 @@ for (const file of files) {
   }
 }
 
+const documented = documentedCommands()
+const undocumented = [...commands].filter((command) => !documented.has(command))
+
+let failed = false
+
 if (problems.length > 0) {
+  failed = true
   console.error(
     `${problems.length} reference${problems.length === 1 ? '' : 's'} to a command that does not exist:\n`,
   )
@@ -381,9 +448,34 @@ The marker holds for the file it is written in and has to name the reference
 exactly. It fails once the thing exists, so the sentence around it gets read
 again on the day it stops being hypothetical. ADR 0036.
 `)
-  process.exit(1)
 }
 
+if (undocumented.length > 0) {
+  failed = true
+  console.error(
+    `${undocumented.length} command${undocumented.length === 1 ? '' : 's'} exist${undocumented.length === 1 ? 's' : ''} and ${DOCUMENTATION} does not document ${undocumented.length === 1 ? 'it' : 'them'}:\n`,
+  )
+  for (const command of undocumented) console.error(`  dbmd ${command}`)
+  console.error(`
+${DOCUMENTATION} is the one file that promises an entry for every command, and
+it has been wrong twice: \`dbmd import\` shipped over a page still saying the
+import path was unfinished, and \`dbmd query\` shipped under a heading counting
+five. Nothing noticed either, because a page that is merely out of date is
+consistent with itself.
+
+An entry opens a paragraph with the command in bold code, under "The commands",
+in the order a person meets them:
+
+    **\`dbmd refs <table> [directory]\`** answers "what points at this table".
+
+Say what it does, what its flags are, and show real output, the way the entries
+beside it do. The heading does not count them, on purpose: a number two hundred
+lines above the thing it counts is what went stale. ADR 0043.
+`)
+}
+
+if (failed) process.exit(1)
+
 console.log(
-  `${files.length} files scanned, every \`dbmd\`, \`npm run\` and \`scripts/\` reference resolves.`,
+  `${files.length} files scanned, every \`dbmd\`, \`npm run\` and \`scripts/\` reference resolves, and ${DOCUMENTATION} documents all ${commands.size} commands.`,
 )

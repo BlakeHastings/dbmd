@@ -280,11 +280,25 @@ describe('check:commands, broken on purpose', () => {
    * only way to know what that list is. The registry is the shape
    * `src/cli/main.ts` has: an array of imported `Command` values, each one
    * declaring the word a user types.
+   *
+   * The `README.md` is there because the check reads both directions: a command
+   * on the registry with no entry in it is a failure too, so a tree without one
+   * would fail every case below for a reason none of them is about.
    */
   async function repository(files: Record<string, string>): Promise<string> {
     const root = await scratchWith('check-commands.mjs')
     const base: Record<string, string> = {
       'package.json': `${JSON.stringify({ scripts: { check: 'true', build: 'true' } }, null, 2)}\n`,
+      'README.md': [
+        '# scratch',
+        '',
+        '## The commands',
+        '',
+        '**`dbmd init`** writes a model to start from.',
+        '',
+        '**`dbmd check`** says whether it is still good.',
+        '',
+      ].join('\n'),
       'src/cli/main.ts': [
         "import { checkCommand } from './check.js'",
         "import { initCommand } from './init.js'",
@@ -438,8 +452,23 @@ describe('check:commands, broken on purpose', () => {
     // nothing in the checker edited. A hand-written list of commands inside the
     // check would be one more fact that can disagree with the truth, which is
     // the defect the check exists for.
+    //
+    // The `README.md` grows an entry at the same time, because a command on the
+    // registry owes one. That is the case below, met here from the other side.
     const after = await repository({
       'docs/guide.md': page,
+      'README.md': [
+        '# scratch',
+        '',
+        '## The commands',
+        '',
+        '**`dbmd init`** writes a model to start from.',
+        '',
+        '**`dbmd check`** says whether it is still good.',
+        '',
+        '**`dbmd export [directory]`** draws it.',
+        '',
+      ].join('\n'),
       'src/cli/main.ts': [
         "import { checkCommand } from './check.js'",
         "import { exportCommand } from './export.js'",
@@ -508,6 +537,86 @@ describe('check:commands, broken on purpose', () => {
     expect(ran.code).toBe(1)
     expect(ran.err).toContain('docs/ci.md:2')
     expect(ran.err).toContain('`dbmd fmt` is not a dbmd command')
+  })
+
+  /**
+   * The registry with a third command on it, and the README the tree had
+   * before it arrived. This is the shape of both failures the other direction
+   * has already produced: `dbmd import` and `dbmd query` each shipped over a
+   * README that had not heard of them.
+   */
+  async function withUndocumentedExport(readme?: string): Promise<string> {
+    return await repository({
+      ...(readme === undefined ? {} : { 'README.md': readme }),
+      'src/cli/main.ts': [
+        "import { checkCommand } from './check.js'",
+        "import { exportCommand } from './export.js'",
+        "import { initCommand } from './init.js'",
+        '',
+        'const COMMANDS: readonly Command[] = [initCommand, checkCommand, exportCommand]',
+        '',
+      ].join('\n'),
+      'src/cli/export.ts': "export const exportCommand: Command = {\n  name: 'export',\n}\n",
+    })
+  }
+
+  test('a command on the registry with no entry in README.md fails, and is named', async () => {
+    const root = await withUndocumentedExport()
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    // The file, because this is the one rule that is about a file rather than a
+    // line, and the command, because "the README is incomplete" is not a fix.
+    expect(ran.err).toContain('1 command exists and README.md does not document it')
+    expect(ran.err).toContain('dbmd export')
+    // The shape of an entry, in the failure, so the fix does not need this test
+    // or the script to be read first.
+    expect(ran.err).toContain('**`dbmd refs <table> [directory]`**')
+    // And not the two that are documented, which is the difference between a
+    // guard that names a defect and a guard that names a file.
+    expect(ran.err).not.toContain('dbmd init')
+    expect(ran.err).not.toContain('dbmd check')
+  })
+
+  test('being mentioned is not being documented', async () => {
+    // The near miss worth pinning: a README that talks about the command in
+    // passing looks fine to a grep and leaves a reader with nowhere to go. Both
+    // sentences below name `dbmd export` in backticks, so the other direction
+    // of this check is satisfied and only this one is not.
+    const mentioned = await withUndocumentedExport(
+      [
+        '# scratch',
+        '',
+        '## The commands',
+        '',
+        '**`dbmd init`** writes a model to start from.',
+        '',
+        '**`dbmd check`** says whether it is still good. Run it before',
+        '`dbmd export`, which is fussier about a broken model than it is.',
+        '',
+      ].join('\n'),
+    )
+    expect((await runScript(mentioned, 'check-commands.mjs')).code).toBe(1)
+
+    // The same tree with an entry rather than a mention. Nothing else moved.
+    const documented = await withUndocumentedExport(
+      [
+        '# scratch',
+        '',
+        '## The commands',
+        '',
+        '**`dbmd init`** writes a model to start from.',
+        '',
+        '**`dbmd check`** says whether it is still good.',
+        '',
+        '**`dbmd export [directory]`** draws the model as a mermaid diagram.',
+        '',
+      ].join('\n'),
+    )
+    const ran = await runScript(documented, 'check-commands.mjs')
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('README.md documents all 3 commands')
   })
 })
 

@@ -129,6 +129,17 @@ A future `dbmd fmt` will tidy a whole directory. <!-- hypothetical: dbmd fmt -->
 says why that marker is written rather than guessed at, and why decision records
 are not scanned.
 
+**A command that exists has to be in `README.md`.** The same check reads the
+registry the other way: adding a command to `src/cli/main.ts` and stopping there
+turns the build red, naming the command. An entry is a paragraph under "The
+commands" opening with the command in bold code, saying what it does and showing
+real output, the way the entries beside it do. `dbmd import` shipped over a
+README still calling the import path unfinished, and `dbmd query` shipped under
+a heading counting five while the CLI had six, which is why the heading no
+longer counts anything.
+[ADR 0043](docs/architecture/decisions/0043-a-command-owes-the-readme-an-entry.md)
+says why `README.md` is the only file this applies to.
+
 The pieces run on their own when you want a faster loop: `npm run typecheck`,
 `npm run format` (which writes; `npm run format:check` only complains),
 `npm run test`, `npm run build`.
