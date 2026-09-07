@@ -4,18 +4,21 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with two agents working, no pull request open, and every
+**As of 2026-09-07, with one agent working on the owner's only P1, and every
 epic closed.**
 
 ## Where the work is
 
-One hundred and twenty pull requests have merged, all through `merge-pr.mjs`,
-and the provenance audit is clean across every commit on `main`. **88 items
-closed, 3 open**, and all three are P3s I filed by driving the product, all
-three dispatched. **All eight epics are closed**, the last two today: import,
-which closed when re-import landed, and publishing.
+One hundred and thirty-one pull requests have merged, all through
+`merge-pr.mjs`, and the provenance audit is clean across every commit on `main`.
+**99 items closed, 7 open**. One is the owner's and it is the only P1;
+five are P3s I filed by driving the product or by reading the records against
+the tree, and the seventh is the owner's visuals epic. **All eight epics are
+closed**, the last two on 2026-09-07: import, which closed when re-import
+landed, and publishing.
 
-**Nothing is waiting on a decision.** That is the first time it has been true.
+**Nothing is blocked.** That has been true since the owner answered the two
+questions that were, at about 13:20.
 
 From a checkout, the tool does the whole loop:
 
@@ -65,21 +68,28 @@ it is the safe move either way.
 
 ## In flight, and what is actually left
 
-One agent, one item, and it is a sentence rather than a behaviour.
+Two agents.
 
-- **dbmd-e6e.** On Windows a file another program holds open is reported as a
-  file somebody else edited, while the studio's own diagnostics panel says the
-  true thing two inches away. Nothing is lost and it recovers; the sentence is
-  wrong and the advice loops.
+- **dbmd-o69**, the owner's, and the only P1. They asked for a prominent "This
+  was 100% vibe coded using b-fac", a link to
+  [b-fac](https://github.com/BlakeHastings/b-fac), and for the page to convey
+  that they built this as a tool for personal use. Their sentence is quoted on
+  the item and is not to be softened. The second half is the more useful one: a
+  stranger arriving at a public repository assumes it wants users and issues,
+  and this one was built by one person for their own use.
+- **dbmd-c7q**, on pull request #131, rebasing. Reviewed and verified against a
+  real lock on both sides: `main` tells you a file that parsed perfectly "did not
+  parse ... Fix the file and reload", and the branch says it could not be read,
+  while a genuinely broken file still says "did not parse" word for word.
 
-**My own process-doc work is uncommitted and waiting**, because one orchestrator
-commit costs a rebase per agent in flight. It is `handoff.md` trimmed to where
-the work stopped, `verified.md` split out of it, and the record in
-`orchestrating.md` of why. There is a copy in the session scratchpad under
-`mine/`, and it has survived five stash cycles; land it the moment the queue is
-empty.
+**Five items are ready and held**, each saying why on itself: dbmd-dil,
+dbmd-76x, dbmd-7b6, dbmd-nm5 and dbmd-5pj. Three of them are small, touch
+different files, and should go to one agent as a batch.
 
-**Nothing is waiting on a decision**, and every epic is closed.
+**My own process docs are still uncommitted** and land the moment #131 does.
+
+**The visuals epic, dbmd-fnl, is the owner's.** Both measured children have
+landed; what is left is three questions with a recommendation each.
 
 ## What is waiting on the owner
 

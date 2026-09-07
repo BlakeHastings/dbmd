@@ -34,6 +34,24 @@ in the model byte-identical to where it started:
 | Drag a note | that note’s own file, including its `w` and `h` |
 | Drag a group header | every member’s layout line, in one write, and nothing in the group file |
 
+### The whole thing again on the day's twelfth merge, 2026-09-07
+
+A regression pass after twelve merges, on `git archive HEAD examples/shop`,
+which is what a stranger clones.
+
+- `dbmd check`: 8 tables, 2 notes, 1 group, no problems.
+- `dbmd refs orders`: both referrers with their marks and their `on delete`.
+- The studio: **10 boxes, 13 edge paths, 0 clipped cells, 0 overlapping pairs**,
+  and the group label reads `Written by the depot handheld` in full. The two
+  visual defects found this afternoon are both gone from the shipped picture.
+- A drag wrote **one file and one line**, `layout:` on the table dragged, and the
+  model still validates.
+- `dbmd export`, and the diagram it wrote **parses under mermaid**, which is a
+  thing that could not be checked at all before this afternoon.
+
+Nothing regressed. Recorded because twelve merges in a day is exactly when
+something does, and the cheapest time to find out is before somebody else does.
+
 ### The whole journey against a live database, driven on 2026-09-07
 
 Re-run after re-import landed, and this time following the **printed recipe**
@@ -387,6 +405,57 @@ rather than by reading.
   refuses is `unsafe-name` rather than a `201 Created` that writes nothing**,
   which is the bug that shipped once and is the reason this was worth probing
   rather than assuming.
+- **The suite was mutation-tested on 2026-09-07, on seven load-bearing
+  properties, and caught all seven.** This repository has three recorded
+  instances of a test that stopped testing, so the question is a live one here
+  rather than a formality. Each mutation was a one-line change to make the
+  behaviour wrong in a way that still compiles, run against the whole suite, then
+  reverted:
+
+  | What was broken | Tests that failed |
+  | --- | --- |
+  | `writeModel` ignores its `only` set and writes every file | 8, across 3 files |
+  | `isFileName` stops refusing a name a file cannot hold | 16 |
+  | The frontmatter writer pads the body instead of concatenating | 10 |
+  | `dbmd import` treats every delta as confirmed | 5 |
+  | `--strict` stops promoting a warning | 3 |
+  | `ref-column-unknown` stops being raised | 3 |
+  | The diagram stops marking a primary key | 2 |
+
+  The `only` set and the file-name refusal are the two that matter most, because
+  the first is what stops a whole-model write clobbering a file nobody edited and
+  the second is what stopped the studio answering `201 Created` for a table it
+  never wrote. Both are covered several times over.
+
+  **The two newest behaviours were deliberately included.** The delta's confirm
+  gate landed the same day, and thin coverage on a day-old feature is the normal
+  place for this to go wrong. It did not.
+- **The delta module was mutation-tested separately**, on the same day it landed,
+  because it is 678 lines old and it deletes files. Four one-line breaks, all
+  caught:
+
+  | What was broken | Tests that failed |
+  | --- | --- |
+  | Every table is rewritten, changed or not | 7 |
+  | A vanished table is listed and its file never deleted | 3 |
+  | A changed type is never noticed | 5 |
+  | A changed `ref:` is never noticed | **1** |
+
+  **The last row is the thin one.** A single test stands behind the ref
+  comparison, where the others have three to seven. It is caught, so this is not
+  a gap and there is no item for it; it is recorded because a single test is the
+  one that can be rewritten without anybody noticing what it was for, and this
+  repository has three recorded cases of exactly that.
+- **Every relative markdown link in the repository resolves**, checked on
+  2026-09-07: 122 tracked markdown files, 82 relative links, **zero broken**.
+  Checked because `scripts/check-commands.mjs` covers three kinds of reference,
+  `dbmd <command>`, `npm run <script>` and `node scripts/<file>`, and a link is a
+  fourth of the same shape: a claim that a thing exists. **No check was added and
+  that is deliberate.** A gate that has never caught anything is a maintenance
+  cost pretending to be safety, and this one would not even have caught the thing
+  that prompted the look: ADR 0028's stale reference was to a *section heading in
+  prose*, which no link checker reads. Recorded so the next person who has the
+  idea can see it was had, measured and declined, rather than having it again.
 - **Every enforcement guard fails when neutered.** Now a suite rather than an
   afternoon: `test/guards/broken-on-purpose.test.ts` and ADR 0034.
 - **Every diagnostic code is emitted and exercised.** The last two exceptions,
@@ -598,6 +667,41 @@ makes them evidence rather than a rule to remember.
   box, which somebody notices, to a confident picture of a table nobody has,
   which nobody notices. **Re-measure a dependency's refusals, not only its
   acceptances**, when you are relying on one.
+- **A screenshot of the working tree is not a screenshot of the product.** I
+  measured `examples/shop` in a real browser, found two notes covering three
+  tables with `shipments` 28,457 square pixels hidden, filed it, and told the
+  owner it was the first picture anybody sees. It was **their own uncommitted
+  arrangement**: four `layout:` edits they had made that morning, moving two
+  tables up under notes that had been placed to sit exactly above them.
+  `git archive HEAD examples/shop` renders **zero overlaps** between the ten
+  boxes. The lesson is not "check git status", which I had done and knew about;
+  it is that **a working tree with somebody else's edits in it is a different
+  program**, and a measurement of it says nothing about what ships. Render from
+  the committed tree when the claim is about the product.
+- **What survived that correction is worth as much as what did not.** The clipped
+  ref, 7 of 64 rows overflowing with no `title` to recover the text, measures the
+  same on the committed tree, because it is a property of the stylesheet rather
+  than of anybody's layout. Re-measuring separated the two findings; assuming
+  would have thrown away the real one with the false one.
+- **A "Revisit when" entry can half-fire, and nothing looks.** Every decision
+  record here ends with conditions that should send somebody back to it, and 54
+  of the 55 have one. When the owner decided to publish, three records' entries
+  were about that event and **one got its correction**. The other two now
+  describe work already carried out: ADR 0028 tells a release-day reader to
+  remove a section of `docs/ci.md` that came out this morning and to replace a
+  placeholder version that stopped being one, and ADR 0039 tells them to rewrite
+  a skill section that has already been rewritten. `check:adr` checks numbering
+  and `check:commands` checks that commands resolve; **neither reads a record
+  against the tree it describes**, and a revisit entry is the part most likely to
+  rot because it is written about a future that then happens.
+  Found by grepping every revisit list for the words of things that changed that
+  day, which took two minutes and is worth repeating after any decision the
+  records anticipated. dbmd-7b6.
+- **The instruction that caused it was mine.** I told the agent "0024, 0028 and
+  0039 are not edited, per the superseded-records-stay rule", which was right
+  about not editing and wrong about not appending, and they followed it exactly.
+  **A brief that names files to leave alone should say what to do to them
+  instead**, or the agent has been told half a rule.
 - **The provider seam is real.** SQL Server landed with **zero lines** changed in
   `src/import/contract.ts` and `src/import/provider.ts`, and `import` then landed
   on top of both without touching either.
