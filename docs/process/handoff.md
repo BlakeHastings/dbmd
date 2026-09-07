@@ -383,3 +383,14 @@ rather than by reading.
   and `check:scenes` cannot see this class of thing because the name is used by
   one scene rather than two.
 
+
+- **Every referential action reaches markdown from a live database, and the
+  command you would ask about them does not mention them.** A PostgreSQL 16
+  schema with all five actions plus `on update` imported clean: `cascade`,
+  `set null`, `set default`, `restrict`, and an undeclared foreign key written
+  explicitly as `no action`. Strict clean, round trip `unchanged`. But
+  `dbmd refs`, whose own record says you ask it immediately before a delete, lists
+  the five referrers and says nothing about which of them cascade, in prose or in
+  `--json`. **Two features that each work, with an empty seam between them**,
+  because `refs` shipped first. Filed.
+
