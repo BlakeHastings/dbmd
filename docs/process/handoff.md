@@ -8,7 +8,7 @@ are the source of truth and this is only where the work stopped.
 
 ## Where the work is
 
-Eighty-eight pull requests have merged, all through `merge-pr.mjs`, and the
+Ninety-four pull requests have merged, all through `merge-pr.mjs`, and the
 provenance audit is clean across every commit on `main`. **64 items closed, 9
 open.** Five of the seven epics are closed. Of what is left, two are dispatched,
 two wait on the owner, and one is an epic nobody has started.
@@ -96,8 +96,9 @@ move and will file a defect. It is the note. Move it and the drag works.
 
 ## In flight
 
-- **dbmd-pqd**, the Postgres query telling nobody how to save its result, when
-  the obvious command produces a file the importer refuses.
+- **dbmd-aud**, the truncation message, which now names a cause that is wrong
+  for both documented routes, and the test that goes red if somebody rewraps the
+  paragraph.
 
 ## What proved out, and is easy to lose
 
@@ -184,6 +185,14 @@ move and will file a defect. It is the note. Move it and the drag works.
   worse message. **So the asymmetry was never "Postgres is safe", it was
   "Postgres is silent".** Both found by following the instructions rather than by
   running the tool, which is a different test and nothing had been doing it.
+
+- **Distance is what goes stale, not counts.** `AGENTS.md` has carried a correct
+  count of the commands through five arrivals, because its count and its list
+  are one sentence. `README.md`'s heading counted entries two hundred lines below
+  it and was wrong twice in three chances. So the heading stopped counting and
+  the entries got a check, which is the split worth copying: **a count is
+  something a person maintains, and an entry is content that has to exist.** A
+  check that reads a heading is the check whose job a rewrite removes.
 
 ## Audited on 2026-09-07, so a successor need not redo it
 
