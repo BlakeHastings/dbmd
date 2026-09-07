@@ -466,6 +466,74 @@ describe('check:commands, broken on purpose', () => {
     expect(ran.err).not.toContain('npm run check`')
   })
 
+  test('a bare path into scripts/ is a reference too, without a runner in front of it', async () => {
+    // The shape ADR 0036's revisit entry asked for, and it is here because one
+    // was found rather than because the list looked short. guard-merge.mjs
+    // named a sibling test in a comment, as the thing catching drift between
+    // the copies of its command reader, and that file exists only in the
+    // repository the guard is installed from. Nobody was being told to run it,
+    // so no runner appeared in front of it, so the three shapes that read an
+    // invocation walked straight past a comment claiming a safety net that was
+    // not there. ADR 0059 is what came of reading it.
+    const root = await repository({
+      'scripts/build.mjs': '// a script that is really there\n',
+      'docs/guide.md': [
+        '# Guide',
+        '',
+        'Drift between the copies is caught by `scripts/command-reader.test.mjs`.',
+        '',
+        'The client is built by `scripts/build.mjs`.',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/guide.md:3')
+    expect(ran.err).toContain('`scripts/command-reader.test.mjs` is not a file in scripts/')
+    // And not the sibling that is there, which is the difference between this
+    // and a rule against writing a path down.
+    expect(ran.err).not.toContain('docs/guide.md:5')
+  })
+
+  test('a path in the middle of a code span is not a reference, which is what makes it safe', async () => {
+    // The one false positive the measurement produced. A template literal is a
+    // code span by this checker's own rule, and this repository writes its
+    // failure messages as paragraphs of prose inside one:
+    // check-main-provenance.mjs ends a sentence with "Add the case to
+    // scripts/guard-merge.mjs." Unanchored, the sweep read the full stop as
+    // part of the filename and called the file missing. Requiring the path to
+    // begin the code removes that without a second rule about punctuation.
+    const root = await repository({
+      'scripts/build.mjs': [
+        'export const advice =',
+        '  `Something in the tree is wrong.\\n` +',
+        '  `Add the case to scripts/guard-merge.mjs.\\n`',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('reference resolves')
+  })
+
+  test('a bare path that does not exist yet is excused by the marker, like every other shape', async () => {
+    const sentence = 'Drift will be caught by `scripts/drift.test.mjs`.'
+
+    const excused = await repository({
+      'docs/guide.md': `${sentence}\n\n<!-- hypothetical: scripts/drift.test.mjs -->\n`,
+    })
+    expect((await runScript(excused, 'check-commands.mjs')).code).toBe(0)
+
+    // The same sentence without it, so the marker did the work. A fourth shape
+    // that could not be marked would be a fourth shape people worked around.
+    const bare = await repository({ 'docs/guide.md': `${sentence}\n` })
+    expect((await runScript(bare, 'check-commands.mjs')).code).toBe(1)
+  })
+
   test('the command list comes from the CLI, so adding a command is enough', async () => {
     const page = 'Run `dbmd export --stdout` when you are done.\n'
 

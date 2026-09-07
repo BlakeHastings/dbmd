@@ -150,9 +150,11 @@ binary produces no diff at all. `scripts/check-reviewable.mjs` fails on a NUL
 byte in a tracked file, and it runs in `npm run check`. See Gotchas.
 
 **A command written in backticks is a claim that it exists.**
-`scripts/check-commands.mjs` resolves every `dbmd <command>`, `npm run <script>`
-and `node scripts/<file>` written inside backticks, against the CLI's registry,
-`package.json` and the filesystem. It reads code spans and fenced blocks only,
+`scripts/check-commands.mjs` resolves every `dbmd <command>`, `npm run <script>`,
+`node scripts/<file>` and bare `scripts/<file>` written inside backticks, against
+the CLI's registry, `package.json` and the filesystem. A bare path is read only
+where it begins the code, so a filename in the middle of a sentence is left
+alone. It reads code spans and fenced blocks only,
 so prose like "dbmd reads the model" is not a reference and costs you nothing.
 If you mean something that does not exist yet, a future `dbmd fmt` say, mark it
 on the line you wrote it: `<!-- hypothetical: dbmd fmt -->` in markdown, or
