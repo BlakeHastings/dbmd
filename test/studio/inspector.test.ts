@@ -18,7 +18,8 @@ import {
   withRefsRetargeted,
   type RenamePlan,
 } from '../../src/studio/client/model.js'
-import { staleNotice } from '../../src/studio/client/write.js'
+import { conflictSummary, staleNotice, unreadableNotice } from '../../src/studio/client/write.js'
+import type { WireConflict } from '../../src/studio/wire.js'
 
 /**
  * The inspector without a browser.
@@ -464,6 +465,88 @@ describe('what the page says when the model moved underneath it', () => {
     expect(edit.replace('The edit to table `orders`', '')).toBe(
       removal.replace('The delete of tables/orders.md', ''),
     )
+  })
+})
+
+/**
+ * The sentence beside that one, for the file nothing could open.
+ *
+ * Same kind of thing and the same reason it is here: prose the interface says
+ * out loud, which no typechecker reads. The defect was that a file another
+ * program had open arrived at `staleNotice` and was described as a file
+ * somebody else had edited, which is the opposite fact about the developer's
+ * disk. dbmd-e6e.
+ */
+describe('what the page says when it could not read the file', () => {
+  it('says nothing was written and nothing on disk changed', () => {
+    const notice = unreadableNotice('The delete of tables/orders.md')
+    expect(notice).toContain('could not read the file')
+    expect(notice).toContain('Nothing was written')
+    expect(notice).toContain('the file is exactly as it was')
+  })
+
+  it('does not say the files changed, which is the sentence it replaces', () => {
+    const notice = unreadableNotice('The edit to table `orders`')
+    expect(notice).not.toContain('changed on disk')
+    expect(notice).not.toContain('the change on disk is intact')
+  })
+
+  it('names no cause, because a lock and a permission look the same from here', () => {
+    expect(unreadableNotice('The edit to table `orders`')).not.toMatch(
+      /lock|another program|antivirus|OneDrive/i,
+    )
+  })
+
+  it('points at the diagnostics, where the reader has already said what it saw', () => {
+    // The whole defect was two messages two inches apart, one of which had not
+    // happened. This is the line that joins them rather than competing.
+    expect(unreadableNotice('The edit to table `orders`')).toContain('The diagnostics below')
+  })
+
+  it('waits for the file rather than telling a person to try again now', () => {
+    // `staleNotice` says make the change again on top of what the page shows,
+    // because there is something to make it on top of. Here there is not, and
+    // the advice that ignored that is what looped.
+    expect(unreadableNotice('The edit to table `orders`')).toContain('once the file can be read')
+  })
+})
+
+/**
+ * The line above the list of refused writes, which has to be true of all of
+ * them.
+ *
+ * It used to say every one of them was dropped rather than written over a
+ * change on disk, standing two lines above a list entry saying the file could
+ * not be read.
+ */
+describe('the line that counts the refused writes', () => {
+  const conflict = (reason: 'changed' | 'unreadable'): WireConflict => ({
+    path: `tables/${reason}.md`,
+    at: '2026-09-07T00:00:00.000Z',
+    reason,
+    message: 'whatever the server said',
+  })
+
+  it('says a change on disk when that is what all of them were', () => {
+    expect(conflictSummary([conflict('changed')])).toBe(
+      '1 edit was dropped rather than written over a change on disk.',
+    )
+  })
+
+  it('says the studio could not read the file when that is what all of them were', () => {
+    expect(conflictSummary([conflict('unreadable'), conflict('unreadable')])).toBe(
+      '2 edits were dropped rather than written over a file the studio could not read.',
+    )
+  })
+
+  it('claims neither when it is holding one of each', () => {
+    const mixed = conflictSummary([conflict('changed'), conflict('unreadable')])
+    expect(mixed).toBe('2 edits were dropped rather than written. Each line below says why.')
+  })
+
+  it('counts in words that agree with the number', () => {
+    expect(conflictSummary([conflict('changed')])).toContain('1 edit was')
+    expect(conflictSummary([conflict('changed'), conflict('changed')])).toContain('2 edits were')
   })
 })
 

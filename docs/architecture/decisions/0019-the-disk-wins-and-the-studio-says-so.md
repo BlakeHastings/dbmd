@@ -272,3 +272,76 @@ And the watcher still only ever says "look again". The three checks answer three
 different questions, and the page is now the third: has the disk moved since the
 session read it, has the session moved since the caller drew its picture, and is
 there anything new to draw.
+
+## Amended by dbmd-e6e, once somebody locked a file the studio was about to write
+
+An amendment rather than a record of its own, because the decision here is
+unchanged and one of its sentences is not. **"A file that no longer says what it
+said is not written" is two facts wearing one sentence**, and the studio was
+telling the developer the wrong one of them.
+
+Take an exclusive lock on `tables/orders.md`, the way an editor, OneDrive, a
+backup agent or antivirus does on Windows, and drag that table in the page:
+
+    PATCH /api/table/orders 200
+    conflicts: tables/orders.md changed on disk after the studio read it, so
+               writing over it would lose that change. The studio has reloaded
+               the file and dropped its own edit to it; make the edit again if
+               you still want it
+    diagnostics: tables/orders.md error file-unreadable: cannot read the file:
+               the file is in use (EBUSY)
+
+Nothing was written, the file was byte-identical afterwards, and the next edit
+landed normally once the lock cleared. Everything this record asks for happened.
+What the developer was told is that somebody had edited their file, which nobody
+had, and to make the edit again, which fails the same way until whatever has the
+file lets go of it. The true sentence was on the same page, two inches below the
+false one.
+
+**The conflation is in the comparison, and the comparison is not wrong.**
+`readModel` does not throw on a file it cannot open: it raises `file-unreadable`
+and leaves the object out of the model. So `renderOf` differs, exactly as it
+does for a file somebody edited, and the path takes the refusal branch. "Absent
+because it could not be read" and "present and different" are the same thing to
+that comparison, and they are opposite facts about somebody's disk.
+
+### What changed
+
+**The refusal did not.** Writing over a file the studio could not read is
+precisely what must not happen, and it is worse than the case this record was
+opened for: there is no version of that file anybody has seen. The refused edit
+is still dropped rather than held, for ADR 0004's reason, which does not change
+because the reason for the refusal changed.
+
+**The reader is asked which of the two it is, and the refusal repeats what the
+reader said.** A `file-unreadable` at that path, or at the kind directory that
+would not list, is the whole of the test. `WireConflict` gained a `reason` of
+`changed` or `unreadable`, so the page switches on a code rather than on prose,
+which is the rule ADR 0025's refusal already follows, and the delete route
+raises `unreadable` where it used to raise `conflicted`.
+
+**Neither sentence names a cause.** A lock is what produces this on Windows and
+a permission change produces the identical refusal, so a message that said
+"another program has it open" would be this same defect with a different face.
+The reader has already turned the errno into a clause a person can act on, and
+repeating it is the honest move. The advice changed with it: "make the edit
+again" is right when there is a change on disk to make it on top of, and here
+there is nothing until the file can be read, so that is the condition it names.
+
+### What this leaves open, deliberately
+
+**A table the studio is holding from memory still says it "did not parse".** The
+carried-forward object is marked `complete: false` whatever the reason, and the
+`incomplete` refusal, the canvas and the inspector all say the file did not
+parse, which for a locked file is the same guess this amendment removed from the
+writer. Fixing it means the page knowing why an object is incomplete, which is
+plumbing through two scene files rather than a sentence, so it is an item of its
+own rather than a rider on this one.
+
+**Nothing wakes the studio when a lock is released.** A release is not a
+filesystem event, so the watcher does not fire and the session goes on holding
+the file as unreadable until something else under the model directory moves or
+the next flush re-reads. The developer's next edit to any other table clears it.
+That is `fs.watch` being what this record already says it is rather than a new
+thing, and the same "revisit when" applies: polling `stat` is the answer if it
+turns out to bite.

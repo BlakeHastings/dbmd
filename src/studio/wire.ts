@@ -50,19 +50,36 @@ export interface WireWrite {
 }
 
 /**
- * A write the studio refused because the file had moved underneath it.
+ * A write the studio refused rather than write over a file it did not have.
  *
  * ADR 0019. This is not an error and not a diagnostic: the model is fine, the
- * file is fine, and the only thing that went wrong is that two people edited
- * the same table and the studio chose the one on disk. It is on the status
- * rather than in `diagnostics` because a diagnostic is a fact about the model
- * that `dbmd check` would report too, and this is a fact about this session.
+ * file is fine, and the only thing that went wrong is that the file the studio
+ * was about to write is not the file its edit was made against. It is on the
+ * status rather than in `diagnostics` because a diagnostic is a fact about the
+ * model that `dbmd check` would report too, and this is a fact about this
+ * session.
  */
 export interface WireConflict {
   /** The file, relative and slash-separated, exactly as a write reports one. */
   readonly path: string
   /** ISO 8601, UTC, when the studio noticed. */
   readonly at: string
+  /**
+   * Which of the two refusals this is, for a page that has to say so in its own
+   * words.
+   *
+   * `changed` is somebody's edit on disk: the file is there, it says something
+   * else, and writing over it would lose that. `unreadable` is a file the
+   * reader could not open at all, so what it holds is unknown rather than
+   * different, and nothing on disk is at risk. They arrive by the same route
+   * because both make the file differ from what the edit was made against, and
+   * they are opposite facts about the developer's disk. dbmd-e6e.
+   *
+   * The page switches on this rather than on `message`, which is the rule the
+   * stale refusal already follows: a client that reads prose is matching on
+   * prose.
+   */
+  readonly reason: 'changed' | 'unreadable'
   /** What happened and what to do about it, in words meant for a person. */
   readonly message: string
 }

@@ -126,6 +126,14 @@ export type EditRefusalCode =
   | 'incomplete'
   /** The file changed on disk since the session read it, so acting on it would lose that change. */
   | 'conflicted'
+  /**
+   * The reader could not read the file at all, so what it now holds is unknown
+   * rather than different, and acting on it would act on a file nobody has
+   * seen. Distinct from `conflicted` for the reason `file-unreadable` is
+   * distinct from a parse error: "absent because it could not be read" and
+   * "present and different" are opposite facts about somebody's disk.
+   */
+  | 'unreadable'
   /** The edit names a revision this session has moved on from, so it was made against a model that is gone. */
   | 'stale'
 
@@ -414,7 +422,11 @@ export class Edits {
     const disk = await readModel(this.dir)
     if (renderOf(disk.model, path) !== renderOf(this.adopted.model, path)) {
       await this.serialise(() => this.absorb(disk))
-      throw new EditRefused(409, 'conflicted', changedUnderneath(path, 'deleting it'))
+      // Which of the two it is, in the reader's own words. See `saidAbout`.
+      const said = saidAbout(disk.diagnostics, path)
+      throw said === undefined
+        ? new EditRefused(409, 'conflicted', changedUnderneath(path, 'deleting it'))
+        : new EditRefused(409, 'unreadable', couldNotBeRead(path, 'deleting it', said))
     }
     // Anything already queued is written first, in order, so a pending edit to
     // this table cannot land after the file is gone and recreate it.
@@ -509,12 +521,28 @@ export class Edits {
       )
       for (const path of refused) {
         this.writing.delete(path)
+        // The comparison above answers "is the file still what the edit was
+        // made against", and a file the reader could not open answers it `no`
+        // for a reason that is not a change: it is missing from the read
+        // entirely, so `renderOf` differs. Both refusals are right and they are
+        // about opposite things, so the reader is asked which one this is and
+        // the refusal says what the reader said. dbmd-e6e.
+        const said = saidAbout(disk.diagnostics, path)
         this.refusals.set(path, {
           path,
           at: new Date().toISOString(),
-          message: changedUnderneath(path, 'writing over it'),
+          ...(said === undefined
+            ? { reason: 'changed' as const, message: changedUnderneath(path, 'writing over it') }
+            : {
+                reason: 'unreadable' as const,
+                message: couldNotBeRead(path, 'writing over it', said),
+              }),
         })
-        this.log(`refused to write ${path}: it changed on disk since the studio read it`)
+        this.log(
+          said === undefined
+            ? `refused to write ${path}: it changed on disk since the studio read it`
+            : `refused to write ${path}: ${said}`,
+        )
       }
       // The disk's version replaces the refused edit rather than sitting beside
       // it. ADR 0004 says there is no state but the files, and a rejected edit
@@ -874,6 +902,57 @@ function changedUnderneath(path: string, action: string): string {
     `\`${path}\` changed on disk after the studio read it, so ${action} would lose that change. ` +
     `The studio has reloaded the file and dropped its own edit to it; make the edit again if you still want it`
   )
+}
+
+/**
+ * The other sentence, for the file that is missing from the read because the
+ * reader could not open it rather than because somebody edited it.
+ *
+ * It quotes the reader instead of naming a cause, and that is the whole of the
+ * care in it. A file is unreadable for whatever reason the operating system
+ * gives, and a message that said "another program has it open" would be right
+ * on Windows with an editor holding the file and wrong the day the cause was a
+ * permission change, which is the same mistake this record fixes wearing a
+ * different face. The reader has already turned the errno into a clause a
+ * person can act on (`errnoText`), so the honest thing to do is repeat it.
+ *
+ * The advice is what makes it not a loop. "Make the edit again" is the right
+ * answer to a change on disk, because the change is there to edit on top of.
+ * Here there is nothing to make the edit on top of until the file can be read,
+ * so that is what it says.
+ */
+function couldNotBeRead(path: string, action: string, said: string): string {
+  return (
+    `\`${path}\` could not be read just now, so the studio did not go through with ${action}: ${said}. ` +
+    `Nothing was written and the file is exactly as it was; try it again once the file can be read`
+  )
+}
+
+/**
+ * What the reader said about a file it could not read at all, or `undefined`
+ * when the file is not one of those.
+ *
+ * The containing directory counts, and that is not a flourish: a `tables/` that
+ * cannot be listed leaves every table missing from the read for exactly the
+ * same reason one locked file does, and a write refused for that has the same
+ * two candidate explanations. Its clause reads `cannot list the directory:` and
+ * says so.
+ *
+ * Only `file-unreadable`, and deliberately. A file that is there and does not
+ * parse is also missing from the read, and for that one "changed on disk after
+ * the studio read it" is true: somebody is typing in it. The distinction this
+ * draws is between a file whose contents are unknown and a file whose contents
+ * are known and different, which is the distinction the reader already makes.
+ */
+function saidAbout(diagnostics: readonly Diagnostic[], path: string): string | undefined {
+  const directory = path.slice(0, path.lastIndexOf('/'))
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.code !== 'file-unreadable' || diagnostic.at.in !== 'file') continue
+    if (diagnostic.at.path === path || (directory !== '' && diagnostic.at.path === directory)) {
+      return diagnostic.message
+    }
+  }
+  return undefined
 }
 
 function applyTablePatch(table: Table, patch: TablePatch): Table {
