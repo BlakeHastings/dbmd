@@ -16,7 +16,7 @@ import { readModel } from '../../src/model/read.js'
 import { scalar, serialiseModelFile, serialiseObject, writeModel } from '../../src/model/write.js'
 import type { Group, Model, Note, Table } from '../../src/model/types.js'
 import { fixtureModel } from './helpers.js'
-import { canonicalModel, snapshot, withCopy } from './fixtures.js'
+import { canonicalModel, exampleShop, snapshot, withCopy } from './fixtures.js'
 
 /**
  * `rename` is the one call whose failure the writer has to survive, and no real
@@ -276,6 +276,37 @@ describe('only what changed is written', () => {
       expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).toContain(
         '    type: varchar(32)\n',
       )
+    })
+  })
+
+  test('`only` leaves a neighbour that is not canonical exactly as it was', async () => {
+    // The example model is hand-written, so a whole-model write over it also
+    // canonicalises files nobody edited. A caller saving one edit says which
+    // files it edited and gets a one-file diff instead of a four-file one.
+    await withCopy(exampleShop, async (dir) => {
+      const before = await snapshot(dir)
+      const { model: read } = await readModel(dir)
+      const moved = withTable(read, 'orders', (orders) => ({
+        ...orders,
+        layout: { x: 11, y: 22 },
+      }))
+
+      const { written } = await writeModel(dir, moved, { only: new Set(['tables/orders.md']) })
+      expect(written).toEqual(['tables/orders.md'])
+
+      const after = await snapshot(dir)
+      const changed = [...after].filter(([path, text]) => before.get(path) !== text)
+      expect(changed.map(([path]) => path)).toEqual(['tables/orders.md'])
+    })
+  })
+
+  test('`only` covers `_model.md`, which is otherwise written on every call', async () => {
+    await withCopy(canonicalModel, async (dir) => {
+      const { model: read } = await readModel(dir)
+      const renamed: Model = { ...read, name: 'something-else' }
+      expect(
+        (await writeModel(dir, renamed, { only: new Set(['tables/orders.md']) })).written,
+      ).toEqual([])
     })
   })
 

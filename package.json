@@ -33,11 +33,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --passWithNoTests",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
     "prepack": "npm run build",
     "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run test && npm run build",
     "check:adr": "node scripts/check-adr-numbers.mjs",
@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
+    "esbuild": "^0.28.2",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"

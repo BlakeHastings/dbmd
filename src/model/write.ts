@@ -287,6 +287,26 @@ export interface WriteResult {
   readonly skipped: readonly WriteSkip[]
 }
 
+export interface WriteOptions {
+  /**
+   * Write only these files, named by the same relative slash-separated path
+   * `WriteResult.written` reports. Everything else in the model is left on disk
+   * as it is, whether or not it is canonical.
+   *
+   * Absent means the whole model, which is what `dbmd import` and a future
+   * `dbmd fmt` want: they are asking for the directory to be brought into
+   * canonical form and a reformatted file is the point.
+   *
+   * The studio wants the opposite. A model directory a person wrote by hand is
+   * rarely canonical, so writing the whole model after a drag would reformat
+   * three files nobody touched and put them in the developer's `git status`
+   * next to the one they meant. ADR 0003 sells a one-line diff for a one-column
+   * change, and quietly canonicalising the neighbours is how that promise gets
+   * broken by a tool that thought it was being tidy.
+   */
+  readonly only?: ReadonlySet<string>
+}
+
 /**
  * Write a model to a model directory.
  *
@@ -299,6 +319,9 @@ export interface WriteResult {
  * alone; a model built from scratch says `complete: true` on every object, out
  * loud, because that is a claim its author is making.
  *
+ * `options.only` narrows it to named files, for a caller that is saving an edit
+ * rather than canonicalising a directory. See `WriteOptions`.
+ *
  * It does not delete. A file that failed to parse is missing from the model
  * (ADR 0008), so "in the directory but not in the model" cannot be told apart
  * from "broken", and deleting on that basis would throw away the file whose
@@ -309,15 +332,22 @@ export interface WriteResult {
  * not a diagnostic about the model, and a caller that carries on regardless has
  * told the user their work is saved when it is not.
  */
-export async function writeModel(dir: string, model: Model): Promise<WriteResult> {
+export async function writeModel(
+  dir: string,
+  model: Model,
+  options: WriteOptions = {},
+): Promise<WriteResult> {
   const written: string[] = []
   const skipped: WriteSkip[] = []
   const objects: readonly CanvasObject[] = [...model.tables, ...model.notes, ...model.groups]
+  const wanted = (path: string): boolean => options.only === undefined || options.only.has(path)
 
-  const jobs: { path: string; text: string; complete: boolean }[] = [
-    { path: MODEL_FILE, text: serialiseModelFile(model), complete: model.complete },
-  ]
+  const jobs: { path: string; text: string; complete: boolean }[] = []
+  if (wanted(MODEL_FILE)) {
+    jobs.push({ path: MODEL_FILE, text: serialiseModelFile(model), complete: model.complete })
+  }
   for (const object of objects) {
+    if (!wanted(`${directoryOfKind(object.kind)}/${object.name}.md`)) continue
     if (!isFileName(object.name)) {
       skipped.push({
         path: `${directoryOfKind(object.kind)}/${object.name}`,
