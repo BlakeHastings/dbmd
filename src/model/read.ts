@@ -1283,9 +1283,20 @@ function offsetOf(node: unknown): number | undefined {
  * a rule that treated a link differently from the thing it points at would be
  * the same mistake in a new place.
  *
- * A name that is not `*.md` is still nobody's business, link or not: a
- * junctioned `tables/archive/` raises nothing, exactly as a junctioned
- * `sketches/` at the model root raises nothing.
+ * **A subdirectory holding markdown is an `object-in-subdirectory` error**, and
+ * that is ADR 0054, which narrows the sentence 0040 wrote here. A name that is
+ * not `*.md` still claims nothing on its own: an empty `tables/drafts/`, a
+ * `tables/screenshots/` of PNGs, a `README.txt` are all silent, link or not,
+ * exactly as a junctioned `sketches/` at the model root is silent. What is not
+ * silent is a directory with an `orders.md` under it, because 0040's own rule
+ * says that name is a claim to be the table `orders`, and the claim is the
+ * file's rather than the directory's. It is one folder too deep and one error,
+ * not one per file: a misplaced `node_modules` would otherwise be a page of
+ * them.
+ *
+ * A directory whose name begins with `.` is skipped before any of this, as a
+ * dot-file is, and that is the way to keep an archive beside a model without
+ * dbmd having an opinion about it.
  *
  * **What it costs.** One `stat`, and only for an entry that is neither a plain
  * file nor a plain directory, which is to say only for a link. A model with no
@@ -1317,7 +1328,28 @@ async function markdownFiles(
   const files: string[] = []
   for (const entry of entries) {
     const name = entry.name
-    if (name.startsWith('.') || !name.endsWith('.md')) continue
+    if (name.startsWith('.')) continue
+
+    if (!name.endsWith('.md')) {
+      // A plain file settles it with no call and is nobody's business: a
+      // `README`, a `notes.txt`, a `schema.sql`. Everything else may be a
+      // directory, and a directory here may be holding objects. `isDirectory()`
+      // settles a real one for free; only a link costs the `stat`, which is the
+      // same bargain the `.md` branch below already struck.
+      if (entry.isFile()) continue
+      const path = join(dir, name)
+      if (!entry.isDirectory() && !(await pointsAtADirectory(path))) continue
+      const claim = await firstMarkdownUnder(path)
+      if (claim === undefined) continue
+      push(out, {
+        code: 'object-in-subdirectory',
+        severity: 'error',
+        at: inFile(`${relative}/${name}`),
+        message: `\`${name}/\` is a directory inside \`${relative}/\`, and dbmd reads only the files directly in \`${relative}/\`, so \`${relative}/${name}/${claim}\` is not a ${kind}; move the markdown up into \`${relative}/\``,
+      })
+      continue
+    }
+
     if (entry.isFile()) {
       files.push(name)
       continue
@@ -1359,6 +1391,65 @@ async function pointsAtADirectory(file: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/**
+ * How far under a subdirectory of a kind directory the search for a claim goes.
+ *
+ * A cap rather than a cycle check, and that is the whole of the loop protection:
+ * this descends into links, because a junctioned `tables/billing/` is exactly
+ * the case ADR 0038 was written about and refusing to follow it would be that
+ * silence again, and a link that points back at its own parent would otherwise
+ * never return. Eight is far past any model anybody has: a subdirectory is
+ * already the mistake, and eight of them is the same mistake said eight times.
+ */
+const SEARCH_DEPTH = 8
+
+/**
+ * The first markdown name under `dir`, relative to it, or `undefined` if there
+ * is none.
+ *
+ * The *name* is the claim and nothing is opened, which is why a `Dirent` is
+ * enough here and no `stat` is made: `orders.md` inside `tables/billing/` is a
+ * claim to be the table `orders` whether it is a file, a link, or a directory,
+ * and it is not going to be read either way. ADR 0054.
+ *
+ * It stops at the first one, so the usual cost is one `readdir`, and a
+ * `node_modules` somebody has put in `tables/` costs the two or three it takes
+ * to reach the first `README.md` rather than a walk of the whole tree. That is
+ * also why the message names one file rather than counting them: counting means
+ * finishing the walk, and one real path a person can open is the evidence they
+ * need.
+ *
+ * Entries are sorted, so the file the message names is the same on every
+ * platform and in every run. Files are looked at before subdirectories at each
+ * level, because the shallowest claim is the one a person will recognise.
+ */
+async function firstMarkdownUnder(dir: string, depth = SEARCH_DEPTH): Promise<string | undefined> {
+  let entries
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    // Unreadable, or a link to something that is not a directory after all.
+    // Nothing is diagnosed: this directory is not part of the model and the
+    // caller's question was only whether anything under it claimed to be.
+    return undefined
+  }
+
+  const listing = [...entries]
+    .filter((entry) => !entry.name.startsWith('.'))
+    .sort((a, b) => byText(a.name, b.name))
+
+  const claim = listing.find((entry) => entry.name.endsWith('.md'))
+  if (claim !== undefined) return claim.name
+  if (depth <= 1) return undefined
+
+  for (const entry of listing) {
+    if (entry.isFile()) continue
+    const found = await firstMarkdownUnder(join(dir, entry.name), depth - 1)
+    if (found !== undefined) return `${entry.name}/${found}`
+  }
+  return undefined
 }
 
 async function readText(
