@@ -123,3 +123,40 @@ for dbmd-41, an `import/` code naming the table the catalogue supplied.
   writer for everybody: it is that a name a checkout cannot hold is a portability
   problem the model should be told about, which is a `dbmd check` rule and not a
   write-time refusal.
+
+## Amended by dbmd-56, once nobody else was in `src/studio/`
+
+Appended rather than edited, because the deferral above was a fact about the day
+this was written and reads as one. Nothing here reverses a decision: this is the
+change the record above asked for, made.
+
+**`isSafeSegment` now asks `isFileName` and adds its two refusals to the
+answer.** `src/studio/safe-path.ts` no longer carries a character class, an
+empty-string test or a length of its own. It is three lines: the writer's rule,
+then a trailing dot or space, then a Windows device name. The two extra refusals
+kept their comments and gained the sentence that says which of the two they are,
+because a reader who cannot tell suspicion from measurement is a reader who
+deletes the wrong one.
+
+**The length gap was the live consequence and it is gone.** Measured on this
+branch against a real studio: before, `POST /api/table` with a 230-character
+name answered `201 Created` and wrote no file, and the table was absent from the
+next `GET /api/model`. The page was told the table existed and the disk never
+heard of it. After, the same request answers `400 unsafe-name` with the studio's
+own sentence.
+
+**The gap was wider than length.** `<`, `>`, `"`, `|`, `?` and `*` were the
+studio's blind spot too: it refused `:`, `/`, `\` and control characters and
+stopped there, so `orders<draft` was accepted over HTTP and skipped by the
+writer exactly as the long name was. That was not in the item and was not
+guessed at either; it fell out of asserting `isFileName` and `isSafeSegment`
+against the same list.
+
+**What did not change.** `isFileName` is untouched, so `dbmd import` refuses the
+same names it refused yesterday and still turns the writer's skip into
+`import/unsafe-name`. `Ledger [Entry]` is still created by the studio and still
+written, checked against a running server rather than reasoned about. And the
+two extra refusals are still the studio's alone: `nul`, `con`, `com1`,
+`orders.` and `orders ` are names the writer writes and the boundary will not
+take from a page, which is the asymmetry the record above argued for and a test
+now pins from both sides.

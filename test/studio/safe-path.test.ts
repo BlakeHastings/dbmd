@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isAbsolute, join, sep } from 'node:path'
 import { isSafeSegment, resolveWithin } from '../../src/studio/safe-path.js'
+import { isFileName } from '../../src/model/paths.js'
 
 /**
  * The studio writes files a web page asked it to write, so these are the two
@@ -46,6 +47,68 @@ describe('isSafeSegment', () => {
   it('refuses a name carrying a control character', () => {
     expect(isSafeSegment(`orders${String.fromCharCode(0)}.md`)).toBe(false)
     expect(isSafeSegment(`orders${String.fromCharCode(10)}`)).toBe(false)
+  })
+})
+
+/**
+ * One rule, spelled once. `isSafeSegment` asks `isFileName` and then adds two
+ * refusals of its own, so these tests are about the seam rather than about
+ * either half: whatever the writer refuses the boundary refuses too, and the
+ * only names they disagree about are the two the studio is suspicious of.
+ * ADR 0026.
+ */
+describe('isSafeSegment against the rule the writer uses', () => {
+  it('refuses everything `isFileName` refuses, because that is who it asks', () => {
+    for (const name of [
+      '',
+      '.',
+      '..',
+      'a/b',
+      'a\\b',
+      'stream:name',
+      'a<b',
+      'a>b',
+      'a"b',
+      'a|b',
+      'a?b',
+      'a*b',
+      `a${String.fromCharCode(0)}b`,
+      `a${String.fromCharCode(31)}b`,
+    ]) {
+      expect(isFileName(name), name).toBe(false)
+      expect(isSafeSegment(name), name).toBe(false)
+    }
+  })
+
+  it('agrees with the writer about how long a name may be', () => {
+    // This is the one that was live. The studio allowed 255 characters while
+    // the writer stopped at 210, so a 230-character table name was accepted
+    // over HTTP and then silently skipped when the write came round.
+    const longest = 'a'.repeat(210)
+    expect(isFileName(longest)).toBe(true)
+    expect(isSafeSegment(longest)).toBe(true)
+
+    for (const length of [211, 230, 255, 256]) {
+      const name = 'a'.repeat(length)
+      expect(isFileName(name), `${length}`).toBe(false)
+      expect(isSafeSegment(name), `${length}`).toBe(false)
+    }
+  })
+
+  it('adds two refusals of its own, and only two', () => {
+    // The writer writes every one of these, and a directory may hold them. The
+    // studio will not take one from a web page. Both halves are the point.
+    for (const name of ['orders.', 'orders ', 'nul', 'NUL.md', 'con', 'lpt1', 'aux', 'com1']) {
+      expect(isFileName(name), name).toBe(true)
+      expect(isSafeSegment(name), name).toBe(false)
+    }
+
+    // And nothing else: a name the writer accepts that is neither of those is
+    // accepted here, so the boundary has not quietly grown a third suspicion.
+    for (const name of ['orders', 'v2.orders', 'naïve', 'Ledger [Entry]', 'nullable', 'aux2']) {
+      expect(isFileName(name), name).toBe(true)
+      expect(isSafeSegment(name), name).toBe(true)
+    }
   })
 })
 
