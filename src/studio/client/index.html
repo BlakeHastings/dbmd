@@ -428,6 +428,24 @@
       #diagnostics code {
         font-family: ui-monospace, monospace;
       }
+      /* An edit this session dropped rather than write over a change on disk.
+         Above the diagnostics and boxed, because it is the one thing in the
+         footer that says something did not happen, and it stands until the
+         developer makes the edit again (ADR 0019). */
+      #conflicts {
+        list-style: none;
+        margin: 0 0 6px;
+        padding: 6px 8px;
+        max-height: 6rem;
+        overflow: auto;
+        border: 1px solid var(--bad);
+        border-radius: 5px;
+        color: var(--bad);
+        line-height: 1.4;
+      }
+      #conflicts code {
+        font-family: ui-monospace, monospace;
+      }
     </style>
   </head>
   <body>
@@ -447,6 +465,11 @@
     </main>
     <aside id="inspector" hidden></aside>
     <footer>
+      <ul
+        id="conflicts"
+        hidden
+        aria-label="Edits dropped rather than written over a change on disk"
+      ></ul>
       <ul id="diagnostics" hidden></ul>
       <p class="line">
         <span id="status-text">Loading the model.</span>

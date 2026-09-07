@@ -3,8 +3,10 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readModel } from '../../src/model/read.js'
+import { validate } from '../../src/model/validate.js'
+import type { Column } from '../../src/model/types.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
-import type { WireConflict } from '../../src/studio/wire.js'
+import { REVISION_HEADER, type WireConflict } from '../../src/studio/wire.js'
 import { exampleShop, withCopy } from '../model/fixtures.js'
 
 /**
@@ -74,17 +76,54 @@ async function status(studio: Studio): Promise<Status> {
   return (await get(studio, '/api/model')) as unknown as Status
 }
 
+/**
+ * Patch as the page does: read the model, then send an edit naming what it read.
+ *
+ * The read is not ceremony. ADR 0025 makes the revision the whole of what tells
+ * an edit made against the files from one made against a version they have
+ * moved on from, so a test that hard-coded a number would be testing a client
+ * nobody wrote. `stalePatch` is the other half, for the page that did not.
+ */
 async function patch(
   studio: Studio,
   name: string,
   body: unknown,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
+  return stalePatch(studio, name, body, (await status(studio)).revision)
+}
+
+async function stalePatch(
+  studio: Studio,
+  name: string,
+  body: unknown,
+  revision: number,
+): Promise<{ status: number; body: Record<string, unknown> }> {
   const response = await fetch(new URL(`/api/table/${name}`, studio.url), {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(revision) },
     body: JSON.stringify(body),
   })
   return { status: response.status, body: (await response.json()) as Record<string, unknown> }
+}
+
+async function remove(
+  studio: Studio,
+  name: string,
+  revision: number,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const response = await fetch(new URL(`/api/table/${name}`, studio.url), {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(revision) },
+  })
+  return { status: response.status, body: (await response.json()) as Record<string, unknown> }
+}
+
+async function flush(studio: Studio): Promise<Status> {
+  const response = await fetch(new URL('/api/flush', studio.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+  })
+  return (await response.json()) as Status
 }
 
 /** The debounce is real time, so a test that edits has to let it elapse. */
@@ -485,12 +524,11 @@ describe('deleting a table somebody is editing', () => {
     // different question.
     await withStudio(
       async (running) => {
+        const before = await status(running.studio)
         await editByHand(running.dir, 'tables/shipments.md', addColumn)
-        const response = await fetch(new URL('/api/table/shipments', running.studio.url), {
-          method: 'DELETE',
-        })
+        const response = await remove(running.studio, 'shipments', before.revision)
         expect(response.status).toBe(409)
-        expect(((await response.json()) as { code: string }).code).toBe('conflicted')
+        expect(response.body['code']).toBe('conflicted')
         expect(await columnNames(running.dir, 'shipments')).toContain('hand_edited_note')
       },
       { watch: false },
@@ -603,5 +641,411 @@ describe('git checkout, which ADR 0004 says is the undo', () => {
       },
       { watch: false },
     )
+  })
+
+  it('survives the next inspector edit, which used to write the discarded version back', async () => {
+    // The hunting pass watched a checkout be reverted by the next edit made in
+    // the panel, which is worse than the drag case: a `columns` patch carries
+    // the whole list, so the discarded version comes back in full.
+    await withStudio(async (running) => {
+      const committed = await readFile(join(running.dir, 'tables', 'customers.md'), 'utf8')
+      const drawn = await status(running.studio)
+      const held = (await get(running.studio, '/api/model')) as unknown as {
+        model: { tables: { name: string; columns: unknown[] }[] }
+      }
+      const columns = held.model.tables.find((table) => table.name === 'customers')?.columns ?? []
+
+      // An edit lands, and then the developer throws it away with git.
+      await patch(running.studio, 'customers', {
+        columns: [...columns, { name: 'scratch', type: 'text' }],
+      })
+      await settle(running.studio)
+      expect(await columnNames(running.dir, 'customers')).toContain('scratch')
+      await writeFile(join(running.dir, 'tables', 'customers.md'), committed, 'utf8')
+      await until(
+        async () => ((await status(running.studio)).revision > drawn.revision ? true : undefined),
+        'the watcher to notice a checkout',
+      )
+
+      // The panel still holds the column list it was built from, and sends it.
+      const response = await stalePatch(
+        running.studio,
+        'customers',
+        { columns: [...columns, { name: 'scratch', type: 'text' }] },
+        drawn.revision,
+      )
+      expect(response.status).toBe(409)
+      await settle(running.studio)
+      expect(await readFile(join(running.dir, 'tables', 'customers.md'), 'utf8')).toBe(committed)
+    })
+  })
+})
+
+/**
+ * The other half of the same guard: not the disk moving under a write, but the
+ * caller having been drawn from a model the disk has moved on from.
+ *
+ * ADR 0025. These are written the way dbmd-48 was reproduced, which is the
+ * ordering that matters: the hand edit happens with **nothing pending**, so the
+ * write-time check above correctly allows the write, and the only thing that is
+ * stale is whoever is asking.
+ */
+describe('an edit made against a model the studio has moved on from', () => {
+  it('is refused, so a stale page cannot delete a column it never saw', async () => {
+    await withStudio(async (running) => {
+      // 1. The page loads and holds a model.
+      const held = await status(running.studio)
+      const before = await columnNames(running.dir, 'customers')
+
+      // 2. A person adds a column in their editor, with nothing pending, so the
+      //    studio correctly adopts it.
+      await editByHand(running.dir, 'tables/customers.md', addColumn)
+      await until(
+        async () => ((await status(running.studio)).revision > held.revision ? true : undefined),
+        'the watcher to adopt a hand edit',
+      )
+
+      // 3. The stale page changes a column type, which sends the whole column
+      //    list it still holds. Before ADR 0025 this was a 200 and the column
+      //    was gone.
+      const response = await stalePatch(
+        running.studio,
+        'customers',
+        { columns: [{ name: 'id', type: 'text' }] },
+        held.revision,
+      )
+      expect(response.status).toBe(409)
+      expect(response.body['code']).toBe('stale')
+      await settle(running.studio)
+
+      const after = await columnNames(running.dir, 'customers')
+      expect(after).toContain('hand_edited_note')
+      expect(after).toEqual(['hand_edited_note', ...(before ?? [])])
+      expect(writes(running)).toEqual([])
+    })
+  })
+
+  it('says which revision it was made against and which one this studio is on', async () => {
+    await withStudio(async (running) => {
+      const response = await stalePatch(running.studio, 'orders', { layout: { x: 1, y: 2 } }, 7)
+      expect(response.status).toBe(409)
+      expect(response.body['error']).toContain('revision 7')
+      expect(response.body['error']).toContain('revision 0')
+    })
+  })
+
+  it('refuses a mutation that names no revision at all, in the words to fix it', async () => {
+    // Absent is a refusal rather than a default. A caller that has not said
+    // what it read is a caller this server cannot tell from a stale one, which
+    // is a hole shaped exactly like the defect.
+    await withStudio(async ({ studio }) => {
+      for (const [path, init] of [
+        ['/api/table/orders', { method: 'PATCH', body: '{"layout":{"x":1,"y":1}}' }],
+        ['/api/table', { method: 'POST', body: '{"name":"nope"}' }],
+        ['/api/table/shipments', { method: 'DELETE' }],
+      ] as const) {
+        const response = await fetch(new URL(path, studio.url), {
+          ...init,
+          headers: { 'content-type': 'application/json' },
+        })
+        expect(response.status).toBe(400)
+        const body = (await response.json()) as { code: string; error: string }
+        expect(body.code).toBe('no-revision')
+        expect(body.error).toContain(REVISION_HEADER)
+      }
+    })
+  })
+
+  it('refuses a create and a delete the same way a patch is refused', async () => {
+    // Both go through the same reload path in the page (dbmd-38), so both have
+    // to inherit this rather than each need their own.
+    await withStudio(async (running) => {
+      const held = await status(running.studio)
+      await editByHand(running.dir, 'tables/customers.md', addColumn)
+      await until(
+        async () => ((await status(running.studio)).revision > held.revision ? true : undefined),
+        'the watcher to adopt a hand edit',
+      )
+
+      const created = await fetch(new URL('/api/table', running.studio.url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(held.revision) },
+        body: JSON.stringify({ name: 'roast_days', layout: { x: 1, y: 1 } }),
+      })
+      expect(created.status).toBe(409)
+      expect(((await created.json()) as { code: string }).code).toBe('stale')
+
+      const deleted = await remove(running.studio, 'shipments', held.revision)
+      expect(deleted.status).toBe(409)
+      expect(deleted.body['code']).toBe('stale')
+
+      const read = await readModel(running.dir)
+      expect(read.model.tables.some((table) => table.name === 'roast_days')).toBe(false)
+      expect(read.model.tables.some((table) => table.name === 'shipments')).toBe(true)
+    })
+  })
+
+  it('does not call the session’s own new diagnostic a reason to refuse the next edit', async () => {
+    // dbmd-25 made a blank column name a warning, and `Add column` in the panel
+    // writes exactly that (ADR 0016), so the studio's own write comes back from
+    // the reader carrying a diagnostic the session could not have predicted.
+    // The revision counts the objects and not the diagnostics for this reason:
+    // counting both refused the very next character typed into the column the
+    // developer had just added, and every character after it.
+    await withStudio(async (running) => {
+      const drawn = await status(running.studio)
+      const held = (await get(running.studio, '/api/model')) as unknown as {
+        model: { tables: { name: string; columns: Column[] }[] }
+      }
+      const columns = held.model.tables.find((table) => table.name === 'orders')?.columns ?? []
+
+      // Add column: the whole list, plus one with no name and no type.
+      expect(
+        (
+          await stalePatch(
+            running.studio,
+            'orders',
+            { columns: [...columns, { name: '', type: '' }] },
+            drawn.revision,
+          )
+        ).status,
+      ).toBe(200)
+      await settle(running.studio)
+
+      const after = await status(running.studio)
+      expect(after.revision).toBe(drawn.revision)
+      // The warning is still reported: it is served, it is simply not a reason
+      // to call the page stale.
+      const body = await get(running.studio, '/api/model')
+      const diagnostics = body['diagnostics'] as { severity: string; code: string }[]
+      expect(diagnostics.some((d) => d.code === 'empty-value' && d.severity === 'warning')).toBe(
+        true,
+      )
+
+      // And the next keystrokes into that column land, one after another,
+      // against the revision the page still holds.
+      for (const name of ['g', 'gi', 'gift']) {
+        expect(
+          (
+            await stalePatch(
+              running.studio,
+              'orders',
+              { columns: [...columns, { name, type: 'text' }] },
+              drawn.revision,
+            )
+          ).status,
+        ).toBe(200)
+      }
+      await settle(running.studio)
+      expect(await columnNames(running.dir, 'orders')).toContain('gift')
+      expect((await status(running.studio)).conflicts).toEqual([])
+    })
+  })
+
+  it('lets the edit through once the caller has read the model again', async () => {
+    await withStudio(async (running) => {
+      const held = await status(running.studio)
+      await editByHand(running.dir, 'tables/customers.md', addColumn)
+      await until(
+        async () => ((await status(running.studio)).revision > held.revision ? true : undefined),
+        'the watcher to adopt a hand edit',
+      )
+      const stale = await stalePatch(
+        running.studio,
+        'customers',
+        { layout: { x: 5, y: 6 } },
+        held.revision,
+      )
+      expect(stale.status).toBe(409)
+
+      // Which is what the page does when it is refused: re-read, then edit.
+      expect((await patch(running.studio, 'customers', { layout: { x: 5, y: 6 } })).status).toBe(
+        200,
+      )
+      await settle(running.studio)
+      const read = await readModel(running.dir)
+      expect(read.model.tables.find((t) => t.name === 'customers')?.layout).toEqual({ x: 5, y: 6 })
+      expect(await columnNames(running.dir, 'customers')).toContain('hand_edited_note')
+    })
+  })
+})
+
+/**
+ * dbmd-39, driven in exactly the order `renameTable` in the page issues.
+ *
+ * A rename is a create, a patch per referring table and a delete (ADR 0016),
+ * every one of them naming the revision the confirmation was written against.
+ * It is here rather than in a unit test because the property is about several
+ * requests and a debounce, which is a thing about the server and the clock and
+ * not a thing about a function.
+ */
+describe('a rename while one of the files it must edit changes on disk', () => {
+  interface Rename {
+    /** Every file the rename managed to write, in the order it wrote them. */
+    readonly landed: string[]
+    /** Why it stopped, or null if it ran to the end. */
+    readonly stopped: string | null
+  }
+
+  const retarget = (columns: readonly Column[], from: string, to: string): Column[] =>
+    columns.map((column) =>
+      column.ref === undefined || column.ref.table !== from
+        ? column
+        : { ...column, ref: { table: to, column: column.ref.column } },
+    )
+
+  async function rename(
+    running: Running,
+    from: string,
+    to: string,
+    interrupt: (table: string) => Promise<void>,
+  ): Promise<Rename> {
+    const read = (await get(running.studio, '/api/model')) as unknown as {
+      model: { tables: { name: string; columns: Column[] }[] }
+      revision: number
+    }
+    const base = read.revision
+    const table = read.model.tables.find((held) => held.name === from)
+    if (table === undefined) throw new Error(`no ${from}`)
+    const landed: string[] = []
+
+    /** What `renameTable` does between steps: land it, and stop if anything moved. */
+    const check = async (): Promise<string | null> => {
+      const flushed = await flush(running.studio)
+      if (flushed.revision === base) return null
+      return flushed.conflicts.map((conflict) => conflict.path).join(' and ')
+    }
+
+    const created = await fetch(new URL('/api/table', running.studio.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [REVISION_HEADER]: String(base) },
+      body: JSON.stringify({ name: to, columns: retarget(table.columns, from, to) }),
+    })
+    if (!created.ok) return { landed, stopped: 'the create was refused' }
+    landed.push(`tables/${to}.md`)
+    const afterCreate = await check()
+    if (afterCreate !== null) return { landed, stopped: afterCreate }
+
+    for (const referrer of read.model.tables) {
+      if (!referrer.columns.some((column) => column.ref?.table === from)) continue
+      if (referrer.name === from) continue
+      const response = await stalePatch(
+        running.studio,
+        referrer.name,
+        { columns: retarget(referrer.columns, from, to) },
+        base,
+      )
+      if (response.status !== 200) return { landed, stopped: 'a patch was refused' }
+      await interrupt(referrer.name)
+      const after = await check()
+      if (after !== null) return { landed, stopped: after }
+      landed.push(`tables/${referrer.name}.md`)
+    }
+
+    const deleted = await remove(running.studio, from, base)
+    if (deleted.status !== 200) return { landed, stopped: 'the delete was refused' }
+    landed.push(`deleted tables/${from}.md`)
+    return { landed, stopped: null }
+  }
+
+  it('stops, rather than deleting a table something still points at', async () => {
+    await withStudio(
+      async (running) => {
+        const result = await rename(running, 'customers', 'clients', async (name) => {
+          if (name !== 'addresses') return
+          await editByHand(running.dir, 'tables/addresses.md', addColumn)
+        })
+
+        // It stopped, and it stopped somewhere it can describe.
+        expect(result.stopped).toBe('tables/addresses.md')
+        expect(result.landed).toEqual(['tables/clients.md'])
+
+        const read = await readModel(running.dir)
+        // The two things dbmd-39 said were wrong. `customers.md` is still there,
+        // so nothing points at a table that is not, and the hand edit survived.
+        expect(read.model.tables.map((table) => table.name)).toContain('customers')
+        expect(await columnNames(running.dir, 'addresses')).toContain('hand_edited_note')
+        const dangling = read.model.tables.filter((table) =>
+          table.columns.some((column) => column.ref?.table === 'customers'),
+        )
+        expect(dangling.map((table) => table.name)).toEqual([
+          'addresses',
+          'orders',
+          'subscriptions',
+        ])
+        expect(validate(read.model)).toEqual([])
+      },
+      { debounceMs: 400 },
+    )
+  })
+
+  it('runs to the end when nothing changes underneath it', async () => {
+    await withStudio(
+      async (running) => {
+        const result = await rename(running, 'customers', 'clients', async () => {})
+        expect(result.stopped).toBeNull()
+        expect(result.landed).toEqual([
+          'tables/clients.md',
+          'tables/addresses.md',
+          'tables/orders.md',
+          'tables/subscriptions.md',
+          'deleted tables/customers.md',
+        ])
+        const read = await readModel(running.dir)
+        expect(read.model.tables.map((table) => table.name)).not.toContain('customers')
+        expect(validate(read.model)).toEqual([])
+      },
+      { debounceMs: 400 },
+    )
+  })
+})
+
+describe('POST /api/flush', () => {
+  it('lands what is pending and answers after it, not before', async () => {
+    // The whole reason it exists: a PATCH is answered when the edit is accepted
+    // and the write happens a few hundred milliseconds later, so a client
+    // composing several edits has nothing to read until something makes the
+    // write happen.
+    await withStudio(
+      async (running) => {
+        expect((await patch(running.studio, 'orders', { layout: { x: 7, y: 8 } })).status).toBe(200)
+        expect(writes(running)).toEqual([])
+
+        const flushed = await flush(running.studio)
+        expect(writes(running)).toEqual(['wrote tables/orders.md'])
+        expect(flushed.pendingWrite).toBe(false)
+        expect(flushed.lastWrite?.paths).toEqual(['tables/orders.md'])
+      },
+      { debounceMs: 5_000 },
+    )
+  })
+
+  it('reports a refusal that only came into existence at the write', async () => {
+    await withStudio(
+      async (running) => {
+        await patch(running.studio, 'orders', { layout: { x: 7, y: 8 } })
+        await editByHand(running.dir, 'tables/orders.md', addColumn)
+        const flushed = await flush(running.studio)
+        expect(flushed.conflicts.map((conflict) => conflict.path)).toEqual(['tables/orders.md'])
+      },
+      { debounceMs: 5_000, watch: false },
+    )
+  })
+
+  it('takes a content type, like every other mutation, and no revision', async () => {
+    await withStudio(async ({ studio }) => {
+      const form = await fetch(new URL('/api/flush', studio.url), {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+      })
+      expect(form.status).toBe(415)
+      // No revision, because it carries no edit: everything it writes was
+      // accepted by a request that named one.
+      const plain = await fetch(new URL('/api/flush', studio.url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      })
+      expect(plain.status).toBe(200)
+    })
   })
 })

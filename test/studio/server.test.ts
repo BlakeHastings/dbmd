@@ -4,6 +4,7 @@ import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { readModel } from '../../src/model/read.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
+import { REVISION_HEADER } from '../../src/studio/wire.js'
 import { exampleShop, snapshot, withCopy } from '../model/fixtures.js'
 
 /**
@@ -45,12 +46,25 @@ async function withStudio<T>(
   })
 }
 
+/**
+ * A request, made the way the page makes one.
+ *
+ * A mutation has to name the revision it was made against (ADR 0025), and
+ * reading it here rather than at every call site is what keeps each test about
+ * the thing it is testing. `watch.test.ts` is where the revision itself is the
+ * subject, and it sends the number by hand for that reason.
+ */
 async function call(
   studio: Studio,
   path: string,
   init: RequestInit = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-  const response = await fetch(new URL(path, studio.url), init)
+  const headers: Record<string, string> = { ...(init.headers as Record<string, string>) }
+  if ((init.method ?? 'GET') !== 'GET') {
+    const status = await fetch(new URL('/api/model', studio.url))
+    headers[REVISION_HEADER] = String(((await status.json()) as { revision: number }).revision)
+  }
+  const response = await fetch(new URL(path, studio.url), { ...init, headers })
   return { status: response.status, body: (await response.json()) as Record<string, unknown> }
 }
 

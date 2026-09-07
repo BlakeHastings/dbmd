@@ -40,9 +40,22 @@
  * studio successfully writes that file again. ADR 0019 argues why losing the
  * drag is the right way round.
  *
- * The two halves are separable and are separately testable: the watcher never
- * writes and never refuses, and the refusal never needs the watcher to have
- * fired.
+ * ADR 0025 added the fifth, and it is the half ADR 0019 thought was cosmetic:
+ *
+ * **An edit made against a model this session no longer holds is refused before
+ * it is applied.** The check above compares the disk with the session; this one
+ * compares the session with the caller. They are different questions and the
+ * first cannot answer the second: with nothing pending, `absorb` correctly
+ * adopts a hand edit, so by the time a stale page's `PATCH` arrives the
+ * session's baseline already matches the disk and the write is correctly
+ * allowed. What is stale is the caller. So every mutation names the `revision`
+ * it was made against and is refused when that is not the revision this session
+ * is on, which is a refusal the caller gets on the request rather than at the
+ * flush, and is therefore one a multi-step edit can stop on.
+ *
+ * The three are separable and are separately testable: the watcher never writes
+ * and never refuses, the write-time refusal never needs the watcher to have
+ * fired, and the staleness check needs neither of them.
  */
 
 import { access, rm } from 'node:fs/promises'
@@ -83,6 +96,8 @@ export type EditRefusalCode =
   | 'incomplete'
   /** The file changed on disk since the session read it, so acting on it would lose that change. */
   | 'conflicted'
+  /** The edit names a revision this session has moved on from, so it was made against a model that is gone. */
+  | 'stale'
 
 export interface EditsOptions {
   /** How long an edit waits for the next one before it is written. ADR 0004. */
@@ -117,6 +132,15 @@ export class Edits {
   private adopted: ReadResult
   /** A fingerprint of what is being served, so a re-read that changed nothing is not a change. */
   private print: string
+  /**
+   * The same, of the objects alone, which is what `revision` counts.
+   *
+   * Two strings rather than one because a re-read answers two questions and
+   * they have different answers: "is there anything new to serve", which
+   * diagnostics are part of, and "could an edit made against the old picture
+   * lose something", which they are not. See `fingerprint`.
+   */
+  private shape: string
   /** The files this session has edited and has not written yet. Empty means idle. */
   private edited = new Set<string>()
   /** The files a write is in flight for. Empty except inside `write`. */
@@ -142,6 +166,13 @@ export class Edits {
     this.diagnostics = read.diagnostics
     this.adopted = read
     this.print = fingerprint(read.model, read.diagnostics)
+    this.shape = shapeOf(read.model)
+  }
+
+  /** Take note of what is now being served, after this session changed it itself. */
+  private restate(): void {
+    this.print = fingerprint(this.model, this.diagnostics)
+    this.shape = shapeOf(this.model)
   }
 
   static async open(dir: string, options: EditsOptions = {}): Promise<Edits> {
@@ -190,11 +221,36 @@ export class Edits {
   }
 
   /**
+   * Refuse an edit made against a model this session has moved on from.
+   *
+   * The whole of ADR 0025, and it is three lines because `revision` was already
+   * the right number: it counts the times a re-read found something the session
+   * did not already know, and an edit that names an earlier one is by
+   * construction an edit made against a version of the files that is gone.
+   *
+   * It is deliberately model-wide rather than per file. The page draws one
+   * picture from one read, and a `columns` array it is about to send back was
+   * computed from all of it; narrowing this to the file being written would
+   * pass exactly the case where a rename moved a `ref` into a neighbour.
+   */
+  private requireCurrent(base: number, what: string): void {
+    if (base === this.revision) return
+    throw new EditRefused(
+      409,
+      'stale',
+      `${what} names revision ${base} and this studio is on revision ${this.revision}, so it was made ` +
+        `against a model that is no longer what the files say. Nothing was written. Read /api/model ` +
+        `again and make the edit on top of what it says now`,
+    )
+  }
+
+  /**
    * Apply an edit and schedule the write. Returns the table as it now stands,
    * which is what the client should show even though the file is not written
    * yet: the write is deferred, the edit is not.
    */
-  patchTable(name: string, patch: TablePatch): Table {
+  patchTable(name: string, patch: TablePatch, base: number): Table {
+    this.requireCurrent(base, 'this patch')
     const current = this.table(name)
     if (!current.complete) {
       throw new EditRefused(
@@ -210,7 +266,7 @@ export class Edits {
     // answers "did something happen that I did not ask for", and a client that
     // was told to redraw after every one of its own drags would be told to
     // redraw sixty times a second.
-    this.print = fingerprint(this.model, this.diagnostics)
+    this.restate()
     this.schedule(fileOf(name))
     return next
   }
@@ -219,7 +275,8 @@ export class Edits {
    * Add a table. Written immediately rather than debounced: creating a file is a
    * deliberate act, and a client that just made one wants it in `git status`.
    */
-  async addTable(name: string, patch: TablePatch): Promise<Table> {
+  async addTable(name: string, patch: TablePatch, base: number): Promise<Table> {
+    this.requireCurrent(base, 'this create')
     const target = this.fileFor(name)
     if (this.model.tables.some((table) => table.name === name)) {
       throw new EditRefused(409, 'table-exists', `there is already a table called \`${name}\``)
@@ -249,7 +306,7 @@ export class Edits {
       )
     }
     this.model = { ...this.model, tables: sortByName([...this.model.tables, created]) }
-    this.print = fingerprint(this.model, this.diagnostics)
+    this.restate()
     this.edited.add(fileOf(name))
     await this.flush()
     return created
@@ -260,7 +317,8 @@ export class Edits {
    * this is the only place in the project that does, and it goes through the
    * same containment check as every other path here.
    */
-  async removeTable(name: string): Promise<void> {
+  async removeTable(name: string, base: number): Promise<void> {
+    this.requireCurrent(base, 'this delete')
     this.table(name)
     const target = this.fileFor(name)
     const path = fileOf(name)
@@ -279,12 +337,19 @@ export class Edits {
     // Anything already queued is written first, in order, so a pending edit to
     // this table cannot land after the file is gone and recreate it.
     await this.flush()
+    // And asked again afterwards, because that flush is allowed to discover a
+    // refusal, which moves the revision. A delete is the last step of the
+    // inspector's rename (ADR 0016), and the whole of dbmd-39 is that it ran
+    // anyway after one of the earlier steps had been refused. The caller
+    // pointed at a model; if landing what it had already asked for changed that
+    // model, this is a different delete from the one it asked for.
+    this.requireCurrent(base, 'this delete')
     await this.serialise(async () => {
       this.model = {
         ...this.model,
         tables: this.model.tables.filter((table) => table.name !== name),
       }
-      this.print = fingerprint(this.model, this.diagnostics)
+      this.restate()
       await rm(target, { force: true })
       this.log(`removed ${path}`)
       await this.adopt()
@@ -441,6 +506,13 @@ export class Edits {
     const print = fingerprint(this.model, this.diagnostics)
     if (print === this.print) return
     this.print = print
+    // Something is new to serve. Whether it is new to *edit against* is the
+    // second question, and only that one moves the revision: a change that
+    // leaves every object saying what the session already says cannot make an
+    // edit made against the old picture lose anything.
+    const shape = shapeOf(this.model)
+    if (shape === this.shape) return
+    this.shape = shape
     this.revision += 1
   }
 
@@ -567,14 +639,14 @@ function renderObject(object: CanvasObject): string {
 }
 
 /**
- * A whole model as one string, for "did anything change" and nothing else.
+ * Every object a model holds, as one string: what a stale edit could overwrite.
  *
- * Diagnostics are in it because a file can change in a way that leaves every
- * object identical and still has something new to say: an unknown key is a
- * warning and no object at all, and a page that did not redraw would never show
- * it.
+ * This is what `revision` counts, and the two are the same question asked once.
+ * An edit is stale when the picture it was computed from is no longer what the
+ * files say, and "what the files say" is the objects, because an edit replaces
+ * objects and nothing else.
  */
-function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
+function shapeOf(model: Model): string {
   const objects: readonly CanvasObject[] = [...model.tables, ...model.notes, ...model.groups]
   return JSON.stringify([
     serialiseModelFile(model),
@@ -583,8 +655,28 @@ function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
       `${directoryOfKind(object.kind)}/${object.name}.md`,
       renderObject(object),
     ]),
-    diagnostics,
   ])
+}
+
+/**
+ * A whole model as one string, for "is there anything new to serve".
+ *
+ * Diagnostics are in this one and deliberately not in `shapeOf`, and the split
+ * is the difference between the two questions a re-read answers. A file can
+ * change in a way that leaves every object identical and still has something
+ * new to say: an unknown key is a warning and no object at all, and a page that
+ * did not redraw would never show it. So a diagnostics-only change is adopted
+ * and served.
+ *
+ * It is not a staleness. dbmd-25 made a blank column name a warning, and the
+ * inspector's `Add column` writes exactly that (ADR 0016), so the session's own
+ * write comes back with a diagnostic the session could not have predicted. A
+ * revision that moved for it would refuse the very next character the developer
+ * typed into the column they had just added. Every object still says what the
+ * page has, so there is nothing for a stale edit to lose.
+ */
+function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
+  return JSON.stringify([shapeOf(model), diagnostics])
 }
 
 /** One sentence, in one place, because the status and the refusal have to agree. */

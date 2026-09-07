@@ -201,7 +201,7 @@ export class Canvas {
     this.host.addEventListener('wheel', this.onWheel, { passive: false })
   }
 
-  /** Replace everything on the canvas. dbmd-33's watcher will call this again. */
+  /** Replace everything on the canvas. A live update from disk calls this again. */
   show(tables: readonly Table[], positions: ReadonlyMap<string, Point>): void {
     this.rowSizes.disconnect()
     this.boxes.clear()
@@ -271,6 +271,22 @@ export class Canvas {
     this.selected = table
     this.markSelection()
     this.handlers.onSelect(table)
+  }
+
+  /** What is selected, so a redraw can put the panel back on it. */
+  get selection(): string | null {
+    return this.selected
+  }
+
+  /**
+   * Whether a gesture is in progress.
+   *
+   * Asked by the page before it redraws from a model that arrived from the
+   * server: replacing every box under a pointer that is holding one is the
+   * canvas losing the drag, and the developer would see the box snap back.
+   */
+  get dragging(): boolean {
+    return this.drag !== undefined
   }
 
   /**
