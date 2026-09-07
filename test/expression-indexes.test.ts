@@ -275,4 +275,80 @@ describe('what a hand-author gets wrong', () => {
     // The file lost something, so the writer will not save over it (ADR 0010).
     expect(model.tables[0]?.complete).toBe(false)
   })
+
+  /**
+   * dbmd-2z4. The studio prints a held key as `{ expression: lower(email) }`
+   * and the editable row is directly beneath it, so the line above gets copied.
+   * Quoting it is what YAML makes you do to get those characters into a string,
+   * and the validator used to answer by wrapping the string in another mapping,
+   * which the reader then refused. Both ends of the loop are asserted here so
+   * that neither can come back on its own.
+   */
+  test('the copied mapping spelling is told to lose its quotes, not to wrap again', async () => {
+    const { model } = await withModel({
+      'tables/entry.md': AS_MARKDOWN.replace(
+        'columns: [{ expression: lower(ledger_code) }]',
+        'columns: ["{ expression: lower(other_code) }"]',
+      ),
+    })
+    const message = validate(model)[0]?.message ?? ''
+
+    expect(message).toContain('remove the quotes to index the expression')
+    // The wrapper is the thing that looped, so its absence is the assertion.
+    expect(message).not.toContain('{ expression: { expression:')
+  })
+
+  test('and taking the quotes off is the whole edit', async () => {
+    const { model, diagnostics } = await withModel({
+      'tables/entry.md': AS_MARKDOWN.replace(
+        'columns: [{ expression: lower(ledger_code) }]',
+        'columns: [{ expression: lower(other_code) }]',
+      ),
+    })
+
+    // Doing what the message says leaves nothing to say, which is what the old
+    // message could not manage from the same starting file.
+    expect(diagnostics.map((d) => d.code)).toEqual([])
+    expect(validate(model).map((d) => d.code)).toEqual([])
+  })
+
+  test('a column really called that is still writable, and still validates', async () => {
+    // ADR 0022's other spelling, and the reason nothing above guesses: the file
+    // escapes the collision by quoting the scalar, and this is a legal table.
+    const markdown = `---
+kind: table
+table: oddity
+columns:
+  - name: id
+    type: uuid
+    pk: true
+  - name: "{ expression: lower(email) }"
+    type: text
+indexes:
+  - name: oddity_odd_column_idx
+    columns: ["{ expression: lower(email) }"]
+---
+
+A column whose name is the other spelling.
+`
+    const { model, diagnostics } = await withModel({ 'tables/oddity.md': markdown })
+    const table = model.tables[0]
+    if (table === undefined) throw new Error('the oddity table did not load')
+
+    expect(diagnostics.map((d) => d.code)).toEqual([])
+    expect(validate(model).map((d) => d.code)).toEqual([])
+    expect(indexNamed(table, 'oddity_odd_column_idx').columns).toEqual([
+      '{ expression: lower(email) }',
+    ])
+    // Byte for byte, quotes and all, so the advice above is about a file the
+    // writer can produce rather than one only a person can type.
+    expect(serialiseObject(table)).toBe(markdown)
+  })
+
+  test('and misspelling it still gets the ordinary complaint about the name', async () => {
+    const { model } = await withModel({
+      'tables/entry.md': AS_MARKDOWN.replace('columns: [lower(ledger_code)]', 'columns: [ledgr]'),
+    })
+    expect(validate(model)[0]?.message).toContain('write it as `{ expression: ledgr }`')
+  })
 })
