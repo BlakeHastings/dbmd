@@ -4,14 +4,17 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with two agents in flight and no pull request open.**
+**As of 2026-09-07, with one agent in flight and no pull request open.**
 
 ## Where the work is
 
-One hundred pull requests have merged, all through `merge-pr.mjs`, and the
-provenance audit is clean across every commit on `main`. **64 items closed, 9
-open.** Five of the seven epics are closed. Of what is left, two are dispatched,
-two wait on the owner, and one is an epic nobody has started.
+One hundred and five pull requests have merged, all through `merge-pr.mjs`, and
+the provenance audit is clean across every commit on `main`. **76 items closed, 7
+open.** Five of the eight epics are closed. The seven still open are three epics,
+their two children (**dbmd-45** dispatched, **dbmd-42** the owner's), and two
+small ones nobody is on: **dbmd-h5s**, a path printed with backslashes in one
+export message, and **dbmd-vdh**, an expression index the studio can carry and
+not write.
 
 From a checkout, the tool now does the whole loop, and the first command is new
 as of today:
@@ -53,6 +56,53 @@ before today's work is still open, it has neither the file watcher nor the
 staleness guard and a hand edit made under it can still be lost, so restarting
 it is the safe move either way.
 
+## In flight, and what is actually left
+
+- **dbmd-45**, `on delete` on a `ref`, and where the model-not-migration line
+  sits. It waited all day because it touches the reader, the writer, the
+  validator and the contract seam together, and it says so in its own text.
+
+**dbmd-h5s** and **dbmd-vdh** are small, nobody is on them, and neither collides
+with dbmd-45: one is a missed `slashed()` call in `src/cli/export.ts`, the other
+is a P4 note about the studio's index editor. Everything else open is the
+owner's.
+
+## What is waiting on the owner
+
+- **The three re-import merge rules.** What happens to a table that vanished from
+  the database, a column whose type changed, and a column removed while the prose
+  still names it. Recommendations and costs are on **dbmd-42**; nothing is blocked
+  behind them.
+- **Whether the tool should read prose at all.** The narrow version shipped: a
+  rename now says which sentences it leaves behind. A general check over every
+  body changes what the tool is, and **dbmd-x82** says not to build it without
+  asking.
+- **Publishing to npm.** Asked four times, never answered, and nothing depends on
+  it. The package is publishable and `check:pack` proves it on every run;
+  removing one line is the whole decision, which is why **dbmd-5** stays open.
+- **The beads schema recovery.** One destructive statement, refused by the
+  harness, backup taken. The stopgap has carried every backlog write today.
+
+## What a successor would otherwise have to reconstruct
+
+- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
+  again after every harness restart, alone on the command line.
+- **`bd` needs `--ignore-schema-skew`** on this machine and is not on an agent's
+  PATH. `.git/factory/machine.md` has the story, and a brief has to hand agents
+  the full path.
+- **An agent in a worktree sees committed files and nothing else.** Put the brief
+  in the dispatch message.
+- **Merge on the report, not on a checks listing.** Both merge-timing rules are
+  in `orchestrating.md` with what each one cost. The second was found today and
+  put a reverted commit onto `main`.
+- **Close items when their branch lands**, in the same motion as the merge.
+- **`bd list` sorts the highest priority first, and I read it with `tail`.** For
+  most of 2026-09-07 I reported the backlog as holding nothing but the owner's
+  decisions. It also held **dbmd-45**, a P2 under the P0 epic `dbmd-1`, which
+  sorts to the **top** of the listing where a `tail` never looks. It was not
+  blocked on anything but a file collision. Read the whole list, or grep it, and
+  do not trust a summary of it that was produced by looking at one end.
+
 ## What has been driven, not just tested
 
 The owner asked whether the studio was validated by actually interacting with
@@ -86,36 +136,6 @@ documents that promised them are true again.
 **A note can sit on top of a group’s header**, because notes render in front and
 groups behind. The next person to try dragging a group will find it does not
 move and will file a defect. It is the note. Move it and the drag works.
-
-## What a successor would otherwise have to reconstruct
-
-- **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
-  again after every harness restart, alone on the command line.
-- **`bd` needs `--ignore-schema-skew`** on this machine and is not on an agent's
-  PATH. `.git/factory/machine.md` has the story, and a brief has to hand agents
-  the full path.
-- **An agent in a worktree sees committed files and nothing else.** Put the brief
-  in the dispatch message.
-- **Merge on the report, not on a checks listing.** Both merge-timing rules are
-  in `orchestrating.md` with what each one cost. The second was found today and
-  put a reverted commit onto `main`.
-- **Close items when their branch lands**, in the same motion as the merge.
-- **`bd list` sorts the highest priority first, and I read it with `tail`.** For
-  most of 2026-09-07 I reported the backlog as holding nothing but the owner's
-  decisions. It also held **dbmd-45**, a P2 under the P0 epic `dbmd-1`, which
-  sorts to the **top** of the listing where a `tail` never looks. It was not
-  blocked on anything but a file collision. Read the whole list, or grep it, and
-  do not trust a summary of it that was produced by looking at one end.
-
-
-## In flight, and what is actually left
-
-- **dbmd-45**, `on delete` on a `ref`, and where the model-not-migration line
-  sits. It waited all day because it touches the reader, the writer, the
-  validator and the contract seam together, and it says so in its own text.
-
-**Everything else open is the owner's**: the three re-import decisions, npm
-publication, and the beads schema recovery.
 
 ## What proved out, and is easy to lose
 
@@ -352,11 +372,3 @@ rather than by reading.
   `NO_COLOR`, or with `--no-color`. Colour is not dead code either: `output.ts`
   detects a TTY per stream and `test/cli/output.test.ts` exists to pin the three
   inputs to that one decision, which is the part a pty-less session cannot drive.
-
-
-## What is waiting on the owner
-
-- **Publishing to npm.** Asked three times, never answered, and nothing depends
-  on it. The package is ready; removing one line is the whole decision.
-- **The beads schema recovery.** One destructive statement, refused by the
-  harness, backup taken. The stopgap has carried every backlog write today.
