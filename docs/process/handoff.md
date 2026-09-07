@@ -221,9 +221,22 @@ What is left is neither urgent nor blocking:
   the full path.
 - **An agent in a worktree sees committed files and nothing else.** Put the brief
   in the dispatch message.
-- **Merge on the report, not on a checks listing.** Both merge-timing rules are
-  in `orchestrating.md` with what each one cost. The second was found today and
-  put a reverted commit onto `main`.
+- **The main checkout is read-only.** Edit, `git add` **by name**, commit, push,
+  and nothing else. Every branch switch, rebase, reset, merge and anything with
+  `--force` or `--hard` happens in a throwaway worktree. This is the rule that
+  cost the owner ten files before it existed, and it is a state rather than a
+  judgement because the orchestrator is not the only writer here.
+- **Never junction an agent's `node_modules` to this checkout.** Tell them
+  `npm ci`. The shared copy has been out of date once already and the failure it
+  produces is a TypeScript error in a file the agent never touched.
+- **Wait for checks by the commit, never by the pull request.** Ask the run
+  listing for runs whose `headSha` starts with what you pushed, and treat "no run
+  yet" as keep waiting. For a minute after a force-push the pull request answers
+  about the commit you replaced.
+- **Merge on the report, not on a checks listing**, and hold every merge while
+  anything is rebasing, counting from the moment you ask rather than from
+  anything you can see. One section in `orchestrating.md` with what each of the
+  four breaches cost.
 - **Close items when their branch lands**, in the same motion as the merge.
 - **Never put a pipe between a command and a `&&`.** A pipeline's exit code is
   the last command's, so `cmd | tail -1 && next` runs `next` even when `cmd`
