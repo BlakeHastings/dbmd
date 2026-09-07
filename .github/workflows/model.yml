@@ -1,0 +1,102 @@
+# This repository runs the recipe it publishes. `docs/ci.md` is the copy-paste
+# version for somebody else's repository; this file is those same two jobs
+# pointed at `examples/shop`, and it is here so the recipe cannot quietly go
+# stale the first time a flag changes.
+#
+# It differs from the published recipe in one line each, deliberately: the
+# recipe installs a pinned `dbmd` from npm and this builds the checkout,
+# because `dbmd` is not published yet. ADR 0028 is the argument for that and
+# for the other two decisions below.
+#
+# This is not the merge gate. `check.yml` is, it runs `npm run check`, and it is
+# the only required status check. Red here means the model or the recipe is
+# broken, not the build.
+name: model
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: check the model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # The recipe's whole check job is this line. There is no TTY here, so the
+      # diagnostics arrive uncoloured on stderr and the exit code is the entire
+      # answer: 0, or 1 for an error, or 1 for any diagnostic at all under
+      # --strict. ADR 0020.
+      - name: dbmd check
+        run: node dist/cli.js check examples/shop
+
+      # Not part of the recipe. This is this repository's own proof that the
+      # line above is a gate rather than an ornament: a check nobody has watched
+      # fail is indistinguishable from one with nothing to catch. It breaks a
+      # copy of the model, prints what the failure looks like in a log, and
+      # fails the job unless the exit code is exactly 1.
+      #
+      # It works on a copy in RUNNER_TEMP because `examples/shop` is a real
+      # model people open in the studio, not a fixture to vandalise.
+      - name: the check fails on a model with an error
+        run: |
+          cp -r examples/shop "$RUNNER_TEMP/broken"
+          sed -i 's/ref: products\.id/ref: widgets.id/' "$RUNNER_TEMP/broken/tables/order_items.md"
+          if ! grep -q 'ref: widgets.id' "$RUNNER_TEMP/broken/tables/order_items.md"; then
+            echo "examples/shop moved and this no longer breaks anything" >&2
+            exit 1
+          fi
+
+          set +e
+          node dist/cli.js check "$RUNNER_TEMP/broken"
+          code=$?
+          set -e
+          echo "dbmd check exited $code"
+          if [ "$code" -ne 1 ]; then
+            echo "expected 1 from a model with a ref at a table nobody wrote" >&2
+            exit 1
+          fi
+
+  diagram:
+    name: draw the diagram
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # --stdout, and the redirect lands outside the checkout. Writing into
+      # db-model/README.md here would leave the runner holding a diff nobody
+      # asked for, and the only two ways out of that are a bot that pushes
+      # commits or a job that fails on a dirty tree. The point of an artifact is
+      # that a pull request can carry the current diagram without either.
+      #
+      # The shell creates the file before dbmd runs, so a refused export leaves
+      # a zero-byte file behind. What stops that reaching the artifact is that
+      # the step fails: GitHub runs `run:` under `bash -e`, so nothing after it
+      # in this job happens. Do not add `continue-on-error` or `if: always()` to
+      # either of these two steps; that is the change that turns a failure into
+      # an empty artifact.
+      - name: dbmd export
+        run: node dist/cli.js export --stdout examples/shop > "$RUNNER_TEMP/db-model.md"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-model-diagram
+          path: ${{ runner.temp }}/db-model.md
+          # An upload that finds no files warns and goes green by default. This
+          # is the second belt, and it catches the one failure the step above
+          # cannot: a path that stopped pointing at the file.
+          if-no-files-found: error
