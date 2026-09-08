@@ -1182,3 +1182,126 @@ count, a duplicate-line scan, something mechanical that runs in the gate. This
 repository already checks the README's examples, the format page's error blocks,
 every pinned version and every command name. The one file it keeps specifically
 so that work is not redone was the one thing nothing looked at.
+
+## Two of three false alarms tonight were a pipe cutting the answer in half
+
+This file already records that `| head` and `| tail` mask an exit code, learned
+by reading five CLI error paths as exit 0 when they exit 1 and 2. Tonight the
+same pipe produced two more false alarms in a different disguise, and one of
+them was mine twice over.
+
+**A script checking whether the exported diagram carried every column reported
+all 64 missing from all 8 tables.** The exporter was fine; the script's regexes
+had lost their backslashes to a heredoc.
+
+**Then `dbmd import` appeared to drop a foreign key in silence.** It does not. It
+prints a warning naming the table, the target, the fact that no `ref:` was
+written and what to run instead. The command that read the output was
+`| head -4`, and the warning is the fifth line.
+
+The rule the earlier entry gives is about exit codes, and it is too narrow.
+**When a run is being read for what it says, read all of it.** A truncated
+success and a truncated failure look identical, and the interesting line is
+disproportionately likely to be the one past the cut, because the ordinary lines
+come first and the exceptional one is appended.
+
+**What saved both was the same instinct and it is worth naming.** Every column
+missing from every table is not how software fails. A tool that reports one
+absence in silence while explaining the neighbouring one at length is not how a
+codebase this careful fails either. **The alarming result is the one to distrust
+first**, because it is the one that costs an agent a day, and because a codebase
+with this much reasoning written into it rarely fails in a way that is both
+severe and undocumented.
+
+The third of the three was real, in the same pass: a primary key whose columns
+are not in the export is dropped with no warning, next to a foreign key case that
+warns properly. So the instinct is a prior, not a rule. It tells you what to
+check first, not what to conclude.
+
+## I handed out one decision record number twice, and the rule was already written
+
+This skill says to hand out record numbers "checked against the default branch
+*and* every open PR", and gives the reason: agents taking the next free number
+collide, and a caught collision still costs a rebase.
+
+Both halves failed in one evening, in opposite directions.
+
+**First I told a brief that 0091 was free.** It had been free when I read the
+directory and was taken by a merge while that agent worked. The agent caught it
+on its own, moved to 0092, and checked the default branch and the open pull
+requests before choosing, which is the whole rule done properly by somebody who
+had not been asked to.
+
+**Then I handed 0092 to a second brief.** By then it was claimed on an open
+branch, and I checked neither place. So the number that was corrected by an
+agent was reissued by the orchestrator an hour later.
+
+**The repository already has a gate and it cannot see this.**
+`scripts/check-adr-numbers.mjs` refuses a duplicate on the default branch, which
+is the right thing to gate and catches nothing while both claims are still on
+open branches. That gap is exactly where both of these live.
+
+**So the fix is a command, not a resolution to be careful.** Eight lines: read
+the numbers on the default branch, read every open pull request's added records,
+report a number claimed twice, and print the next three that are genuinely free.
+Run it before writing a brief that hands one out. Run against the state that
+produced this section it prints:
+
+```
+COLLISION: 0092 is claimed by #239 and #238
+free to hand out: 0093, 0094, 0095
+```
+
+**The general shape is the one this file keeps arriving at.** A rule that has to
+be remembered at the moment of writing a brief is a rule that fails when briefs
+are being written quickly, and briefs are written quickly precisely when several
+agents are out, which is exactly when collisions are possible. **The rules that
+survive are the ones somebody turned into something that answers a question.**
+
+Worth saying plainly: the agent that caught my first mistake did it by following
+the instruction I gave it, and my second mistake broke the instruction I was
+giving. The briefs were more careful than the person writing them.
+
+## Six false readings in one session, every one from my own tooling
+
+Two sections above cover two of these. Here is the whole set, because the count
+is the finding: **six times in one night a measurement said the product was
+broken and the measurement was broken instead**, and not once was it the other
+way round.
+
+| what it seemed to say | what was actually wrong |
+| --- | --- |
+| the export drops all 64 columns from all 8 tables | a quoted heredoc halved the backslashes, so every regex escape was gone |
+| `dbmd import` drops a foreign key in silence | `head -4` cut the warning, which is the fifth line |
+| a table is drawn as `a` instead of `a{b}` | the pattern pulling entity names out stopped at the brace |
+| a table is missing from the diagram entirely | the shell had made an NTFS alternate data stream, not a file |
+| the import fix prints no warning at all | the runner returned stdout only, and the warning is on stderr |
+| a counterfactual behaves like the case before it | two fixture directories collided on a truncated name |
+
+**Five of the six are the same failure wearing different clothes: something
+between the command and my eyes dropped part of the answer.** A heredoc, a pipe,
+a regex, a return value, a directory name. The sixth is the environment quietly
+doing something other than what was asked.
+
+Three things follow that are worth more than "be careful".
+
+**A false reading is always the alarming one.** Every entry in that table looked
+like a serious defect. None of them looked like a working tool, because a
+truncated answer reads as an absence and an absence reads as a fault. So the
+prior is not symmetric: **an instrument that reports a problem is more likely to
+be broken than one that reports nothing**, which is the opposite of how it feels.
+
+**The tell was the same every time and it is worth naming.** Software does not
+usually fail totally and silently. All 64 columns missing, a warning entirely
+absent, a table simply not there: these are shapes real defects rarely take,
+especially in a codebase with this much reasoning written into its comments. **A
+result too clean to be a bug is a result to distrust first.**
+
+**And write the tool so it cannot drop things.** Capture both streams, never
+pipe a run being read for what it says, use the Write tool for anything with a
+backslash in it, and give fixtures names that cannot collide. Each of those is a
+line of code. Together they would have saved most of an evening.
+
+Worth keeping in proportion: the same passes that produced these six found
+around thirty real defects. The tooling was wrong six times and useful
+throughout, and the answer is better tooling rather than less of it.

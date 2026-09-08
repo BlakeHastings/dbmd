@@ -2890,3 +2890,310 @@ corrected by whoever fixed the thing and the other was nobody's job.
   evidence and to re-derive the duplication, the loss and the direction from
   scratch. It did, by a sliding 25-line hash scan that found 3600 duplicate
   windows at two offsets, which is a better method than the one the repair used.
+
+- **Two more of the six held diagnostic findings were reproduced, and the
+  contrast is what makes them worth fixing.** Both are about `_model.md`, and
+  both messages are exactly right one directory down.
+
+  `kind-missing` on a `_model.md` with no `kind:` key answers ``no `kind:` key;
+  the directory says this is a model``. The model root says nothing about kinds:
+  the file's name is what makes it the model file. The same message on
+  `tables/orders.md` answers "the directory says this is a table", which is true
+  in every word, and both were run side by side to be sure the difference is the
+  file and not the phrasing.
+
+  `frontmatter-empty` on a file whose frontmatter holds a comment answers "the
+  frontmatter is empty, so the file declares nothing". The second clause is true
+  and the first is not. Both `src/diagnostics.ts` and `docs/format.md` describe
+  the state as delimiters with nothing between them, which is a state this file
+  is not in.
+
+  That makes three of the six reproduced by hand rather than taken from the
+  sweep's report: these two and `kind-mismatch`, whose three false clauses were
+  measured by reading the model's `name` and `engine` back out of the file the
+  message says was not loaded.
+
+- **The `unknown-key` contradiction was reproduced end to end on a group, which
+  is the sharper of its two halves.** A group carrying an unknown key answers
+  ``\`zebra\` means nothing on a group; known keys are color, kind, label,
+  layout``. Following that list and writing `layout` on the group answers "a
+  group has no coordinates: its box is the bounding box of its members plus
+  padding, computed at render time (ADR 0005). This `layout` is ignored".
+
+  So the message names a key, and using the key it names produces a warning
+  saying that key does nothing. **Both runs are two commands apart**, which is
+  what separates this from the table half, where the two contradicting lines
+  appear in a single run three lines from each other.
+
+  The mechanism is one function: `reportUnknown` builds its list of known keys
+  from every key passed to `take()`, and a group's `layout` is taken in order to
+  be refused. `reject()` exists for exactly that and its own comment says so.
+  Four of the six held findings are now reproduced by hand.
+
+- **The import paths driven on 2026-09-08 all read correctly, with one soft spot
+  that is not a defect.** An introspection carrying no tables imports, writes
+  `_model.md` alone, and `dbmd check` then says `0 tables, 0 notes, 0 groups, no
+  problems` and exits 0. A re-import of the same file says `db-model already says
+  what this postgres import says: 0 tables, nothing to change`. A file claiming
+  `dbmdIntrospection` 99 is refused with both remedies named, upgrade or re-run
+  the query this build prints, and closes with `future.json was not imported, and
+  f was left alone`.
+
+  **The soft spot is the closing line of a zero-table import**, which says "Every
+  table body says nobody has documented it yet. That line is the prompt." Over no
+  tables that is vacuously true and reads as though there is something to go and
+  replace. It is not filed as a defect, because no clause of it is false.
+
+  What is worth thinking about is what the command does not say. **A zero-table
+  import is more likely a mistake than an empty database**: the wrong database,
+  a search path that excludes everything, or a role that cannot see the catalog.
+  The tool already knows that shape of error, because the re-import delta says
+  "A table nobody dropped on this list usually means an import over fewer schemas
+  than the last one." The first import says nothing of the kind at the one moment
+  a reader most likely wants it. That is a sentence the command could gain, not a
+  sentence it gets wrong, so it is the owner's call rather than a defect to
+  dispatch.
+
+- **Every sentence the studio page can show was enumerated, driven and read
+  against the state that produced it.** Roughly ninety of them across the status
+  line, the footer lists, the canvas and the inspector. **Fifteen are suspect**
+  and the rest hold, including all seven promises the canvas makes to a screen
+  reader about Tab, the arrow keys, Home, End and Enter, and every "Writes
+  tables/X.md with ..." sentence checked against the file that appeared.
+
+  **The three that would cost a person something:**
+
+  - **A healthy table file is told it did not parse, with advice to delete it.**
+    On Windows, naming a new table `Orders` while `orders` exists offers the
+    case-clash confirmation it was designed for, and pressing it answers
+    ``Could not create Orders: `tables/Orders.md` is already a file, and it is
+    not in the model, which means it did not parse. Fix or delete it rather than
+    writing over it``. It is one file, it is in the model as `orders`, it parses,
+    and the page is drawing its box at that moment. `addObject` checks the model
+    case-sensitively and misses, then checks the disk case-insensitively and
+    hits, and the second check's message assumes the first ruled that out. The
+    rename path says it too.
+  - **A rename that stops half way under-reports what it wrote, and its undo
+    instruction errors out.** Measured on a rename with two referrers: the page
+    listed two files written, the server log listed three, and `git status`
+    agreed with the server. `await check()` runs before `landed.push(...)`, so
+    the write that triggers the detection is on disk and absent from the list.
+    Then `git checkout` on the message's own list exits 1, because the first file
+    in it is untracked and git refuses the whole pathspec, so even the files it
+    could have restored were left modified. ADR 0074 settled this exact point for
+    the create sentence and the successful rename honours it.
+  - **"Clearing whatever the system is refusing is enough" is not enough.**
+    Followed literally: the attribute was cleared and six seconds later the file
+    still held its pre-drag coordinates and the failure was still on screen. The
+    catch puts the files back in the edited set and never re-arms the timer, so
+    nothing flushes until the developer makes an unrelated edit. Then both landed
+    at once. "Nothing is lost yet" is true and the "yet" is load-bearing.
+
+  **The rest, in one line each.** The refusal sentence says "The page is
+  re-reading the model" in the one case where it deliberately is not, back to
+  back with a true sentence saying it will catch up later. "The diagnostics below
+  say what the reader saw" stands after the list has emptied. Fit says "11 of the
+  11 objects are on screen and the rest are past the edges" when there is no
+  rest, because `clamped` asks whether the scale was capped rather than whether
+  anything is off screen. The placement mode lasts indefinitely and the sentence
+  explaining it lasts under two seconds. The conflicts list's accessible name is
+  the phrasing that was already fixed above it. An edge still says a table "did
+  not parse" about a file that is merely locked, which is the fourth surface that
+  defect has been found on. The group placement paragraph keeps naming
+  `new-group` after the name field has changed. The rename's case-clash warning
+  cannot fire for the one rename that needs it, because the only clashing name is
+  filtered out as the table's own. A last-member warning describes a group file
+  that does not exist, down to keeping a label and prose it does not have. The
+  same warning is missing when you join a group and delete in the same panel
+  visit, which is the natural order. And "Fix the file and reload" asks for a
+  reload the watcher makes unnecessary, verified by fixing the file and touching
+  nothing.
+
+- **The partial write ADR 0087 pinned was measured in a browser, which is what
+  its revisit list asked for.** Dragging a two-member group with the second file
+  read-only: the first file landed on disk and **nothing on the page names it**.
+  The status line shows only the refusal, because `lastWrite` stays null and the
+  write-error branch wins over everything below it. On the next edit the studio
+  reports a conflict against that same file, saying it changed on disk after the
+  studio read it. Nobody changed it. The studio wrote it, thirty seconds earlier,
+  in the drag the message is about.
+
+- **`dbmd import` drops a primary key it cannot match and says nothing, while the
+  matching foreign-key case warns.** A payload whose `primary_key` names a column
+  that is not in that table's `columns` imports cleanly, exit 0, with no warning
+  at all. The written file carries no `pk:` on anything, and `dbmd check` then
+  says ``orders` has no primary key; put `pk: true` on the column or columns that
+  identify one row`, which sends the reader to add a key the database already
+  says it has.
+
+  Confirmed by reading. `columnOf` sets `pk: true` when the key list includes the
+  column's name and does nothing otherwise, so a key naming a column that is not
+  there marks nothing and reports nothing. **The analogous case one function up
+  is handled well**: `refsOf` warns `` `public.orders` has a foreign key to
+  `other.customers`, which this file does not contain, so no `ref:` was written
+  for it; re-run the query over the whole database if that table belongs in the
+  model``. Two shapes of the same problem, one silent and one explained.
+
+  `import/mismatched-columns` exists and is raised only for a foreign key whose
+  two column lists differ in length, so the intent to catch shape mismatches is
+  there and this one is outside it. A payload from `dbmd query` cannot produce
+  this, since the query builds both lists from the catalogue, but the whole of
+  `src/import/contract.ts` exists because the file is one a person saved and may
+  have mangled.
+
+- **The foreign-key half of that was a false alarm of my own making, and it is
+  the third instrument failure of the session.** The first run showed exit 0 and
+  no warning, so it looked identical to the primary-key case. The warning was
+  there and my own command had cut it: `head -4` on the output of a run whose
+  interesting line was the fifth. **Two of tonight's three false alarms were a
+  pipe truncating what I was reading**, which is the same failure this file
+  already records under `| head` masking an exit code, in a different disguise.
+  The rule that would have caught both: **when a run is being read for what it
+  says, read all of it.**
+
+- **The gate timed at 81 and 89 seconds, and that is the machine rather than the
+  gate.** This file and the handoff quote 58 to 63 seconds, measured on three
+  consecutive runs earlier the same day. The difference is five agents running,
+  each holding a build or a test suite. **The stage added since then costs under
+  a second**: `check:duplication` over 158 markdown files times at 0 seconds on
+  its own.
+
+  Recorded because a successor who measures 85 and compares it to the 58 written
+  down will look for a regression that is not there. **The honest form of a
+  timing is the load it was taken under**, and neither number is wrong.
+
+- **The model diagnostic sweep is closed: all 35 codes driven, 9 suspect, 9
+  fixed.** Three landed as #231, six as #236, and the count is not derived: 34
+  were triggered through `dbmd check` and the thirty-fifth is unreachable there
+  by design, which both `src/diagnostics.ts` and `docs/format.md` already said.
+
+  Confirmed live on `main` after the second merge:
+
+  ```
+  _model.md
+    2  error  `kind: table` in `_model.md`; the file name decides what this file is,
+              so write `kind: model`, and the `name:` and `engine:` are read either way
+  ```
+
+  which is the message whose three clauses were each false, replaced by one that
+  states the fact the old one had backwards.
+
+  **What the sweep cost and what it bought.** One read-only agent to enumerate,
+  two implementation agents to fix, and about a dozen reproductions by hand in
+  between. What it bought is not nine better sentences: it is that the nine were
+  found by construction rather than by somebody happening to be in the wrong
+  state at the right moment. Four of the nine had survived every previous pass
+  over this code, including a full sweep of every decision record's revisit list.
+
+- **The studio's HTTP refusal surface was driven end to end and every refusal
+  holds.** Twelve requests against a scratch studio, each reading the status, the
+  code and the message:
+
+  | request | answer |
+  | --- | --- |
+  | a form post, which is the cross-site shape | 415 `unsupported-media-type` |
+  | a plain text post | 415 `unsupported-media-type` |
+  | JSON with no revision header | 400 `no-revision` |
+  | a revision that is not a number | 400 `no-revision`, quoting what it got |
+  | a revision from the future | 409 `stale`, naming both revisions |
+  | a body that is not JSON | 400 `bad-request`, quoting the parse error |
+  | a body that is a JSON array | 400 `bad-request`, "must be an object" |
+  | an endpoint nobody serves | 404 `unknown-endpoint`, naming the path |
+  | the wrong method on a real route | 405 `method-not-allowed`, naming what it takes |
+  | a path climbing out of the served tree | 404 `not-found`, the path normalised first |
+  | a `PATCH` at a table that is not there | 404 `unknown-table` |
+
+  **The comment in `src/studio/server.ts` claiming the content-type check is
+  "the one that is security (a form post is refused before anything else is
+  asked)" is true**, and it was driven rather than read: a form-encoded post is
+  refused at 415 without the revision or the body being looked at. The traversal
+  attempt is normalised and answered as a missing file rather than served.
+
+  Every refusal carries its own code, so a caller can branch on all eleven, and
+  none of them reaches the generic one. This is the surface a local server is
+  most likely to be careless on and it is not.
+
+- **Every table name a filesystem accepts is drawn correctly, and the ones it
+  does not are refused at import with a message that says what to do.** ADR 0023
+  says the character set the diagram allows is deliberately narrower than what
+  was measured to work, and that "a rendered blank box is reported" is the only
+  evidence that design can produce. So it was driven instead of waited for.
+
+  Eight names that a real database can hold, each written as a table and then
+  exported: a space, a hyphen, an accent, a curly brace pair, Cyrillic, Han, an
+  emoji and an eighty-character name. **All eight reach the diagram with the name
+  intact**, quoted, and `dbmd check` reports no problem for any of them.
+
+  Two of the ten tried never became files, and both are Windows rather than
+  dbmd. A double quote is refused outright. **A colon is worse than refused: NTFS
+  reads `a:b.md` as an alternate data stream on a file called `a`, so the write
+  succeeds, a zero-length `a` appears, and the reader cannot see it.** Which is
+  the realistic path, and it is handled at the boundary that matters:
+
+  ```
+  error $.tables[0].name [import/unsafe-name] the table `a:b` has no file it can be
+  written to, because no filesystem accepts that name and a checkout could not hold
+  it; rename it in the database or leave it out of the query
+
+  dbmd: 1 error, so db-model is missing a table.
+  Empty it and import again once the export is one this can be written from.
+  ```
+
+  Exit 1, and the one table that could be written was not left behind: `ls`
+  showed `orders.md` alone. So the diagram's narrow set is never reached by a
+  name the import would refuse.
+
+  **Two apparent findings in that pass were my own instruments**, which makes
+  four for the session. A table named `a{b}` looked like it was drawn as `"a"`,
+  because the pattern I was extracting entity names with stopped at the brace;
+  the diagram says `"a{b}"`. And the colon name looked like a table missing from
+  the diagram, because the file the shell had created was the alternate data
+  stream above rather than anything dbmd had seen.
+
+- **The studio page sweep is accounted for end to end: fifteen suspects, plus two
+  smaller notes, and every one is placed.** Not "mostly fixed", which is what a
+  sweep decays into when nobody writes the list down at the end.
+
+  | | |
+  | --- | --- |
+  | landed in #237 | the group placement paragraph naming a stale suggestion; the rename case clash that could not fire for the rename that needs it; a last-member warning describing a group file that is not there; the same warning missing after a join; "Fix the file and reload" |
+  | landed in #238 | "clearing whatever the system is refusing is enough", which was not; a healthy file told it did not parse, with advice to delete it; a stopped rename under-reporting what it wrote, with an undo that exited 1 |
+  | landed in #240 | Fit saying nothing fitted while everything was on screen; the placement mode outliving its explanation; the conflicts list announced by the wording fixed above it; an edge blaming a parse failure for a locked file; "Could not read the model" overwritten one statement later |
+  | dispatched last | "The page is re-reading the model" when it is not; "The diagnostics below say what the reader saw" after they have gone; a conflict entry whose "just now" ages and whose path is printed twice |
+  | **held on purpose** | the sentence saying a group move writes table files and not the group file, which is on screen for 13 milliseconds |
+
+  **The held one is held because it is taste, not truth.** Every clause of it is
+  true, and fixing it means deciding how long a status line holds, which is a
+  judgement about the interface rather than about a false sentence. It is the
+  only place the interface says out loud that a group has no coordinates, which
+  is why it is recorded rather than dropped.
+
+- **Both import losses are confirmed live on `main`.** Two tables differing only
+  in case: exit 1, one file written, and `ls` agrees with the report. A primary
+  key at a column the export does not list: the warning fires and no `pk:` is
+  written. A composite key with one column exported and one not: the warning
+  fires **and** the half that is there still gets `pk: true`, which is the case
+  neither the brief nor the report listed and which I drove because a partial
+  key is the shape a real database most easily produces.
+
+  All three counterfactuals hold on `main` too: two names differing by more than
+  case both import with their keys, a key naming a real column still writes
+  `pk: true`, and two schemas holding one table name still print the older
+  collision message unchanged.
+
+- **"A clean rebase is not the same as untouched", and the branch that said it
+  acted on it.** #240 rebased onto a `main` carrying #238, git raised no
+  conflict, and it went and read what #238 had changed in the three functions its
+  own work calls. `conflictSummary` unchanged, which is the one that mattered
+  because its new list name and its ADR 0019 amendment both rest on what that
+  function says about a mixed list. `writeFailureNotice` and `RenameStopped`
+  reworded, both called rather than quoted, so neither moved under it. And #238's
+  retry is server-side, which is why `main.ts` is absent from that diff at all.
+
+  Three specific facts about somebody else's change, each chosen because its own
+  work depends on it. **A green suite would not have told it any of them**, and a
+  clean merge is the moment the question stops being asked.
+
+  It then re-drove all five findings for the third time, on a rebase that turned
+  out to have changed nothing, and got identical numbers. That is what makes the
+  first two drives worth anything.

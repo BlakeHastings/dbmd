@@ -4,7 +4,7 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-08, late, with four agents out, two pull requests open and every
+**As of 2026-09-08, late, with five agents out, two pull requests open and every
 epic closed.**
 
 ## Where the work is
@@ -17,11 +17,11 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 226 |
-| decision records | 86 |
-| tests | 1309 passing, 1 skipped, across 46 files |
+| merged pull requests | 235 |
+| decision records | 89 |
+| tests | 1389 passing, 1 skipped, across 47 files |
 | backlog | 123 closed, 3 open, and it still cannot be written to |
-| the gate | 58, 58 and 60 seconds, timed three times on 2026-09-08 |
+| the gate | 58 to 60 seconds idle, 81 to 89 with five agents running. Both measured |
 
 **Three items are open and only two are the owner's.** An earlier version of this
 paragraph said all three were. It was wrong within an hour of being written,
@@ -50,6 +50,52 @@ are listed below.
 
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
+
+## In flight right now, which is five agents and one held branch
+
+**Written at the point of most confusion rather than at a calm moment**, because
+the calm version of this file was wrong about its largest claim within an hour
+and that is the failure this document keeps a section about.
+
+**Three agents are out and none has a tracker item**, because `bd` still cannot
+run. Each brief is the whole issue and each pull request body carries it. Of the
+seven dispatched today, four have landed: #235, #236, #237 and the last-resort
+test.
+
+| branch | what it is |
+| --- | --- |
+| `studio/three-sentences-that-cost-somebody-something` | #238, the three studio findings that cost a person something |
+| `studio/a-fit-that-fitted-and-said-it-had-not` | the five canvas and status line findings |
+| `import/two-tables-that-became-one` | two tables differing only in case become one, and a primary key dropped in silence |
+
+**Landed today**: #235 the duplication guard, #236 the six diagnostic messages,
+#237 the five inspector findings, and the test that keeps the last-resort error
+code unreachable. **The model diagnostic sweep is closed**: 35 codes driven, 9
+suspect, 9 fixed across #231 and #236.
+
+**#234 is mine and is held**, carrying the studio sweep's full record.
+
+**Three studio findings are not dispatched and are blocked on one file.**
+`src/studio/client/write.ts` is held by the first studio branch, and these three
+live in it: the refusal that says "The page is re-reading the model" in the one
+case where it deliberately is not; "The diagnostics below say what the reader
+saw" standing after the list has emptied; and a conflict entry whose "just now"
+ages, in a list that renders the path twice. Dispatch them when that branch
+lands.
+
+**Five is the ceiling on this machine, and memory is what sets it.** Measured
+with five agents running: CPU at 36 per cent, 40 node processes, and **6.7 GB
+free of 31.9 GB**. Each agent runs `npm ci`, a build and the full suite, so the
+next one costs a gigabyte or two rather than a core. A sixth was not dispatched
+for that reason and the read-only sweep it would have run, the seventeen
+`import/` diagnostic codes, is the obvious next enumeration when a slot frees.
+**Check before dispatching rather than counting agents**: the number that
+matters is free memory, not how many are out.
+
+**What to do if you are picking this up cold.** Read the pull request bodies
+before the briefs: every one of these was measured, and the measurements are in
+the bodies rather than here. Then `gh pr list --state open`, because this table
+is a snapshot and the repository is not.
 
 ## In flight, and what is actually left
 
@@ -502,6 +548,20 @@ instead, and `dbmd import` names a temporary file that no longer exists. That is
 a decision that was made and then not carried to the surfaces it was about, which
 is a different failure from a decision nobody made.
 
+## Six diagnostic messages are dispatched, and four were reproduced first
+
+**All six are now out** on `model/six-sentences-and-the-states-that-make-them-false`,
+and the three that were with an agent landed as #231. Four of the six were
+reproduced by hand before the brief was written rather than taken from the
+sweep's report: `kind-mismatch`'s three false clauses, `kind-missing` run side
+by side with the same message one directory down where every word of it is true,
+and both halves of the `unknown-key` contradiction, the group half followed end
+to end by writing the key the message calls known and reading what comes back.
+
+The section below is the queue as it stood, kept because it carries the evidence
+and the mechanisms, and a successor who needs to re-dispatch any of them should
+read it rather than re-run the sweep.
+
 ## Six diagnostic messages are queued and the queue is the point
 
 **A sweep triggered all 35 model diagnostic codes and read each message against
@@ -546,6 +606,40 @@ it is import-only.
 
 **Eighteen remedies were followed literally and every one cleared its
 diagnostic**, which is the half of that sweep worth as much as the suspects.
+
+## Twelve studio sentences, with the states that make them false
+
+**Three of the fifteen are out with an agent and are not repeated here.** Five
+are in the inspector panel and five on the canvas and status line, both
+dispatched. **Three are blocked on `src/studio/client/write.ts`** and are the
+ones to dispatch next. All fifteen were measured; the mechanisms are named so
+nobody re-drives the page to re-find them.
+
+**Blocked on `write.ts`, dispatch when the first studio branch lands:**
+
+- **`staleNotice` says "The page is re-reading the model" when it is not.** The
+  refusal fires because the cursor is in the prose panel, and `catchUp()` returns
+  immediately for exactly that reason. Measured: six seconds later the textarea
+  still held the old body. The page says the true sentence first ("will catch up
+  when you are between edits") and then contradicts it. True when the refusal
+  comes from a drag, where the re-read happens on the pointerup.
+- **`unreadableNotice` says "The diagnostics below say what the reader saw"
+  after they have gone.** Release the lock and the list empties, while a standing
+  `bad` sentence wins in `showStatus` and is only cleared by an edit that lands.
+  The reader is pointed at an empty list in the state where they have just done
+  what they were told.
+- **A conflict entry's "just now" ages**, by design for the entry and not for the
+  wording, and the list renders the path twice, once as its own element and again
+  inside the message's backticks.
+
+**Two more that are timing rather than truth**, recorded and deliberately not
+dispatched, because fixing them means deciding how long a status line holds and
+that is closer to taste than to a defect:
+
+- The sentence saying a group move writes table files and not the group file is
+  on screen for **13 milliseconds**, measured with a `MutationObserver`. It is
+  the one place the interface says out loud that a group has no coordinates.
+- `Renaming a to b.` lasts about **70 milliseconds**.
 
 ## What a successor would otherwise have to reconstruct
 **SETTLED, and my framing of it was wrong.** I recorded here that my briefs and
