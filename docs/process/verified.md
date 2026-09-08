@@ -5997,12 +5997,34 @@ corrected by whoever fixed the thing and the other was nobody's job.
   "abc". 0, the default, lets the operating system pick a free one.` The advice
   exists and is not given in the one situation where the reader needs it.
 
-- **Eleven of the README's thirteen command lines are in fences nothing reads.**
-  Counted rather than estimated, from `git show origin/main:README.md` because
-  the working copy carries the owner's uncommitted edit. Thirteen lines begin
-  `$ dbmd`. Two of them sit inside the two blocks tagged `dbmd-run`, which
-  `test/docs/readme.test.ts` executes and compares. The other eleven are in
-  plain fences.
+- **Ten of the README's thirteen command lines are in fences nothing reads, and
+  exactly one of the ten is wrong.**
+  Counted by enumerating each line and the fence enclosing it, from
+  `git show origin/main:README.md` because the working copy carries the owner's
+  uncommitted edit. **This is the third count of the same thing and the first one
+  taken this way**; the two before it were arrived at by subtraction and were
+  both a little wrong, which is the failure this file exists to catch, committed
+  by the person keeping it. Thirteen lines begin `$ dbmd`: two inside the two
+  `dbmd-run` blocks that `test/docs/readme.test.ts` executes, one inside the
+  `dbmd-sketch` block, which is tagged and read but by its own definition not
+  run, and ten in plain fences.
+
+  **All ten were then run by hand and compared.** Nine match what the built CLI
+  prints, several byte for byte: `dbmd init`, `dbmd query --engine postgres`
+  including its "12403 characters" which is also the byte count of the file it
+  wrote, `dbmd check examples/shop`, `dbmd check` over a model with one dangling
+  ref including its `$?` of 1, `dbmd refs orders examples/shop` including all
+  three legend lines, `dbmd export shop --stdout`, and `dbmd export` run twice.
+  The `dbmd studio` block prints a port the operating system picked, so its shape
+  matches and its text cannot.
+
+  **The one that is wrong is `dbmd refs addresses shop`.** Reconstructed the
+  model the block describes, two tables whose refs both point at an
+  `addresses` table nobody wrote, and ran it. Everything in the block still
+  matches except the banner, which #223 replaced: the two lines about a file that
+  did not load are now three lines saying the opposite, that every file loaded
+  and nothing is missing. Which is correct, and is exactly the case that page is
+  illustrating.
 
   **This is not the same as the README being unchecked**, and an earlier version
   of this entry said "thirteen command sessions and two of them are checked",

@@ -452,16 +452,20 @@ frees**: the studio's busy port, the CI recipe's untracked-README hazard, and
 whatever the README needs. The third is the one that waits on the owner, because
 it edits a file holding their uncommitted work.
 
-**One of those is blocked on the owner rather than on an agent.** `README.md`
-holds thirteen lines beginning `$ dbmd`, and two of them, the two inside blocks
-tagged `dbmd-run`, are executed by `test/docs/readme.test.ts`. The other eleven
-are in plain fences. **That is not the same as the page being unchecked**: its
-file heads, its file bodies, its sketch and its one JSON payload all have working
-cover, and an exhaustiveness rule turns the payload test red if a new one appears
-unclaimed. What has no cover is the command sessions, and the drift arrived while
-it was watched. #223 changed the `dbmd refs` banner and the README's
-`dbmd refs addresses shop` block still shows the old wording. Fixing it means
-editing a file with the owner's uncommitted work in it, so it waits.
+**One of those is blocked on the owner rather than on an agent, and it is one
+block, not a page.** `README.md` holds thirteen lines beginning `$ dbmd`: two in
+the `dbmd-run` blocks the test suite executes, one in the `dbmd-sketch` block,
+and ten in plain fences. **All ten were then run by hand.** Nine match what the
+built CLI prints, several byte for byte. One prints a port the operating system
+picked and so can never match exactly. **Exactly one is wrong**, and it is
+`dbmd refs addresses shop` around line 472: #223 replaced its two-line banner
+with a three-line one saying the opposite, and the rest of the block still
+matches. The replacement text is known and was produced by reconstructing the
+model that block describes and running the command.
+
+So the work here is one block plus, if wanted, moving the other nine under
+`dbmd-run` so they cannot drift again. Both edit a file holding the owner's
+uncommitted work, so both wait on them.
 
 **The third of those is the one to read first if time is short.** ADR 0083
 decided that a refusal from the disk leads with the file and keeps the system's

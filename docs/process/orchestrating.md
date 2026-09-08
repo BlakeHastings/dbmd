@@ -947,3 +947,35 @@ a disk refusal will read that thread and not this session.
 The same mistake was already in the queue: the import fix had been written up on
 the same wrong reading, and its brief was corrected before dispatch rather than
 after. The cost of catching it late would have been one agent's full pass.
+
+## I quoted the same count three times and enumerated it once
+
+The README's unchecked command blocks were counted three times in one evening.
+The first said "thirteen command sessions and two of them are checked", the
+second said eleven of thirteen were in plain fences, and the third, which
+enumerated each line beside the fence enclosing it, said ten.
+
+Each wrong one was arrived at the same way: **by subtracting one grep from
+another.** Thirteen lines beginning `$ dbmd`, two blocks tagged `dbmd-run`,
+therefore eleven unchecked. That arithmetic is right and its premise is not,
+because a third block carries a different tag and the subtraction cannot see it.
+
+**This file already has a section about quoting a number that arithmetic
+produced.** It was written about a merged-pull-request count, and the rule it
+gives is to measure rather than derive. The rule was in the file, written by the
+person who then broke it twice on the same number in one evening, which is worth
+recording because it says something about where the rule fails: it fires when
+you are aware you are counting, and a count that arrives as a by-product of
+describing something does not feel like counting at all.
+
+**The fix that worked was enumeration, and it cost eight lines of script.** It
+prints every line, its number, and the tag of the fence around it. Nothing was
+left to subtract, and the answer came with its own evidence attached, so the next
+person can check it without rerunning anything.
+
+**Then the audit that the count was in service of turned out to be the valuable
+part.** Ten unchecked blocks sounds like ten liabilities. Running all ten against
+the built CLI found nine correct, several byte for byte, one unverifiable because
+it prints a port the operating system picks, and exactly one wrong. A number
+describing a risk is worth much less than the list of which items carry it, and
+the list took twenty minutes.
