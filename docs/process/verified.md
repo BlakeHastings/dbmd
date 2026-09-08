@@ -3084,3 +3084,31 @@ corrected by whoever fixed the thing and the other was nobody's job.
   found by construction rather than by somebody happening to be in the wrong
   state at the right moment. Four of the nine had survived every previous pass
   over this code, including a full sweep of every decision record's revisit list.
+
+- **The studio's HTTP refusal surface was driven end to end and every refusal
+  holds.** Twelve requests against a scratch studio, each reading the status, the
+  code and the message:
+
+  | request | answer |
+  | --- | --- |
+  | a form post, which is the cross-site shape | 415 `unsupported-media-type` |
+  | a plain text post | 415 `unsupported-media-type` |
+  | JSON with no revision header | 400 `no-revision` |
+  | a revision that is not a number | 400 `no-revision`, quoting what it got |
+  | a revision from the future | 409 `stale`, naming both revisions |
+  | a body that is not JSON | 400 `bad-request`, quoting the parse error |
+  | a body that is a JSON array | 400 `bad-request`, "must be an object" |
+  | an endpoint nobody serves | 404 `unknown-endpoint`, naming the path |
+  | the wrong method on a real route | 405 `method-not-allowed`, naming what it takes |
+  | a path climbing out of the served tree | 404 `not-found`, the path normalised first |
+  | a `PATCH` at a table that is not there | 404 `unknown-table` |
+
+  **The comment in `src/studio/server.ts` claiming the content-type check is
+  "the one that is security (a form post is refused before anything else is
+  asked)" is true**, and it was driven rather than read: a form-encoded post is
+  refused at 415 without the revision or the body being looked at. The traversal
+  attempt is normalised and answered as a missing file rather than served.
+
+  Every refusal carries its own code, so a caller can branch on all eleven, and
+  none of them reaches the generic one. This is the surface a local server is
+  most likely to be careless on and it is not.
