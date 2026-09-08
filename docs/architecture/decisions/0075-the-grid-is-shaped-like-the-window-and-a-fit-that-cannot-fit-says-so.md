@@ -170,6 +170,16 @@ Measured after the change, same payloads, same window.
 - **Two fits per press.** The second is a transform and a walk over the
   rectangles, on a page that draws 600 boxes in under a second, and it is the
   difference between a count that is right and a count that is 8% high.
+- **The count goes stale if the window is resized, and nothing says so.**
+  Measured while re-verifying: a page fitted in one window and then resized to
+  1600 by 947 said 180 while 286 boxes were on screen. That is not the fit being
+  wrong, it is the fit not being redone: nothing re-fits on a resize, on purpose,
+  because moving the view under somebody who did not ask is what `busy` and the
+  once-only first draw both exist to prevent. The sentence is a standing sentence
+  about a moment, like `Wrote tables/orders.md at 8:14:50 PM`, and pressing Fit
+  again makes it true. It is named here rather than fixed because the fix is a
+  decision about what a resize should do to the view, which is a larger question
+  than this record's.
 
 ## Revisit when
 
@@ -188,3 +198,9 @@ Measured after the change, same payloads, same window.
 - **A third copy of the grid arithmetic appears.** Two with a test between them
   is a seam; three is an argument for a package the bundle and the CLI both
   import, which is ADR 0029's way out.
+- **Somebody resizes the window and reads the old count.** The sentence is true
+  of the moment it was said and a resize is the one act that falsifies it without
+  anybody touching the model. The answer is a decision about resize and the view,
+  not about this sentence: either the standing sentence is cleared on a resize,
+  which is cheap and loses nothing, or a resize re-fits, which is a view moving
+  under a person and would want arguing for on its own.

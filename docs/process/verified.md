@@ -1547,3 +1547,14 @@ nothing else, and after `--confirm` all eight existing layouts were unchanged to
 the pixel, including the two dragged, and the six arrivals landed three wide at
 y 793 and y 1053, one row pitch below the lowest thing already placed. Reopened
 in the browser: 14 boxes, all on screen at 58%, no console error.
+
+**Re-driven on the rebased build, and one more thing found.** Same payloads
+against the tree with the revisit sweep under it: 100 tables at 30% with 100 of
+100 on screen and no notice, 600 at 25% with the notice saying 264 and 264
+counted off the DOM, on load and again after pressing Fit, no console error in
+either. And **the count goes stale if the window is resized**: a page fitted in
+one window and then resized to 1600 by 947 said 180 while 286 boxes were on
+screen. Nothing re-fits on a resize, on purpose, so the sentence is about the
+moment it was said and pressing Fit again makes it true. ADR 0075 names it under
+both **Consequences** and **Revisit when** rather than fixing it, because the
+fix is a decision about what a resize should do to the view.
