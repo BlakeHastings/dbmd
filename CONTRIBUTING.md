@@ -171,21 +171,37 @@ Stop it with Ctrl-C, the same way and for the same reason as `npm run studio`.
 npm run check
 ```
 
-Typecheck, format check, decision-record numbering, the reviewable-diff check,
-the check that every command named here exists, tests, a build, and a smoke test
-over the packed tarball, in that order. It is
-the only mechanical gate, and it is exactly what CI runs, so green here and
-green there mean the same thing. There is no second list of things to remember.
+Ten things, in this order: typecheck, format check, decision-record numbering,
+the reviewable-diff check, the check that every command named here exists, the
+check that a class name both studio scenes use says which one it means, tests, a
+build, a smoke test over the packed tarball, and the guards that break a copy of
+the tree on purpose to prove that smoke test can still refuse it. It is the only
+mechanical gate, and it is exactly what CI runs, so green here and green there
+mean the same thing. There is no second list of things to remember.
 
 CI runs it twice, on Node 22 and on Node 24, and your local run covers whichever
 of those you are on. So a failure that only one leg of that matrix shows is a
 real failure and not a flake, and the run page names the version.
 
-The last one packs the package, installs it into a temporary directory outside
-this repository and runs the installed `dbmd`. It takes about six seconds and it
-is the only thing here that looks at what a user would actually get;
+The last two are the expensive ones, and they are one job done three times.
+`npm run check:pack` packs the package, installs it into a temporary directory
+outside this repository and runs the installed `dbmd`, which is the only thing
+here that looks at what a user would actually get;
 [ADR 0024](docs/architecture/decisions/0024-the-tarball-is-what-ships.md) says
-why that is worth six seconds on every run.
+why that is worth paying for on every run. `npm run check:guards` then packs it
+twice more, against copies of the tree it has broken on purpose, because a check
+that has never been seen to refuse anything looks exactly like one that cannot;
+[ADR 0034](docs/architecture/decisions/0034-a-guard-is-not-believed-until-it-has-been-seen-to-fail.md)
+is that argument. Three packs is where most of the wall clock goes, and it is
+bought rather than wasted.
+
+**So expect to wait, and do not expect a number from this file.** How long the
+gate takes is a fact about your machine, and the only honest form of it is a
+measurement with a date and a machine attached.
+[`docs/process/verified.md`](docs/process/verified.md) carries one, step by step,
+taken on 2026-09-07 on the machine this is developed on.
+[ADR 0081](docs/architecture/decisions/0081-a-runtime-belongs-to-a-machine-so-a-page-cites-it-rather-than-quoting-it.md)
+is why this file points there instead of repeating the seconds.
 
 **`npm run check` is not `dbmd check`.** They are a keystroke apart and you will
 meet both. This one is this repository's gate over this repository's source.
