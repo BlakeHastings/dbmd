@@ -1108,3 +1108,38 @@ long it has been since somebody drove it.** That is an uncomfortable property fo
 the file agents are pointed at first, and the honest response is to sweep it on a
 schedule rather than to trust it because it was correct when written. Five false
 claims were found in this same file once before, in one pass.
+
+## "It cannot be tested" is a claim about you, and it was wrong within the hour
+
+The studio's help says Ctrl-C flushes an edit still waiting to be written. The
+flush half was easy to prove. The signal half was not: neither `taskkill` without
+`/F` nor `kill -INT` from git-bash delivers a console control event to a Node
+process started here, and both were tried, and both left the studio answering.
+
+That much was measured and is true. What went into the record was **"it cannot be
+tested from here"**, which is a different sentence, and an agent disproved it a
+few hours later by giving the studio its own console and sending it a real
+`CTRL_C_EVENT` through `GenerateConsoleCtrlEvent`. It then drove all three of the
+command's exit codes that way.
+
+**The gap between "I could not" and "it cannot" is one word and a whole
+conclusion.** The first invites the next person to try something else. The second
+closes the question, and it closed it in the file this project keeps specifically
+so that nobody re-does work somebody already did. A false "cannot" there is worse
+than no entry at all, because it converts a gap into a settled fact.
+
+Two things make this failure mode likely rather than rare.
+
+**A negative result feels finished.** Two attempts that both fail feel like
+evidence about the problem, when they are evidence about the two attempts. The
+honest write-up names the attempts, which is also what lets somebody else see
+what was not tried.
+
+**And the person recording it is the person who ran out of ideas.** Nobody writes
+"I could not think of a third approach" and then keeps thinking. The record gets
+written at the moment of giving up, in the words of giving up.
+
+The fix is small and mechanical: **in an evidence log, write what you ran and what
+happened, and let "cannot" be a conclusion somebody else is free to overturn.**
+Every entry in `verified.md` that says a thing is impossible should name the
+attempts that led there, and this one now does.

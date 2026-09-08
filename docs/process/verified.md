@@ -6059,13 +6059,17 @@ corrected by whoever fixed the thing and the other was nobody's job.
   driven: a `PATCH` to a table's layout, then `POST /api/flush` inside the 250ms
   debounce, and the file on disk carried the new coordinates the instant flush
   returned, with `pendingWrite` false. `close()` calls the same flush. The first
-  half, that a console interrupt reaches the handler, could not be driven.
-  Neither `taskkill` without `/F` nor `kill -INT` from Git Bash delivers a
-  console control event to a Node process this harness started: both were tried,
-  both left the studio listening and answering. **So the flush is proven and the
-  signal path is not, and nobody should read a green sweep of this command as
-  covering it.** Testing it properly needs a real console or a
-  `GenerateConsoleCtrlEvent` harness.
+  half, that a console interrupt reaches the handler, was not driven **by me**,
+  and I wrote here that it could not be. That was wrong. Neither `taskkill`
+  without `/F` nor `kill -INT` from Git Bash delivers a console control event to
+  a Node process this harness started, which is true and is as far as I took it.
+
+  **An agent then did it.** It gave the studio its own console and sent
+  `CTRL_C_EVENT` through `GenerateConsoleCtrlEvent`, read the exit code off the
+  process object, and drove all three of the command's exit codes that way. So
+  the signal path is testable here and the earlier entry was a limit of the
+  harness I reached for rather than a limit of the machine. **The honest form of
+  a negative result is "I could not", and this one was written as "it cannot".**
 
 - **A `PATCH` that moves a table does not move the studio's revision, and that
   is deliberate.** Two edits in a row were accepted against `x-dbmd-revision: 0`,
@@ -6295,3 +6299,47 @@ corrected by whoever fixed the thing and the other was nobody's job.
   Sent back to the agent that wrote both halves, with the four merges of the
   night named so the sweep covers what they changed rather than only what it
   finds.
+
+- **All 35 model diagnostic codes were triggered and their messages read against
+  the state that produced them.** Thirty-four were reached through `dbmd check`;
+  the thirty-fifth, `duplicate-table`, cannot be reached by `check` at all
+  because a table's name comes from its file's basename, and both
+  `src/diagnostics.ts` and `docs/format.md` already say it is import-only, so it
+  is dead there by design rather than by accident. **The count is 35 and not the
+  33 the brief said**, which the sweep corrected against
+  `test/docs/format.test.ts`.
+
+  Nine messages are suspect. Two were reproduced independently before anything
+  was dispatched:
+
+  - **`ref-table-unknown` says "there is no tables/customers.md" while printing
+    `tables/customers.md` as a heading four lines above**, with its own error on
+    it. The file is 33 bytes. What the validator knows is that no table of that
+    name loaded, which is the true half; the claim about the disk is the half a
+    reader acts on.
+  - **`unknown-key` offers, as known keys, keys the same reader refuses.** One
+    run says `w` and `h` belong to a note and not to a table, and three lines
+    later lists `h, w, x, y` as that layout's known keys. Following the second
+    produces the first. A group's message lists `layout` as known while a group's
+    `layout` is separately refused. The mechanism is that `reportUnknown` builds
+    its list from every key passed to `take()`, and both of these are taken in
+    order to be refused; the `reject()` path exists for exactly this and its own
+    comment says so.
+
+  The other seven: `group-unknown` and `group-empty` make the same disk claim;
+  `kind-mismatch` on `_model.md` has three false clauses and the sweep proved the
+  file loads by reading its `name` and `engine` out of the model afterwards;
+  `kind-missing` on `_model.md` says "the directory says this is a model" when
+  the file name is what decides; `frontmatter-empty` fires on frontmatter holding
+  a comment; `duplicate-key`'s documented input is unreachable and one of its two
+  live cases says "the first one is used" when neither is; and `superseded-key`
+  tells a nameless column to write `columns: [this column]`, which will not
+  parse.
+
+- **Eighteen remedies were followed literally and every one cleared its
+  diagnostic**, which is the half of that sweep worth as much as the suspects.
+  Including writing `{ expression: lower(email) }` verbatim from an
+  `index-column-unknown` message, which parses. The newest code,
+  `model-file-not-a-file`, was verified by doing what it says on the broken
+  directory itself and reaching `no problems`. The ADR 0086 summary line was
+  right in all five shapes it can take.
