@@ -38,6 +38,11 @@
  *    table name a file cannot hold. The writer refuses it and says which object
  *    it was; ADR 0026 says the caller that built the model is the one that turns
  *    that into a diagnostic, and this is that caller.
+ * 5. **Saying what a refused write left behind.** The disk can refuse the fourth
+ *    file of eight, and the three before it are already written. The writer
+ *    stops there and hands over both halves; this is the half that has to tell
+ *    somebody their directory is now part imported, and what to run next. ADR
+ *    0087, and ADR 0083 for the shape of the sentence.
  */
 
 import { readFile, readdir, rm } from 'node:fs/promises'
@@ -57,7 +62,13 @@ import { modelFromIntrospection } from '../import/model.js'
 import { readIntrospection } from '../import/read.js'
 import { readModel } from '../model/read.js'
 import type { Model } from '../model/types.js'
-import { writeModel, type WriteSkip } from '../model/write.js'
+import {
+  WriteFailed,
+  writeModel,
+  type WriteOptions,
+  type WriteResult,
+  type WriteSkip,
+} from '../model/write.js'
 import { EXIT_FAILURE, UsageError, messageOf, usageProblem, type Command } from './command.js'
 import { sortedBy, type JsonValue, type Output, type Palette, type Report } from './output.js'
 
@@ -146,6 +157,10 @@ Exit codes:
       --confirm was not given, the model already there could not be read, or a
       table could not be written
   2   the command line was wrong
+
+A file the filesystem refuses stops the run at that file, and the files written
+before it stay written. The refusal names them, so a run that stopped half way
+says which part of the directory it changed rather than leaving you to look.
 
 Every table gets a one-line body saying nobody has documented it yet. That line
 is a prompt and it is the point: replace it with what the schema cannot say.
@@ -247,7 +262,21 @@ export async function runImport(
     })
   }
 
-  const { written, skipped } = await writeModel(directory, built.model)
+  const landing = await landFiles(directory, built.model)
+  if (!landing.ok) {
+    return out.report(
+      writeRefused({
+        failure: landing.failure,
+        directory,
+        source,
+        engine: read.value.engine,
+        document: read.value,
+        found: [...read.diagnostics, ...built.diagnostics],
+        out,
+      }),
+    )
+  }
+  const { written, skipped } = landing.result
 
   const diagnostics = sortDiagnostics([
     ...read.diagnostics,
@@ -386,7 +415,24 @@ async function reimport(run: Reimport): Promise<number> {
   // the list named, so a table nobody said anything about is not opened, and the
   // paragraph somebody wrote into it this morning is not at risk from a command
   // that was told to look at a different table.
-  const { written, skipped } = await writeModel(directory, delta.model, { only: delta.write })
+  const landing = await landFiles(directory, delta.model, { only: delta.write })
+  if (!landing.ok) {
+    // Before the deletions below, which is where the run stopped, so the files
+    // the list named for deletion are all still there and the report says so.
+    return out.report(
+      writeRefused({
+        failure: landing.failure,
+        directory,
+        source,
+        engine,
+        document: run.document,
+        found: run.found,
+        reimport: { changes: delta.items, listedForDeletion: delta.remove },
+        out,
+      }),
+    )
+  }
+  const { written, skipped } = landing.result
 
   // `writeModel` deliberately does not delete, so this does, and only against
   // the list the user has just read. `force`, because a file the reader saw and
@@ -726,6 +772,175 @@ function parses(slice: string): boolean {
   } catch {
     return false
   }
+}
+
+// --------------------------------------------------------------------------
+// Writing, and the refusal that is this command's to report
+// --------------------------------------------------------------------------
+
+/** What `writeModel` did, or the refusal it stopped at. */
+type Landing =
+  | { readonly ok: true; readonly result: WriteResult }
+  | { readonly ok: false; readonly failure: WriteFailed }
+
+/**
+ * `writeModel`, with the one throw this command answers turned back into a
+ * value.
+ *
+ * A `WriteFailed` is the filesystem refusing a file, which this command's own
+ * exit code list already covers: exit 1, "a table could not be written". It
+ * reached `main.ts` instead and came out in Node's voice, with an absolute path
+ * and a temporary file nobody asked for. Anything else thrown from here is a
+ * fault rather than an answer and still belongs to that handler.
+ */
+async function landFiles(dir: string, model: Model, options: WriteOptions = {}): Promise<Landing> {
+  try {
+    return { ok: true, result: await writeModel(dir, model, options) }
+  } catch (error) {
+    if (!(error instanceof WriteFailed)) throw error
+    return { ok: false, failure: error }
+  }
+}
+
+interface Refused {
+  readonly failure: WriteFailed
+  readonly directory: string
+  readonly source: string
+  readonly engine: string
+  readonly document: IntrospectionDocument
+  /** What reading and building the document said, before anything was written. */
+  readonly found: readonly Diagnostic[]
+  /**
+   * The re-import's own facts, absent on an import into an empty directory.
+   *
+   * One report with two second halves: what a reader should do next genuinely
+   * differs, because a half-written empty directory is a re-import next time and
+   * a half-written re-import is a shorter list of the same changes.
+   */
+  readonly reimport?: {
+    readonly changes: readonly DeltaItem[]
+    readonly listedForDeletion: readonly string[]
+  }
+  readonly out: Output
+}
+
+/**
+ * The disk refused a file, and some of the model may already be on it.
+ *
+ * ADR 0083 shapes the sentence and `dbmd export` is where it was first written:
+ * lead with the file the person was working on, name no cause, and keep the
+ * operating system's words exactly, because a rename fails from a read-only
+ * attribute, an ACL, a lock, antivirus, a full disk or a share that went away
+ * and picking one of those would be wrong often enough to be worse than the raw
+ * error.
+ *
+ * **What is not shared with `dbmd export` is the sentence in the middle.** That
+ * command writes one file, so "nothing was changed" is true there. This one
+ * writes a model, stops at the first file the disk refuses, and leaves every
+ * file before it on disk under its real name. So this says what landed, by name,
+ * and the `--json` form carries the same list under `files`: the key that means
+ * "written" on the reports where the run finished. ADR 0087.
+ */
+function writeRefused(run: Refused): Report {
+  const { failure, directory, out } = run
+  const files = sortedBy(failure.written)
+  const diagnostics = sortDiagnostics([
+    ...run.found,
+    ...unwritableNames(failure.skipped, run.document),
+  ])
+  const errors = diagnostics.filter((d) => d.severity === 'error').length
+  // Wrapped by hand at about the width the rest of this command's prose is
+  // wrapped to, and broken before a path or a directory name rather than after
+  // it, because those are the parts whose length this cannot know.
+  const partly =
+    files.length === 0
+      ? `and nothing had been written before it.\n` +
+        `${out.style.strong(directory)} is as it was.\n`
+      : `and ${plural(files.length, 'file')} had already been written:\n` +
+        files.map((path) => `  ${out.style.faint(path)}\n`).join('') +
+        (run.reimport === undefined
+          ? `${out.style.strong(directory)} holds part of this import rather than all of it.\n`
+          : `${out.style.strong(directory)} has some of the changes this run was confirmed ` +
+            `to make\nand not the rest.\n`)
+  const deletions =
+    run.reimport === undefined || run.reimport.listedForDeletion.length === 0
+      ? ''
+      : `Nothing was deleted, so every file the list named for deletion is still there.\n`
+  const again =
+    files.length === 0
+      ? `Clear whatever the system is refusing and run the command again.\n`
+      : run.reimport === undefined
+        ? `Clear whatever the system is refusing and import again.\n` +
+          `${out.style.strong(directory)} is not empty now, so that run is a re-import: it ` +
+          `lists\nwhat is still missing, and ${out.style.strong('--confirm')} writes it.\n`
+        : `Clear whatever the system is refusing and run the same command again.\n` +
+          `What landed is not a change any more, so the list it makes will be shorter.\n`
+  // The temporary file is explained rather than hidden, and only where there is
+  // one: a refusal at the read that precedes the write names the real file and
+  // no temporary, and a sentence about one there would point at a file that
+  // never existed. ADR 0083, which also rejects trimming the paths out of the
+  // system's message: they are the only part of it that can say the write went
+  // to a network share.
+  const words =
+    failure.temporary === null
+      ? `${out.style.faint(failure.message)}\n`
+      : `The write goes through a temporary file in the same directory, which is why the\n` +
+        `system names that one first: ${out.style.faint(failure.message)}\n`
+
+  return {
+    code: EXIT_FAILURE,
+    text:
+      (diagnostics.length === 0 ? '' : `${formatDiagnostics(diagnostics).join('\n')}\n`) +
+      `${out.style.bad('dbmd:')} Could not write ` +
+      `${out.style.strong(slashed(join(directory, ...failure.path.split('/'))))}, ${partly}` +
+      deletions +
+      again +
+      words,
+    json: {
+      directory,
+      source: run.source,
+      engine: run.engine,
+      ...(run.reimport === undefined
+        ? {}
+        : {
+            reimport: true,
+            confirmed: true,
+            changes: run.reimport.changes.map(asJson),
+            // The deletions happen after the write and this run never reached
+            // them, so this is empty and says so rather than being left out.
+            removed: [],
+          }),
+      files,
+      counts:
+        run.reimport === undefined
+          ? {
+              tables: files.filter((path) => path.startsWith('tables/')).length,
+              errors,
+              warnings: diagnostics.length - errors,
+            }
+          : {
+              changes: run.reimport.changes.length,
+              errors,
+              warnings: diagnostics.length - errors,
+            },
+      diagnostics,
+      error: {
+        code: 'write-failed',
+        message: failure.message,
+        // Relative to the model directory, as every path in `files` is, and the
+        // directory is beside it. The sentence spells the two out together
+        // because a person is looking for the file; a caller reading this has
+        // both halves and can put them together the way it puts `files`
+        // together.
+        file: failure.path,
+      },
+    },
+  }
+}
+
+/** Windows separators are the operating system's; a path this prints is dbmd's. */
+function slashed(path: string): string {
+  return path.replace(/\\/g, '/')
 }
 
 // --------------------------------------------------------------------------

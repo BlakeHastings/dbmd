@@ -470,6 +470,13 @@ Three exits, and they are what a script reads:
   (`table-removed`, `table-added`, `column-added`, `column-removed`,
   `column-changed`, `index-added`, `index-removed`, `index-changed`,
   `model-changed`) rather than on the prose.
+- **A file the filesystem refuses is exit `1` with `error.code` `write-failed`**,
+  and it is the one exit that can leave the directory part written: the run stops
+  at the file that refused, and every file written before it stays written.
+  `error.file` names the one that refused and `files` is what did land, both
+  relative to the model directory. Read `files` before deciding what to do next;
+  a first import that landed some of a model turns the next run into a
+  re-import. ADR 0087.
 - **Prose bodies, layout and group membership are untouched either way**, and a
   file no item on the list names is never opened. A column or a table that goes
   takes no paragraph with it: the list says which paragraphs will then name
