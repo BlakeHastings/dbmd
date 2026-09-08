@@ -148,11 +148,17 @@ let stale = false
  */
 let standing: { readonly text: string; readonly tone: 'plain' | 'bad' } | null = null
 
-/** Say something that has to outlive the next status render. */
+/**
+ * Say something that has to outlive the next status render.
+ *
+ * Through the same gate `showStatus` goes through, so that "the line says what
+ * the crosshair is for, for as long as there is a crosshair" is one rule rather
+ * than one rule and an exception. The sentence is still held, and it is still
+ * what comes back the moment the mode ends.
+ */
 function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
   standing = { text, tone }
-  statusText.textContent = text
-  statusText.dataset['tone'] = tone
+  showLine({ text, tone })
 }
 
 /**
@@ -163,8 +169,8 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
  * `createdNotice`, beside the other notices, so it is provable without a
  * browser. ADR 0074.
  */
-function sayCreated(path: string): void {
-  say(createdNotice(path))
+function sayCreated(path: string, readFailed: string | null): void {
+  sayDone(createdNotice(path), readFailed)
 }
 
 /**
@@ -343,18 +349,78 @@ async function start(): Promise<void> {
   await reload()
 }
 
-/** Read the directory and redraw everything from it, whatever the page is doing. */
-async function reload(): Promise<void> {
+/**
+ * Read the directory and redraw everything from it, whatever the page is doing.
+ *
+ * Answers why it could not, or `null` when it did. Every caller but the first
+ * draw goes straight on to say what it just did, and the sentence it says is
+ * about a page that has caught up: `Deleted tables/sweep_inside.md` is the
+ * studio telling somebody it re-read the directory. Measured with the endpoint
+ * aborted, that sentence was written one statement after the failure and over
+ * it, so the read that failed was on screen for no frames at all and the delete
+ * path was the last thing the person was told. The create and the rename paths
+ * are the same three lines with different words.
+ *
+ * The failure is written straight into the element rather than held, which is
+ * the one status sentence here that is not. Nothing renders over it while it is
+ * true: the heartbeat and the write poll both swallow a read that failed and
+ * say nothing, so the next render is the read that worked. Holding it would
+ * mean deciding when to let go of it, and the answer is already this: it goes
+ * when a read comes back.
+ */
+async function reload(): Promise<string | null> {
   let response: WireModelResponse
   try {
     response = await fetchModel()
   } catch (error) {
-    statusText.textContent = `Could not read the model: ${messageOf(error)}`
-    statusText.dataset['tone'] = 'bad'
-    return
+    showLine({ text: `Could not read the model: ${messageOf(error)}`, tone: 'bad' })
+    return messageOf(error)
   }
   adopt(response)
+  return null
 }
+
+/**
+ * Say what an act did, and say what the page could not do afterwards rather
+ * than saying it did.
+ *
+ * The four acts that write a file directly all end the same way: re-read the
+ * directory, then say a sentence written on the assumption that the re-read
+ * happened. ADR 0074 gave each of them that closing sentence and this is the
+ * half of it that was never asked: whether the picture the sentence is said
+ * over is the one the file produced.
+ *
+ * Both facts, rather than one. The write happened and the person has to be told
+ * so, because it is the only thing here that changed their disk, and the
+ * canvas beside it is now older than the model and has to say so too.
+ */
+function sayDone(did: string, readFailed: string | null): void {
+  if (readFailed === null) {
+    saidOverAStaleCanvas = null
+    say(did)
+    return
+  }
+  const said =
+    `${did} The page could not re-read the model afterwards, so the canvas is still showing ` +
+    `what it drew before: ${readFailed}.`
+  saidOverAStaleCanvas = { said, did }
+  say(said, 'bad')
+}
+
+/**
+ * The sentence above, and what is left of it once the page has caught up.
+ *
+ * The second half of it stops being true the moment a read comes back, and a
+ * standing sentence is held until the next landed edit, so without this the
+ * page would go on saying the canvas was behind over a canvas that is not. That
+ * is the shape of defect this whole item is about, so it would be an odd one to
+ * introduce while closing four of them.
+ *
+ * The act's own half survives, because it is still true and it is the half the
+ * person acted. Only the clause that went stale goes, and it goes to the read
+ * that made it stale rather than to a timer.
+ */
+let saidOverAStaleCanvas: { readonly said: string; readonly did: string } | null = null
 
 function adopt(response: WireModelResponse): void {
   const first = !drawnOnce
@@ -373,6 +439,15 @@ function adopt(response: WireModelResponse): void {
   // this item's defect with the guard passed rather than failed.
   inspector.show(canvas.selection)
   showDiagnostics()
+  // This is the read that makes "the canvas is still showing what it drew
+  // before" false, so it is the read that takes that clause back. The act's own
+  // sentence stays: it is still true, and it is what the person did.
+  if (saidOverAStaleCanvas !== null) {
+    if (standing?.text === saidOverAStaleCanvas.said) {
+      standing = { text: saidOverAStaleCanvas.did, tone: 'plain' }
+    }
+    saidOverAStaleCanvas = null
+  }
   showStatus(response)
   // Only the first draw. A later reload is a change somebody made to a file,
   // and moving the developer's view because a neighbour saved `orders.md` would
@@ -545,9 +620,12 @@ async function create(name: string, at: Point): Promise<void> {
     inspector.placementRefused(name, messageOf(error))
     return
   }
-  await reload()
-  canvas.select({ kind: 'table', name })
-  sayCreated(`tables/${name}.md`)
+  // Selected only when the re-read drew it. Selecting a name the canvas has no
+  // box for would open a panel about an object this page is not holding, which
+  // is a second wrong thing said about the same failed read.
+  const readFailed = await reload()
+  if (readFailed === null) canvas.select({ kind: 'table', name })
+  sayCreated(`tables/${name}.md`, readFailed)
 }
 
 /**
@@ -574,9 +652,9 @@ async function createNote(name: string, at: Point, color: string | null): Promis
     inspector.placementRefused(name, messageOf(error))
     return
   }
-  await reload()
-  canvas.select({ kind: 'note', name })
-  sayCreated(`notes/${name}.md`)
+  const readFailed = await reload()
+  if (readFailed === null) canvas.select({ kind: 'note', name })
+  sayCreated(`notes/${name}.md`, readFailed)
 }
 
 /**
@@ -604,10 +682,11 @@ async function createGroup(name: string, label: string, color: string | null): P
     inspector.placementRefused(name, messageOf(error))
     return
   }
-  await reload()
-  canvas.select({ kind: 'group', name })
-  say(
+  const readFailed = await reload()
+  if (readFailed === null) canvas.select({ kind: 'group', name })
+  sayDone(
     `Created groups/${name}.md. Nothing is in it yet, so it draws as an empty box and dbmd reports group-empty: put a table in it from that table's panel.`,
+    readFailed,
   )
 }
 
@@ -644,12 +723,12 @@ async function remove(kind: ObjectKind, name: string): Promise<void> {
     say(`Could not delete ${name}: ${messageOf(error)}`, 'bad')
     return
   }
-  await reload()
+  const readFailed = await reload()
   // After the reload, because that one shows the last write, and a removal is
   // not a write: the file is gone and nothing in `WireStatus` says so. Held
   // rather than written, because the next heartbeat renders the status again
   // and a sentence nothing on the status can reconstruct would go with it.
-  say(`Deleted ${path}. Undo is git checkout, if it was committed.`)
+  sayDone(`Deleted ${path}. Undo is git checkout, if it was committed.`, readFailed)
 }
 
 async function rename(from: string, to: string): Promise<void> {
@@ -674,14 +753,15 @@ async function rename(from: string, to: string): Promise<void> {
   }
   // A rename moves files, so the whole directory is re-read rather than one
   // table patched: what the reader found is what the rest of the page must see.
-  await reload()
-  canvas.select({ kind: 'table', name: to })
+  const readFailed = await reload()
+  if (readFailed === null) canvas.select({ kind: 'table', name: to })
   // Same defect as a create, found the same way: a rename of a table nothing
   // references touches no file through `ObjectWriter`, so nothing cleared
   // `Renaming a to b.` and the page said it was still running. Undo is two
   // things here because a rename is two things. ADR 0074.
-  say(
+  sayDone(
     `Renamed ${from} to ${to}. tables/${to}.md is new and tables/${from}.md is gone, so undoing it is a delete and a git checkout.`,
+    readFailed,
   )
 }
 
@@ -702,9 +782,9 @@ async function rename(from: string, to: string): Promise<void> {
  * noise. ADR 0075.
  */
 function fitAndSay(): void {
-  const report = canvas.fit()
-  if (!report.clamped) return
-  say(didNotFitNotice(report.shown, report.total))
+  const notice = didNotFitNotice(canvas.fit())
+  if (notice === undefined) return
+  say(notice)
   // And then again, because saying it changed the answer. The status bar and
   // the canvas share the window, this sentence is three lines where the one it
   // replaced was one, and the canvas that just lost 16 pixels of height is
@@ -715,10 +795,17 @@ function fitAndSay(): void {
   // the one it was measured against, and there is no third pass because the
   // status is already as tall as it gets.
   //
-  // A smaller canvas cannot turn a fit that was refused into one that fits, so
-  // the first sentence is never left standing over a fit that worked.
-  const settled = canvas.fit()
-  if (settled.clamped) say(didNotFitNotice(settled.shown, settled.total))
+  // A smaller canvas cannot turn a fit that was refused into one that fits and
+  // cannot bring an object back on screen, so the second pass has the sentence
+  // whenever the first did. That was already the argument for this line and it
+  // was doing more work than it could carry: it is about the scale, and the
+  // sentence is about the count, and the clamp costs nothing at all when
+  // everything is on screen anyway. `examples/shop` on the first draw at 420 by
+  // 300 is exactly that, and it said 11 of the 11 objects were on screen and
+  // the rest were past the edges. Which of the two questions is being asked is
+  // now `didNotFitNotice`'s to know. ADR 0075's amendment.
+  const settled = didNotFitNotice(canvas.fit())
+  if (settled !== undefined) say(settled)
 }
 
 function wireToolbar(): void {
@@ -764,8 +851,24 @@ function wireToolbar(): void {
   })
 }
 
-/** What the status line said before placement borrowed it, or null. */
-let borrowedLine: { readonly text: string; readonly tone: string } | null = null
+/** One rendering of the status line: what it says and how it is coloured. */
+interface StatusLine {
+  readonly text: string
+  readonly tone: string
+}
+
+/**
+ * What the status line would be saying if placement were not borrowing it, or
+ * null when it is not.
+ *
+ * Kept current rather than captured once. It starts as the line that was on
+ * screen when the mode was armed, because arming produces no response to redraw
+ * from, and every render that arrives while the mode is on replaces it, so what
+ * is given back at the end is the newest answer rather than the one from the
+ * press. A conflict that arrives while somebody is holding a crosshair is on
+ * the line the moment they put it down.
+ */
+let borrowedLine: StatusLine | null = null
 
 /**
  * Say whether the next click on the canvas places a table.
@@ -786,6 +889,63 @@ function armFor(kind: 'table' | 'note'): void {
   showArmed()
 }
 
+/**
+ * What the line says for as long as the next press is a coordinate.
+ *
+ * The only sentence on this page that is a rendering of a mode rather than of
+ * the model or of an act, which is why `showStatus` has to know about it: a
+ * render that does not is a crosshair with no explanation.
+ */
+function armedLine(): StatusLine {
+  return {
+    text: `Click the canvas where the new ${arming ?? 'table'} goes. Escape cancels.`,
+    tone: 'plain',
+  }
+}
+
+function renderLine(line: StatusLine): void {
+  statusText.textContent = line.text
+  statusText.dataset['tone'] = line.tone
+}
+
+/**
+ * Put a line on the status, unless the canvas is in the one mode that owns it.
+ *
+ * **A mode that outlives its explanation is the defect this exists for.**
+ * Measured: `Add note` put `Click the canvas where the new note goes` on the
+ * line at 716 ms and the next heartbeat replaced it at 2028 ms, while
+ * `aria-pressed` was still true, the canvas still carried `.placing`, and the
+ * next click still placed the note. So the mode lasted indefinitely and its
+ * explanation lasted under two seconds, and what replaced it was
+ * `4 edits were dropped rather than written`, which is an alarming thing to
+ * read with a crosshair under the pointer and no sentence saying why it is
+ * there.
+ *
+ * **The mode wins, and it wins over the refusals too.** That is the part worth
+ * arguing rather than assuming: `standing`, `stale` and `writeError` are in
+ * `statusLine` precisely because they are the only places a developer is told
+ * an edit did not happen, and this puts a sentence in front of them. It is a
+ * postponement rather than a loss, and a short one. The mode ends on the next
+ * press or on Escape, both immediate; the line it borrowed is kept current
+ * underneath and handed straight back when it does; and a conflict is a list in
+ * the footer that is on screen the whole time either way. Against that, the
+ * alternative is a crosshair nobody can explain, which is the state `canvas.ts`
+ * calls "a mode the developer forgot they were in" and is the reason the
+ * sentence exists at all. ADR 0092.
+ *
+ * Everything that writes this element comes through here: the held sentences,
+ * every render of a `WireStatus`, and the read that failed. One gate rather
+ * than a branch in each, so the rule cannot be true of only some of them.
+ */
+function showLine(line: StatusLine): void {
+  if (canvas.placing) {
+    borrowedLine = line
+    renderLine(armedLine())
+    return
+  }
+  renderLine(line)
+}
+
 function showArmed(): void {
   addTableButton.setAttribute('aria-pressed', String(canvas.placing && arming === 'table'))
   addNoteButton.setAttribute('aria-pressed', String(canvas.placing && arming === 'note'))
@@ -794,13 +954,11 @@ function showArmed(): void {
       text: statusText.textContent ?? '',
       tone: statusText.dataset['tone'] ?? 'plain',
     }
-    statusText.textContent = `Click the canvas where the new ${arming ?? 'table'} goes. Escape cancels.`
-    statusText.dataset['tone'] = 'plain'
+    renderLine(armedLine())
     return
   }
   if (borrowedLine === null) return
-  statusText.textContent = borrowedLine.text
-  statusText.dataset['tone'] = borrowedLine.tone
+  renderLine(borrowedLine)
   borrowedLine = null
 }
 
@@ -843,58 +1001,55 @@ function pollStatus(): void {
   }, STATUS_POLL_MS)
 }
 
+/**
+ * The conflicts list and the status line, from one answer the server gave.
+ *
+ * Which of the two the line ends up showing is `showLine`'s to decide, and the
+ * list is drawn either way: a refusal the line is holding back is still on
+ * screen underneath it.
+ */
 function showStatus(status: WireStatus): void {
   showConflicts(status.conflicts)
+  showLine(statusLine(status))
+}
+
+/** What the line says about the model and this session's edits to it. */
+function statusLine(status: WireStatus): StatusLine {
   if (status.writeError !== null) {
-    statusText.textContent = writeFailureNotice(status.writeErrorFile, status.writeError)
-    statusText.dataset['tone'] = 'bad'
-    return
+    return { text: writeFailureNotice(status.writeErrorFile, status.writeError), tone: 'bad' }
   }
   // A refusal wins over everything below, because it is the only place a
   // developer is told an edit did not happen and the render after it would
   // otherwise wipe it. An ordinary "deleted x" does not win over the news that
   // the model moved: the second is about what they are looking at now.
-  if (standing?.tone === 'bad') {
-    statusText.textContent = standing.text
-    statusText.dataset['tone'] = 'bad'
-    return
-  }
+  if (standing?.tone === 'bad') return { text: standing.text, tone: 'bad' }
   if (stale) {
     // Deliberately not a redraw. Something on this page is in the middle of
     // being done, and taking it away to show a change would be a smaller
     // version of the loss this whole guard exists to prevent.
-    statusText.textContent =
-      'The model changed on disk. This page is still showing what you were working on, and will catch up when you are between edits.'
-    statusText.dataset['tone'] = 'bad'
-    return
+    return {
+      text: 'The model changed on disk. This page is still showing what you were working on, and will catch up when you are between edits.',
+      tone: 'bad',
+    }
   }
-  if (standing !== null) {
-    statusText.textContent = standing.text
-    statusText.dataset['tone'] = standing.tone
-    return
-  }
-  if (status.pendingWrite) {
-    statusText.dataset['tone'] = 'plain'
-    statusText.textContent = 'An edit is waiting to be written.'
-    return
-  }
+  if (standing !== null) return { text: standing.text, tone: standing.tone }
+  if (status.pendingWrite) return { text: 'An edit is waiting to be written.', tone: 'plain' }
   // Above the last write, because "wrote tables/products.md" standing over a
   // list saying the studio would not write tables/products.md is the studio
   // contradicting itself. The list below has the file and the sentence; this is
   // the line that stops a developer reading the wrong one.
   if (status.conflicts.length > 0) {
-    statusText.dataset['tone'] = 'bad'
-    statusText.textContent = conflictSummary(status.conflicts)
-    return
+    return { text: conflictSummary(status.conflicts), tone: 'bad' }
   }
-  statusText.dataset['tone'] = 'plain'
   if (status.lastWrite === null) {
-    statusText.textContent = 'Nothing written this session. Undo is git checkout.'
-    return
+    return { text: 'Nothing written this session. Undo is git checkout.', tone: 'plain' }
   }
-  statusText.textContent = `Wrote ${status.lastWrite.paths.join(', ')} at ${new Date(
-    status.lastWrite.at,
-  ).toLocaleTimeString()}. Undo is git checkout.`
+  return {
+    text: `Wrote ${status.lastWrite.paths.join(', ')} at ${new Date(
+      status.lastWrite.at,
+    ).toLocaleTimeString()}. Undo is git checkout.`,
+    tone: 'plain',
+  }
 }
 
 /**

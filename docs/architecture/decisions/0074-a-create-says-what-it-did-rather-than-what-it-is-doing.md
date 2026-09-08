@@ -135,3 +135,70 @@ themselves, not in the renderer they all share.
 - **A create is ever made undoable from the page.** The undo clause here is an
   instruction because there is no button. A button would replace all three
   clauses and this record with it.
+
+## Amended on 2026-09-08: the closing sentence is said over a re-read that may not have happened
+
+Each of the four paths this record gave a closing sentence to ends the same
+three lines: write the file, `await reload()`, then say what it did. **The
+middle line can fail, and the sentence after it is written on the assumption
+that it did not.**
+
+`reload` wrote `Could not read the model: <why>` straight into the status
+element and returned, and the very next statement in the caller overwrote it.
+Measured in Chromium with `GET /api/model` aborted at the browser, against a
+throwaway copy of `examples/shop`:
+
+| Act | What the status line ended on |
+| --- | --- |
+| Delete a table | `Deleted tables/sweep_inside.md. Undo is git checkout, if it was committed.` |
+| Create a table | `Created tables/sweep_outside.md. Undo is deleting the file rather than git checkout, because it is new.` |
+
+So the person was told the page had re-read the directory when it had not, and
+the read that failed was on screen for no frames at all. The canvas underneath
+was measurably still the old one: the deleted table was still drawn, and the
+created one was not.
+
+**The first draw was already right and is untouched.** With the endpoint failing
+at page load the line reads `Could not read the model: Failed to fetch` and
+stands, because nothing renders over it: the heartbeat and the write poll both
+swallow a read that failed and say nothing, so the next render is the read that
+worked. That is the one status sentence here that is not held, and this
+amendment leaves it exactly as it was, word for word.
+
+### Both facts, rather than one
+
+`reload` now answers why it could not, and `sayDone` says both:
+
+    Deleted tables/stock_movements.md. Undo is git checkout, if it was
+    committed. The page could not re-read the model afterwards, so the canvas is
+    still showing what it drew before: Failed to fetch.
+
+The act's own half stays because it is the only thing here that changed
+somebody's disk and they have to be told. The second half is there because the
+canvas beside it is now older than the model and has to say so.
+
+The two creates also stop selecting the object they made when the re-read
+failed. Selecting a name the canvas has no box for opens a panel about an object
+the page is not holding, which would be a second wrong thing said about the same
+failed read.
+
+### The clause is taken back by the read that falsifies it
+
+A standing sentence is held until the next landed edit, so without more it would
+go on saying the canvas was behind over a canvas that had caught up. `adopt` is
+the read that makes it false, so `adopt` is what retracts it, and only the
+clause goes: the act's own sentence stands, because it is still true.
+
+Driven: delete with the endpoint aborted, then the endpoint restored, then a
+table file written into the directory from outside. The moment the page adopted
+that change, the line became `Deleted tables/stock_movements.md. Undo is git
+checkout, if it was committed.` and the deleted box was gone from the canvas.
+
+**Restoring the endpoint is not on its own enough, and that is by design rather
+than a gap.** The revision counts the times the directory changed underneath
+this session (ADR 0025), and the page's own create and delete are not that, so
+nothing tells the page to look again. Measured: with the endpoint back and
+`GET /api/model` returning 200 on every beat, the deleted box was still drawn
+six seconds later and the sentence was still true. What clears it is any change
+the session did not make, which is the ordinary next thing to happen in the
+workflow ADR 0004 describes.

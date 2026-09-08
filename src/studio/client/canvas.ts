@@ -87,6 +87,7 @@ import {
   toModel,
   visibleCount,
   zoomAbout,
+  type FitReport,
   type Point,
   type Rect,
   type Viewport,
@@ -139,18 +140,12 @@ export interface Moved {
 /**
  * What `Canvas.fit` managed, which is not always what it was asked for.
  *
- * Counted after the viewport moved rather than predicted from the bounds: the
- * rectangles are the ones the browser measured, so this is what is on screen
- * and not what ought to be.
+ * Declared in `geometry.ts` and re-exported here, because the only thing that
+ * reads it is the sentence said about it and that sentence has to be provable
+ * without a browser. This class is where it is filled in, which is why the name
+ * is still reachable from here.
  */
-export interface FitReport {
-  /** Objects with any part of themselves inside the canvas afterwards. */
-  readonly shown: number
-  /** Objects on the canvas at all: tables, notes and group boxes. */
-  readonly total: number
-  /** The fit wanted a scale below `MIN_SCALE` and was refused it. */
-  readonly clamped: boolean
-}
+export type { FitReport }
 
 /** Everything the canvas draws, as the page currently holds it. */
 export interface Scene {
@@ -1343,15 +1338,28 @@ export class Canvas {
    * model: which columns exist, and what the `ref` says a delete and an update
    * do. None of it is a function of where the boxes are, so the two have
    * different reasons to run and it is the cheaper one that has to run often.
+   *
+   * The reader's answer about a table's file is handed in here rather than
+   * routed onto the edge, for the reason the box's own sentence asks for it
+   * where it is written: the diagnostics move without the objects moving, and a
+   * copy taken while routing would go stale on the routing's schedule. This is
+   * the fourth surface to ask, after the box, the panel and the footer.
+   * dbmd-c7q.
    */
   private describeEdges(): void {
     this.edges.forEach((edge, index) => {
       const path = this.edgePaths[index]
       if (path === undefined) return
       const title = path.querySelector('title')
-      if (title !== null) title.textContent = edgeTitle(edge)
+      if (title !== null) title.textContent = edgeTitle(edge, (name) => this.unreadable(name))
       path.classList.toggle('unanchored', edge.unanchored.length > 0)
     })
+  }
+
+  /** What the reader said about a table's file, when it could not open it. */
+  private unreadable(table: string): string | undefined {
+    const found = this.tables.find((held) => held.name === table)
+    return found === undefined ? undefined : this.handlers.unreadable(found.path)
   }
 
   private isSelected(kind: ObjectKind, name: string): boolean {

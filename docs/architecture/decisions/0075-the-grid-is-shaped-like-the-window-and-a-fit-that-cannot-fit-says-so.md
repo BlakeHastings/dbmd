@@ -204,3 +204,77 @@ Measured after the change, same payloads, same window.
   not about this sentence: either the standing sentence is cleared on a resize,
   which is cheap and loses nothing, or a resize re-fits, which is a view moving
   under a person and would want arguing for on its own.
+
+## Amended on 2026-09-08: the clamp happening and the clamp costing something are two questions
+
+The second half of this record says the notice fires when Fit "could not fit",
+and the code asked a question that is not that one. `Canvas.fit` reported
+`clamped: fitScale(content, into) < view.scale`, which is true whenever the
+ideal scale would have been below `MIN_SCALE`, and `fitAndSay` said the sentence
+on that alone. **Whether the floor actually left anything off the screen was
+never asked.**
+
+Those two come apart on a small model in a small window, which is the case
+nobody constructed. `examples/shop` is eleven objects. Measured in Chromium
+against a throwaway copy, on the **first draw**, before anybody had pressed
+anything:
+
+| Window | Zoom after the first fit | On screen, walked from the DOM | Said |
+| --- | --- | --- | --- |
+| 420 x 300 | 25%, clamped | 11 of 11 | the notice |
+| 500 x 340 | 25%, clamped | 11 of 11 | the notice |
+| 380 x 260 | 25%, clamped | 11 of 11 | the notice |
+| 640 x 400 | 30% | 11 of 11 | nothing |
+
+> Fit is as far out as this page goes, and it was not far enough: **11 of the 11
+> objects on the canvas are on screen and the rest are past the edges.**
+
+There is no rest. The margin is what pulls the two apart: `fitScale` fits the
+content inside a 48 pixel margin on every side, and once that margin is spent
+the same content sits inside the canvas at 25% anyway. So the clamp happened and
+cost nothing.
+
+**This is the more important of the two places that fit**, and this record
+already said why: the first draw is where somebody who has just imported a real
+database is standing, nobody pressed anything, and so nobody is expecting an
+explanation to be owed.
+
+### What the code claimed, and what it does now
+
+`fitAndSay` closed with a comment reading _"A smaller canvas cannot turn a fit
+that was refused into one that fits, so the first sentence is never left
+standing over a fit that worked."_ The first clause is true and the conclusion
+does not follow from it: the clause is about the scale and the sentence is about
+the count. Here the first fit already had everything on screen.
+
+**`didNotFitNotice` now answers both halves and returns `undefined` when there
+is nothing to say.** The sentence and the condition for saying it were two
+things, the caller held the condition, and the condition it held was not the one
+the sentence claims. That is the shape worth not repeating rather than the
+missing comparison itself, so the fix is where the sentence is written and not
+at the two call sites.
+
+`FitReport` moved from `canvas.ts` to `geometry.ts` with it, because the only
+thing that reads it is the sentence said about it, and "is there a sentence to
+say here" has to be answerable without a browser. `canvas.ts` re-exports the
+type and is still what fills it in.
+
+### What did not change
+
+The counterfactual this record was written for. Measured after the change, same
+copy, same first draw:
+
+| Window | Zoom | On screen, walked from the DOM | Said |
+| --- | --- | --- | --- |
+| 420 x 300 | 25% | 11 of 11 | nothing |
+| 500 x 340 | 25% | 11 of 11 | nothing |
+| 380 x 260 | 25% | 11 of 11 | nothing |
+| 640 x 400 | 30% | 11 of 11 | nothing |
+| 300 x 220 | 25% | 4 of 11 | the notice, saying 4 of the 11 |
+| 260 x 200 | 25% | 3 of 11 | the notice, saying 3 of the 11 |
+| 240 x 190 | 25% | 3 of 11 | the notice, saying 3 of the 11 |
+
+The counts in the sentence are the counts an independent walk of the DOM against
+the canvas rectangle found, which is the property the second fit exists for and
+which this did not touch. The two-pass fit is unchanged, and so are `MIN_SCALE`,
+the grid, and everything in the first half of this record.

@@ -550,3 +550,87 @@ happen. The two are not the same: a file that did not parse has something in it
 to fix and does not come back until somebody fixes it, and a locked file has
 nothing in it to fix and comes back on its own. Saying only the second half of
 each would delete the distinction these two sentences exist to draw.
+
+## Amended a fifth time on 2026-09-08: an edge was the fourth surface, and the list had the old name
+
+Written the same day as the amendment above and landed after it, about a
+different sentence. That one is the panel's advice for a file that really did
+fail to parse; this one is a fourth surface still guessing which of the two
+things happened, and a list announced by the wrong one of them. They do not
+overlap and neither changes the other.
+
+The third amendment counted the surfaces that said "did not parse" about a file
+that parses and named three of them: the canvas box, the inspector panel and the
+footer's diagnostics list. It said the reason had to be asked for at the moment
+each sentence is written, and it moved `saidAbout` into
+`src/studio/unreadable.ts` so that all of them could ask. **There were four.**
+
+Measured in Chromium against a throwaway copy of `examples/shop`, with
+`tables/customers.md` held open by another process on an exclusive handle. The
+box and the panel were right:
+
+    customers
+    tables/customers.md could not be read just now, so this table cannot be
+    moved: cannot read the file: the file is in use (EBUSY). There is nothing in
+    the file to fix; it comes back on its own once the file can be read.
+
+Every edge into that table was not:
+
+    addresses.customer_id references customers.id, on delete: restrict. Drawn at
+    the table's name because customers did not parse, so its columns are not
+    drawn.
+
+Three of them, one per referring table. `edges.ts` set
+`why: box.drawsRows ? 'no-such-column' : 'table-did-not-parse'`, and `drawsRows`
+is `complete`, which is the flag this record already calls two facts wearing one
+flag.
+
+### The value routed says what routing can see, and the sentence asks for the rest
+
+The `why` value is now `'rows-not-drawn'`, which is the half `routeEdges` can
+answer from the boxes it was handed. Which of the two reasons the rows are not
+drawn for is a fact about the read, it goes stale the moment a lock clears, and
+it does not belong on a value recomputed on every animation frame of a drag. So
+`edgeTitle` takes the same accessor the canvas box and the panel take, asks it
+where it writes the sentence, and `canvas.ts` answers it from the reader's
+diagnostics the page is holding. That is the rule this record settled, applied
+to the surface it missed.
+
+**The edge tooltip does not repeat the reader's clause.** It says
+`customers could not be read just now, so its columns are not drawn`, and the
+box for that table is on screen beside it carrying the whole of
+`couldNotBeReadNow`, errno clause and "there is nothing in the file to fix"
+included. What the tooltip owed was not to name a cause it cannot see, and the
+clause it says now is as true of a permission change as of a lock, which is the
+rule the second amendment settled.
+
+Measured after the change, same lock, same copy: all three edges said
+`customers could not be read just now, so its columns are not drawn`, and the
+box, the panel and the footer's diagnostics were unchanged. With the lock gone
+and `type: uuid` replaced by `type: 42` instead, every edge said
+`customers did not parse, so its columns are not drawn` and the box said
+`tables/customers.md did not parse, so this table cannot be moved. See the
+diagnostics below.` Both reasons still exist and each is still said about its
+own case.
+
+### The conflicts list was announced as the reason `conflictSummary` stopped claiming
+
+`index.html` named the list
+`aria-label="Edits dropped rather than written over the file on disk"`. That is
+the `changed` reason, and it was the whole of the list's name for both kinds of
+entry. An entry whose reason is that the file could not be read at all was not
+written over anything: nothing was written and the file is exactly as it was,
+which is what its own message says.
+
+Reached by driving it, which is where it is most obviously wrong: two entries,
+one of each kind, the summary correctly reading
+`2 edits were dropped rather than written. Each line below says why.` while the
+name a screen reader announced still said "over the file on disk". The
+`changed` half came from a file edited on disk while the pointer was still
+holding its box, and the `unreadable` half from an exclusive handle on another
+file.
+
+The name is now `Edits dropped rather than written`, which says what the list is
+and leaves the why to the entries, because there are two whys and a list can
+hold both at once. `conflictSummary` was rewritten for exactly that reason and
+this is the same fix one element over.

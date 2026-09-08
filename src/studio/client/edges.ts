@@ -100,13 +100,24 @@ export interface TableBox extends Rect {
  * An end that could not be put on a row, and why not.
  *
  * The two reasons are different facts and a reader acts differently on each: a
- * column that is not there is a `ref` to fix, and a table that did not parse is
- * a file to fix, after which the column is very probably there. ADR 0018 says a
- * fallback that looks like something else is the original bug in disguise, and
- * a fallback explained by the wrong cause is the smaller version of that.
+ * column that is not there is a `ref` to fix, and a box drawing no rows at all
+ * is about the table's file, after which the column is very probably there. ADR
+ * 0018 says a fallback that looks like something else is the original bug in
+ * disguise, and a fallback explained by the wrong cause is the smaller version
+ * of that.
+ *
+ * **`rows-not-drawn` is deliberately not `table-did-not-parse`, which is what
+ * it was called and what it was measured saying about a file that parses.** Why
+ * a box draws no rows is two facts, the same two ADR 0019 separated about the
+ * write: a file that is there and is wrong, and a file nobody can open. That
+ * difference is a fact about the read rather than about the edge, it goes stale
+ * the moment a lock clears, and it does not belong on a value routed once per
+ * frame. So this carries the half routing can see, and `edgeTitle` asks
+ * `saidAbout` for the other half at the moment it writes the sentence, which is
+ * what the canvas box, the panel and the diagnostics list already do.
  */
 export interface UnanchoredEnd extends Endpoint {
-  readonly why: 'no-such-column' | 'table-did-not-parse'
+  readonly why: 'no-such-column' | 'rows-not-drawn'
 }
 
 export interface RoutedEdge extends EdgeSpec {
@@ -338,22 +349,50 @@ export function edgeName(spec: EdgeSpec): string {
  * It comes after the clauses because the clauses are about the reference and
  * this is about the drawing, and because it is the sentence that stops being
  * true first: an end finds its row again as soon as the file is fixed.
+ *
+ * ### A third reason, and it is asked for rather than routed
+ *
+ * "Did not parse" is two facts wearing one flag, and this was the fourth
+ * surface saying the wrong one of them. `drawsRows` is `complete`, which
+ * `carryForward` sets both for a file the reader could not build an object from
+ * and for a file it could not open at all, so with `customers.md` held open by
+ * another process the box and the panel both said the file could not be read
+ * just now while every edge into it said `customers did not parse, so its
+ * columns are not drawn`. That sends somebody to a file with nothing in it to
+ * fix. The other three surfaces were put right under dbmd-c7q by asking
+ * `saidAbout` at the moment they write their sentence, and `unreadable` is that
+ * same question handed to this one.
+ *
+ * **The clause is the short one, and the reader's own words are not repeated
+ * here.** The box for that table is on screen beside the edge and carries the
+ * whole of `couldNotBeReadNow`, errno clause and "there is nothing in the file
+ * to fix" included. What a tooltip owes is what every sentence about an
+ * unreadable file owes, which is not to name a cause it cannot see: what it
+ * says now is as true of a permission change as of a lock.
+ *
+ * A caller with no answer to give passes nothing and every end reads the way it
+ * did before. Only the sentence moves; the drawing is the same either way.
  */
-export function edgeTitle(edge: RoutedEdge): string {
+export function edgeTitle(
+  edge: RoutedEdge,
+  unreadable: (table: string) => string | undefined = () => undefined,
+): string {
   const said = [
     `${edge.from.table}.${edge.from.column} references ${edge.to.table}.${edge.to.column}`,
     ...(edge.onDelete === undefined ? [] : [`on delete: ${edge.onDelete}`]),
     ...(edge.onUpdate === undefined ? [] : [`on update: ${edge.onUpdate}`]),
   ].join(', ')
   if (edge.unanchored.length === 0) return said
-  const because = edge.unanchored
-    .map((end) =>
-      end.why === 'no-such-column'
-        ? `there is no ${end.table}.${end.column}`
-        : `${end.table} did not parse, so its columns are not drawn`,
-    )
-    .join(' and ')
+  const because = edge.unanchored.map((end) => reasonFor(end, unreadable)).join(' and ')
   return `${said}. Drawn at the table's name because ${because}.`
+}
+
+function reasonFor(end: UnanchoredEnd, unreadable: (table: string) => string | undefined): string {
+  if (end.why === 'no-such-column') return `there is no ${end.table}.${end.column}`
+  if (unreadable(end.table) !== undefined) {
+    return `${end.table} could not be read just now, so its columns are not drawn`
+  }
+  return `${end.table} did not parse, so its columns are not drawn`
 }
 
 function between(
@@ -453,8 +492,8 @@ function unanchoredEnds(spec: EdgeSpec, from: TableBox, to: TableBox): readonly 
     if (box.rows.has(end.column)) continue
     // The order matters. A box that draws no rows has no row for any column, so
     // asking whether this one is missing first would answer every end on a
-    // table that did not parse with a column that is still in the model.
-    ends.push({ ...end, why: box.drawsRows ? 'no-such-column' : 'table-did-not-parse' })
+    // table whose rows are not drawn with a column that is still in the model.
+    ends.push({ ...end, why: box.drawsRows ? 'no-such-column' : 'rows-not-drawn' })
   }
   return ends
 }
