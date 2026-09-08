@@ -3222,3 +3222,43 @@ corrected by whoever fixed the thing and the other was nobody's job.
   So the second engine is not a thinner version of the first: the same commands
   answer the same way, and the one thing it cannot represent is written down
   rather than discovered.
+
+- **All seventeen `import/` codes were tried, and three of them cannot be reached
+  from a file a person pasted.** Twelve fire from a mangled payload and were
+  driven. `import/not-an-object` fires for a document that is a list or a string.
+  **`import/not-in-vocabulary`, `import/conflicting-fields` and
+  `import/unknown-field` do not fire at all**, and reading `src/import/contract.ts`
+  says why: they read the **canonical** field names a provider produces, not the
+  raw ones a query prints. `optionalEnum` asks for `onDelete`; the payload says
+  `on_delete`. The index-key check asks for `column` and `expression`; the
+  payload says `column_name`.
+
+  **So the contract layer validates a document the provider built, and can only
+  catch a provider bug.** An earlier agent found the same seam from the
+  `unknown-field` side and reported that it is written down nowhere. These are
+  the measurements that give that observation teeth.
+
+  What gets through, driven and confirmed on disk:
+
+  - **An `on_delete` outside the vocabulary is dropped in silence.** The ref is
+    written with its `on update:` and **no `on delete:` line at all**. That is not
+    a small loss: ADR 0049 is explicit that an absent clause and `no action` are
+    different facts, and this turns one into the other.
+  - **A column carrying both a default and a generation expression** is written
+    as an ordinary column with the default, and the generation expression is
+    gone. A generated column arrives as one that is not.
+  - **A stray key is ignored**, at the top level, on a table and on a column.
+
+  **This is a robustness gap rather than a live defect, and the difference
+  matters.** `dbmd query` cannot produce any of these three: the referential
+  action is a single catalogue character, the default and the generation
+  expression come from one `CASE`, and the keys are built by the query. The
+  documented ways a saved file goes wrong are truncation and a client's framing,
+  and both of those produce a parse error rather than a plausible-looking
+  document.
+
+  **So it is the owner's call how much the import should distrust its own input**,
+  and it is not dispatched. What is worth having either way is the sentence that
+  is missing: `docs/import-format.md` documents `import/unknown-field` as forward
+  compatibility without saying that the check sits on a layer which never sees
+  the file a person pasted.
