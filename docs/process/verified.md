@@ -3061,3 +3061,26 @@ corrected by whoever fixed the thing and the other was nobody's job.
   Recorded because a successor who measures 85 and compares it to the 58 written
   down will look for a regression that is not there. **The honest form of a
   timing is the load it was taken under**, and neither number is wrong.
+
+- **The model diagnostic sweep is closed: all 35 codes driven, 9 suspect, 9
+  fixed.** Three landed as #231, six as #236, and the count is not derived: 34
+  were triggered through `dbmd check` and the thirty-fifth is unreachable there
+  by design, which both `src/diagnostics.ts` and `docs/format.md` already said.
+
+  Confirmed live on `main` after the second merge:
+
+  ```
+  _model.md
+    2  error  `kind: table` in `_model.md`; the file name decides what this file is,
+              so write `kind: model`, and the `name:` and `engine:` are read either way
+  ```
+
+  which is the message whose three clauses were each false, replaced by one that
+  states the fact the old one had backwards.
+
+  **What the sweep cost and what it bought.** One read-only agent to enumerate,
+  two implementation agents to fix, and about a dozen reproductions by hand in
+  between. What it bought is not nine better sentences: it is that the nine were
+  found by construction rather than by somebody happening to be in the wrong
+  state at the right moment. Four of the nine had survived every previous pass
+  over this code, including a full sweep of every decision record's revisit list.
