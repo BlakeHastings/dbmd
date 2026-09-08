@@ -1136,3 +1136,35 @@ makes them evidence rather than a rule to remember.
   throughout. **What the help text does not say is how to reach the panel it
   opens**, and that takes nine presses of Tab, which is the one thing recorded
   as owed rather than done.
+
+## 2026-09-07, evening: what the npm page will actually show
+
+**Raised as a defect and then measured away.** The README's headline picture is a
+relative path, `docs/media/studio-shipments.png`, and `npm pack` does not carry
+`docs/`: the tarball's only top-level files are `LICENSE`, `README.md` and
+`package.json`. That looked like a broken image on the first screen of the
+package page, and it is not.
+
+**npm rewrites relative paths in a README to the repository's raw content.**
+Settled by looking at a published package rather than at documentation, which
+does not say. `chalk`'s README contains `![](media/screenshot.png)`, its tarball
+contains no `media/`, and the rendered page serves it as
+`https://raw.githubusercontent.com/chalk/chalk/HEAD/media/screenshot.png`.
+
+Applied here, and both checked rather than assumed: the repository is public,
+its default branch is `main`, and
+`https://raw.githubusercontent.com/BlakeHastings/dbmd/HEAD/docs/media/studio-shipments.png`
+and `https://raw.githubusercontent.com/BlakeHastings/dbmd/HEAD/docs/ci.md` both
+return 200. So the picture and the sixteen relative links to `docs/` and
+`CONTRIBUTING.md` will resolve on the package page, and nothing has to change
+before a publish.
+
+**`HEAD` is the rewrite, so the picture tracks the default branch** rather than
+the released version. A reader of an old version's page sees today's screenshot.
+That is the usual behaviour for every package on the registry and is recorded
+here so nobody rediscovers it as a bug.
+
+**The rest of what a stranger downloads was read at the same time and is
+complete**: name, description, seven keywords, MIT, repository, homepage, bugs,
+`engines.node >=22`, the `dbmd` binary and three export paths, with `LICENSE` and
+`README.md` both in the tarball. 77 files, 236 kB packed.
