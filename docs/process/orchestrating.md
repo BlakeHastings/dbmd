@@ -1217,3 +1217,47 @@ The third of the three was real, in the same pass: a primary key whose columns
 are not in the export is dropped with no warning, next to a foreign key case that
 warns properly. So the instinct is a prior, not a rule. It tells you what to
 check first, not what to conclude.
+
+## I handed out one decision record number twice, and the rule was already written
+
+This skill says to hand out record numbers "checked against the default branch
+*and* every open PR", and gives the reason: agents taking the next free number
+collide, and a caught collision still costs a rebase.
+
+Both halves failed in one evening, in opposite directions.
+
+**First I told a brief that 0091 was free.** It had been free when I read the
+directory and was taken by a merge while that agent worked. The agent caught it
+on its own, moved to 0092, and checked the default branch and the open pull
+requests before choosing, which is the whole rule done properly by somebody who
+had not been asked to.
+
+**Then I handed 0092 to a second brief.** By then it was claimed on an open
+branch, and I checked neither place. So the number that was corrected by an
+agent was reissued by the orchestrator an hour later.
+
+**The repository already has a gate and it cannot see this.**
+`scripts/check-adr-numbers.mjs` refuses a duplicate on the default branch, which
+is the right thing to gate and catches nothing while both claims are still on
+open branches. That gap is exactly where both of these live.
+
+**So the fix is a command, not a resolution to be careful.** Eight lines: read
+the numbers on the default branch, read every open pull request's added records,
+report a number claimed twice, and print the next three that are genuinely free.
+Run it before writing a brief that hands one out. Run against the state that
+produced this section it prints:
+
+```
+COLLISION: 0092 is claimed by #239 and #238
+free to hand out: 0093, 0094, 0095
+```
+
+**The general shape is the one this file keeps arriving at.** A rule that has to
+be remembered at the moment of writing a brief is a rule that fails when briefs
+are being written quickly, and briefs are written quickly precisely when several
+agents are out, which is exactly when collisions are possible. **The rules that
+survive are the ones somebody turned into something that answers a question.**
+
+Worth saying plainly: the agent that caught my first mistake did it by following
+the instruction I gave it, and my second mistake broke the instruction I was
+giving. The briefs were more careful than the person writing them.
