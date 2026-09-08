@@ -1776,7 +1776,24 @@ describe('merge-pr.mjs, broken on purpose', () => {
 // ---------------------------------------------------------------------------
 
 describe('the checkout a merge is running in, broken on purpose', () => {
-  const MAIN = 'C:/Users/someone/source/repos/proj-db-md'
+  /**
+   * The fixture paths, written without a drive letter on purpose.
+   *
+   * `readCheckout` resolves what git said against the working directory, which
+   * is the platform's own `path.resolve`, and this suite runs on Windows and on
+   * two Linux runners. A first version of these cases used the real measured
+   * `C:/Users/...` answers and went green here and red in CI: on Linux `C:/x`
+   * is a *relative* path, so it was joined onto the runner's directory and two
+   * answers that are one directory on the machine this script runs on became
+   * two. The lesson is the one this whole file is about, arriving from the
+   * other side: a fixture that encodes the platform tests the platform.
+   *
+   * So these are rooted paths, which resolve to one directory on both, and the
+   * assertions are about `linked`, which is the load-bearing answer and is
+   * exact everywhere. The one case that is genuinely about Windows says so and
+   * asserts what the platform it is running on actually does.
+   */
+  const MAIN = '/repos/proj-db-md'
   const WORKTREE = `${MAIN}/.claude/worktrees/agent-a9ba51`
 
   test('the main checkout, asked from its root, is not a worktree', () => {
@@ -1820,10 +1837,14 @@ describe('the checkout a merge is running in, broken on purpose', () => {
     })
 
     expect(checkout?.linked).toBe(true)
+    // Straight through, unresolved, because it is what the caller will read in
+    // the refusal and compare against their own prompt.
     expect(checkout?.here).toBe(WORKTREE)
     // What the refusal tells the caller to go and do instead, so it has to be
-    // the checkout rather than the git directory inside it.
-    expect(checkout?.main).toBe(MAIN)
+    // the checkout and not the git directory inside it. Asserted by shape
+    // rather than as a literal: on Windows the resolved answer carries the
+    // drive letter of whatever directory the suite ran in.
+    expect(checkout?.main.endsWith('/repos/proj-db-md')).toBe(true)
   })
 
   test('a worktree outside the repository is one too, because the test is not a path pattern', () => {
@@ -1834,22 +1855,26 @@ describe('the checkout a merge is running in, broken on purpose', () => {
     const checkout = mergePr.readCheckout({
       gitDir: `${MAIN}/.git/worktrees/rb128`,
       gitCommonDir: `${MAIN}/.git`,
-      topLevel: 'C:/scratch/rb128',
-      cwd: 'C:/scratch/rb128',
+      topLevel: '/scratch/rb128',
+      cwd: '/scratch/rb128',
     })
 
     expect(checkout?.linked).toBe(true)
   })
 
-  test('a drive letter in the other case does not make the main checkout look linked', () => {
-    // Windows. `C:/x` and `c:\x` are one directory, and calling them two would
-    // refuse the merge path itself.
-    const checkout = mergePr.readCheckout({
-      gitDir: 'C:/Users/someone/source/repos/proj-db-md/.git',
-      gitCommonDir: 'c:\\Users\\someone\\source\\repos\\proj-db-md\\.git',
-      topLevel: MAIN,
-      cwd: MAIN,
-    })
+  test('the same directory spelled two ways does not make the main checkout look linked', () => {
+    // A false refusal is the expensive direction here, because the caller it
+    // refuses is the only one allowed to merge. Windows is the platform this
+    // script runs on and `C:/x`, `c:\x` and `C:\X` are one directory there, so
+    // the comparison is case-insensitive and on forward slashes. On POSIX a
+    // backslash is an ordinary character in a name, so the second half of that
+    // is meaningless there and only the case half is asserted.
+    const spelledTwoWays =
+      process.platform === 'win32'
+        ? { gitDir: 'C:/repos/proj-db-md/.git', gitCommonDir: 'c:\\repos\\proj-db-md\\.git' }
+        : { gitDir: `${MAIN}/.git`, gitCommonDir: '/REPOS/PROJ-DB-MD/.git' }
+
+    const checkout = mergePr.readCheckout({ ...spelledTwoWays, topLevel: MAIN, cwd: MAIN })
 
     expect(checkout?.linked).toBe(false)
   })

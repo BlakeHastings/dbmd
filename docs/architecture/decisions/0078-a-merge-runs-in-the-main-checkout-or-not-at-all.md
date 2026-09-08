@@ -160,6 +160,17 @@ ADR 0058, unchanged.
   should start there and should be clear about which question it answers.
 - **Every merge now runs one `git` subprocess it did not run before.** It is
   local, it is milliseconds, and it is the only non-`gh` call in the file.
+- **The first version of the tests was green here and red in CI**, and it is
+  worth recording because it is this file's own subject arriving from the other
+  side. The cases were written with the real measured `C:/Users/...` answers,
+  which is the honest thing to do, and on the Linux runners `C:/x` is a
+  *relative* path: `path.resolve` joined it onto the runner's directory, and two
+  answers that name one directory on the machine this script runs on became two.
+  A fixture that encodes the platform tests the platform. The cases now use
+  rooted paths that mean the same thing on both, and the one case that is
+  genuinely about Windows asks `process.platform` and asserts what the platform
+  it is running on actually does, which is the precedent in
+  `test/studio/safe-path.test.ts`.
 - **A reworded refusal turns tests red.** ADR 0034 accepted that cost and it
   applies to the two clauses added here.
 - **Nothing else in the tree calls `decideMerge` with facts of its own**, so the
