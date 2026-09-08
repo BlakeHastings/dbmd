@@ -53,10 +53,13 @@ two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 ## In flight, and what is actually left
 
-**Two agents are out on 2026-09-08, both on the CLI, and neither has an item in
-the tracker because the tracker cannot be written to.** Each brief is the whole
-issue and each pull request body will carry it, so nothing is lost if this file
-is. Sixteen agents have now worked between the afternoon of 2026-09-07 and here.
+**Four agents were dispatched on 2026-09-08, all on the CLI, and none has an item
+in the tracker because the tracker cannot be written to.** Each brief is the
+whole issue and each pull request body carries it, so nothing is lost if this
+file is. One of the four has already landed as #223. A fifth agent wrote nothing
+at all: it drove `dbmd check` and `dbmd init` against their own help text and
+reported, which is where three of the findings below came from. Nineteen agents
+have now worked between the afternoon of 2026-09-07 and here.
 
 - **`export/markers-out-of-order-and-a-refusal-in-the-commands-voice`.** Two
   defects in `src/cli/export.ts`. A README holding both diagram markers in the
@@ -68,6 +71,19 @@ is. Sixteen agents have now worked between the afternoon of 2026-09-07 and here.
   reader's errors and the validator's together and explains all of them as a file
   that failed to load. On a model whose one error is a dangling ref it warns that
   the answer may be short, then prints the dangling ref as part of the answer.
+
+**Two more waves went out after those, both from driving the command line.**
+
+- **`cli/the-flag-it-names-is-the-flag-that-was-wrong`.** `offendingOption` in
+  `src/cli/command.ts` returns the first argv token starting with a dash rather
+  than the one that offended, so every command can name a valid flag as unknown
+  in a sentence that then lists it as accepted. All seven call it.
+- **`cli/three-sentences-that-are-false-about-the-thing-in-front-of-them`.**
+  `dbmd init` tells a plain file it is a directory that is not empty and offers
+  a remedy that provably fails; `dbmd check` counts diagnostic headings and calls
+  them files, including headings that are directories or nothing at all; and
+  `dbmd check` says there is no `_model.md` on the line above the one that names
+  `_model.md/`.
 
 **A third finding is held back on purpose.** `dbmd import` has the same
 uncaught write failure, it leads with a temporary file whose name is gone by the
@@ -402,7 +418,29 @@ bd create --ignore-schema-skew -p 2 -t task   "refs explains a validation error 
 # The reasoning is in the "In flight" section above. This is the worst of the
 # four: it is a silent partial write, not only a message.
 bd create --ignore-schema-skew -p 1 -t task   "import fails half way, leaves files written, and reports none of them"
+
+# Out with a third agent on 2026-09-08. All seven commands are affected.
+bd create --ignore-schema-skew -p 2 -t task   "Every command names the first dash token as the unknown one, not the wrong one"
+
+# Out with a fourth agent on 2026-09-08, as one branch.
+bd create --ignore-schema-skew -p 2 -t task   "init tells a plain file it is a directory that is not empty"
+bd create --ignore-schema-skew -p 2 -t task   "check counts diagnostic headings and calls them files"
+bd create --ignore-schema-skew -p 2 -t task   "check says there is no _model.md above the line that names _model.md/"
+
+# Found 2026-09-08 and NOT dispatched. Its fix has to edit README.md, which
+# carries the owner's uncommitted edit, so it waits on them.
+bd create --ignore-schema-skew -p 3 -t task   "The README shows thirteen command sessions and two of them are checked"
+
+# Found 2026-09-08 and not dispatched. Lower than the rest.
+bd create --ignore-schema-skew -p 3 -t task   "studio prints a busy port in Node's voice, with the advice it already knows"
 ```
+
+**One of those is blocked on the owner rather than on an agent.** `README.md`
+shows thirteen `$ dbmd` sessions and `test/docs/readme.test.ts` checks two of
+them, the ones tagged `dbmd-run`. The drift that mechanism exists to catch then
+happened while it was watched: #223 changed the `dbmd refs` banner and the
+README's `dbmd refs addresses shop` block still shows the old wording. Fixing it
+means editing a file with the owner's uncommitted work in it, so it waits.
 
 **The third of those is the one to read first if time is short.** ADR 0083
 decided that a refusal from the disk leads with the file and keeps the system's

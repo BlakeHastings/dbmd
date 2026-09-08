@@ -5952,3 +5952,68 @@ corrected by whoever fixed the thing and the other was nobody's job.
   mid-rename state the help promises to answer; `--outgoing` alone narrows the
   text; and the JSON carries both directions whichever flags were given, with
   the file, the nullability and the referential actions on each row.
+
+- **Every command names the wrong flag when the command line is wrong, and the
+  sentence contradicts itself.** `offendingOption` in `src/cli/command.ts`
+  returns the first argv token that starts with a dash, not the one that
+  offended, so a valid flag standing before a bad one is reported as unknown.
+  `dbmd query --engine postgres --bogus` answers `unknown option "--engine".
+  "dbmd query" takes --engine and nothing else`, naming a flag as unknown and
+  then listing it as accepted, while `--bogus` is never mentioned. Reproduced on
+  `query`, `studio` and `refs`; all seven commands call the helper. A second
+  shape: `dbmd studio --no-open --port -1` blames `--no-open` when the real
+  error is `ERR_PARSE_ARGS_INVALID_OPTION_VALUE` on `--port`, so a value problem
+  on one flag becomes an unknown-option claim about a different, valid one.
+
+- **`dbmd init` tells a file it is a directory that is not empty, and its advice
+  provably fails.** A zero-byte `model.md` is answered with `model.md already
+  exists and is not empty` and the JSON code `directory-not-empty`. Three clauses
+  are false: the file is empty, it is not a directory, and that code names a
+  condition that did not fire. The remedy was run rather than assumed: a file
+  with content, truncated exactly as instructed, produces the identical sentence
+  on the retry. `isVacant` folds `ENOTDIR` into the same `false` as a directory
+  with entries in it, and there is no branch for the file case.
+
+- **`dbmd check` counts headings and calls them files.** Three reproductions. A
+  model with a stray subdirectory under `tables/` and an unknown `views/`
+  directory reports `1 error and 1 warning across 2 files` when zero files are
+  involved and both diagnostics say in their own text that they are about
+  directories. A model directory that does not exist reports `1 error across 1
+  file`. An empty directory reports `1 warning across 1 file`, and the one file
+  counted is the `_model.md` the line above says is absent.
+
+- **`dbmd check` says there is no `_model.md` on the line above the one that
+  names it.** With `_model.md` present as a directory, one run prints `no
+  _model.md, so the model has no name and no engine; add one` and then
+  ``  `_model.md/` is not a kind of object dbmd knows``, under a single heading.
+  The fix clause is false too: writing that path answers `EISDIR`. The reader's
+  `else` branch is reached by two states and asserts the first of them.
+
+- **`dbmd studio` prints a busy port in Node's voice.** A second studio on a port
+  already bound answers `dbmd: listen EADDRINUSE: address already in use
+  127.0.0.1:49999`, exit 1, with the generic `"code": "failed"` in JSON. The same
+  command's own port validator already knows the sentence that would help,
+  because `--port abc` answers `"--port" takes a number from 0 to 65535, and got
+  "abc". 0, the default, lets the operating system pick a free one.` The advice
+  exists and is not given in the one situation where the reader needs it.
+
+- **The README shows thirteen command sessions and two of them are checked.**
+  `test/docs/readme.test.ts` runs a fenced block tagged `dbmd-run` and compares
+  its output. Two blocks carry that tag; thirteen plain fences begin with
+  `$ dbmd` and nothing reads them. The drift that mechanism exists to catch then
+  happened while it was watched: merging #223 changed the `dbmd refs` banner for
+  a model whose errors are all the validator's, and the README's
+  `dbmd refs addresses shop` session still shows the old wording. It is a plain
+  fence, so nothing went red.
+
+- **PR #223 was verified by building its sha and driving four states**, not by
+  reading its report: a dangling ref alone, an unparseable file alone, both
+  together, and neither. Each printed a banner true of that model, the clean case
+  printed none, and the JSON carried `{"errors":2,"warnings":0,"readErrors":1}`
+  for the mixed one, so `errors` keeps its meaning and the new field is the part
+  that means the lists may be short.
+
+- **A branch cannot be named `refs/anything`.** Git reserves that namespace and
+  GitHub rejects the push with `GH014: branch or tag names starting with 'refs/'
+  are not allowed`. A brief that hands an agent a branch name is handing it a
+  thing that can be invalid; this one cost an agent a push and a rename.
