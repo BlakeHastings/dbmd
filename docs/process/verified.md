@@ -6273,13 +6273,24 @@ corrected by whoever fixed the thing and the other was nobody's job.
   is the only record of what landed", which was true that morning and is not now.
   An agent reading top to bottom meets the false sentence first.
 
-  **The gap is that the skill has no machinery**, while the pages beside it do.
-  `test/docs/readme.test.ts` runs the README's tagged blocks, `test/docs/
-  format.test.ts` runs the format page's, `test/docs/payloads.test.ts` claims
-  every plain JSON fence on four pages and goes red on an unclaimed one, and
-  `scripts/check-commands.mjs` reads every `dbmd@` version and every `npm run`
-  reference across 186 files. None of them reads the skill, which is the one
-  document written specifically to be obeyed rather than read.
+  **The gap is narrower than "the skill has no machinery", which is what an
+  earlier version of this entry said.** That was wrong and the correction was
+  measured rather than reasoned. `scripts/check-commands.mjs` does scan the
+  skill: a worktree with `dbmd check` changed to `dbmd chekc` there made it exit
+  1 and name twelve lines, and an `npm run` script that does not exist made it
+  exit 1 too.
+
+  **What it does not catch is a flag, and that is general rather than a property
+  of the skill.** `dbmd check --deep` passes in the skill, in `README.md` and in
+  `docs/ci.md`, all three measured on a worktree. The guard's own summary is
+  honest about it, saying every `dbmd`, `npm run` and `scripts/` **reference**
+  resolves, and a flag is not a reference. The sharpest case is the published
+  recipe, because `npx --yes dbmd@0.1.0 check db-model --deep` would ship to a
+  stranger and exit 2 in their CI.
+
+  So the skill's real gap is prose about behaviour, which nothing checks
+  anywhere, and it shares that with every page. What makes it worse there is that
+  the skill is the one document written to be obeyed rather than read.
 
   Sent back to the agent that wrote both halves, with the four merges of the
   night named so the sweep covers what they changed rather than only what it

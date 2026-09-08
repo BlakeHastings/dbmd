@@ -1067,6 +1067,22 @@ written after `dbmd@` across 186 files and fails unless it matches the manifest.
 **The one document with none of that is the agent skill**, which is the only
 document in the tree written to be obeyed rather than read.
 
+That sentence was wrong when first written here, and the correction belongs in
+front of the argument rather than in a footnote. `check-commands.mjs` does scan
+the skill, and a command name or an `npm run` script that does not exist fails
+there like anywhere else. What nothing catches, in the skill or on any other
+page, is a **flag**: `dbmd check --deep` passes in all three of the skill, the
+README and the published recipe, measured. So the skill's real gap is prose
+about behaviour, which it shares with every page, and what makes it worse there
+is only that this is the document written to be obeyed.
+
+**Three overstatements in one evening, all in the same direction.** The README's
+unchecked blocks were counted too high twice, and the skill's cover was described
+as absent when it is partial. Every one of them made a gap sound larger than it
+is, and every one was corrected by measuring rather than by thinking harder. A
+gap that sounds larger is the more comfortable error to make while writing a
+finding, which is exactly why it needs the same evidence a defect does.
+
 It went stale within the hour. A merge gave a thrown error the list of files a
 failed run had already written, and the agent that made the change correctly
 added a bullet to the skill saying so. Two hundred lines earlier, the same file
