@@ -2124,3 +2124,34 @@ is where every measurement in this file was taken until tonight. Firefox and
 WebKit were each installed for the purpose and each behaved identically, which is
 what a client using no engine-specific interface predicts and is now measured
 rather than predicted.
+
+## 2026-09-08: dragging a box with six hundred of them on the page
+
+First paint at six hundred tables was measured on 2026-09-07 and interaction was
+not, which is the half a person actually feels. Six hundred boxes and two hundred
+edges, Chromium at 1600 by 1000, real mouse input:
+
+| | |
+| --- | --- |
+| press to selected | 87ms |
+| twelve pointer moves | 355ms, about 30ms each |
+| reached disk after | under 1000ms |
+| console and page errors | none |
+
+`tables/t0157.md` went from `layout: { x: 1840, y: 1340 }` to
+`{ x: 1840, y: 1628 }`. So a drag on a six hundred table model is usable rather
+than fast: about thirty frames a second while the pointer is down, and the write
+lands inside a second.
+
+**Two instrument notes for whoever drives this page next**, both of which cost me
+a run each.
+
+- **A dispatched `PointerEvent` does not start a drag.** The page calls
+  `setPointerCapture`, and a synthetic event carries no active pointer id, so it
+  throws `NotFoundError: No active pointer with the given id is found` and
+  nothing moves. That error looks like a defect in the page and is a defect in
+  the script. Use real mouse input.
+- **At six hundred tables most boxes are off screen**, because Fit clamps at 25%
+  and pans. `#table-t0002` reports its header at screen `(-212, -225)`, so a
+  script that picks a box by name and clicks its coordinates clicks nothing. Pick
+  a box whose rectangle is inside the canvas rectangle.
