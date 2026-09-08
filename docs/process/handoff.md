@@ -21,7 +21,7 @@ measured just now.
 | decision records | 88 |
 | tests | 1358 passing, 1 skipped, across 46 files |
 | backlog | 123 closed, 3 open, and it still cannot be written to |
-| the gate | 58, 58 and 60 seconds, timed three times on 2026-09-08 |
+| the gate | 58 to 60 seconds idle, 81 to 89 with five agents running. Both measured |
 
 **Three items are open and only two are the owner's.** An earlier version of this
 paragraph said all three were. It was wrong within an hour of being written,

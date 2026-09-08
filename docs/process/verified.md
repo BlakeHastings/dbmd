@@ -3050,3 +3050,14 @@ corrected by whoever fixed the thing and the other was nobody's job.
   already records under `| head` masking an exit code, in a different disguise.
   The rule that would have caught both: **when a run is being read for what it
   says, read all of it.**
+
+- **The gate timed at 81 and 89 seconds, and that is the machine rather than the
+  gate.** This file and the handoff quote 58 to 63 seconds, measured on three
+  consecutive runs earlier the same day. The difference is five agents running,
+  each holding a build or a test suite. **The stage added since then costs under
+  a second**: `check:duplication` over 158 markdown files times at 0 seconds on
+  its own.
+
+  Recorded because a successor who measures 85 and compares it to the 58 written
+  down will look for a regression that is not there. **The honest form of a
+  timing is the load it was taken under**, and neither number is wrong.
