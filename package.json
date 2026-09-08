@@ -53,6 +53,7 @@
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
     "studio": "npm run build && node dist/cli.js studio examples/shop",
     "studio:dev": "npm run build && node scripts/build-client.mjs --dev && node scripts/studio-dev.mjs",
+    "annotations": "node scripts/annotations.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check",
     "check": "npm run typecheck && npm run format:check && npm run check:adr && npm run check:reviewable && npm run check:commands && npm run check:scenes && npm run test && npm run build && npm run check:pack && npm run check:guards",
