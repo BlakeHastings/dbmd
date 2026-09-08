@@ -52,19 +52,55 @@ export const EXIT_USAGE = 2
 export const EXIT_FAILURE = 1
 
 /**
- * The flag `parseArgs` objected to, phrased for the person who typed it.
+ * The flag `parseArgs` objected to, phrased for the person who typed it, or
+ * `undefined` when nothing in `argv` is a flag this command has never heard of.
  *
  * `parseArgs` says "To specify a positional argument starting with a '-', place
  * it at the end of the command after '--'", which is true, is about a thing
  * nobody here is doing, and reads as a suggestion to try it. The token is the
  * useful half of what it knows, and it is recoverable from the same arguments.
  *
+ * `accepted` is the option names the caller handed `parseArgs`, spelled the
+ * same way and without their dashes, and it is the whole of what keeps this
+ * honest: until 2026-09-08 this took `argv` alone and named the first token
+ * with a dash on it, so "dbmd query --engine postgres --bogus" reported
+ * `--engine` as unknown and then, in the same sentence, listed `--engine` as
+ * the flag the command takes.
+ *
+ * The set is passed in rather than read off the error because the error has
+ * nothing structured on it to read: `Object.getOwnPropertyNames` on what
+ * `parseArgs` throws is `stack`, `code` and `message`, and the message is prose
+ * that Node is free to reword. A helper that matched on the phrase "Unknown
+ * option" would go quietly wrong on a Node upgrade rather than loudly, and CI
+ * runs two Node versions.
+ *
+ * It speaks only about a `--long` token, which in strict mode `parseArgs` can
+ * only have read as an option: one that is not in `accepted` is unknown, and
+ * one that is in it never gets named here again. Every other shape stays
+ * silent and the caller falls back to what `parseArgs` said, because a token
+ * like the `-1` in "dbmd studio --port -1" is not an unknown option at all,
+ * telling it apart from a mistyped short flag means re-implementing the parser,
+ * and the error thrown about it already names the right flag.
+ *
  * It lives here rather than beside one command because every command parses its
  * own flags and each one would otherwise write this paragraph again.
  */
-export function offendingOption(argv: readonly string[]): string | undefined {
-  const flag = argv.find((token) => token.startsWith('-') && token !== '-' && token !== '--')
-  return flag === undefined ? undefined : `unknown option "${flag}"`
+export function offendingOption(
+  argv: readonly string[],
+  accepted: readonly string[],
+): string | undefined {
+  for (const token of argv) {
+    // Everything after a bare `--` is a positional, however it is spelled.
+    if (token === '--') return undefined
+    if (!token.startsWith('--')) {
+      if (token !== '-' && token.startsWith('-')) return undefined
+      continue
+    }
+    const equals = token.indexOf('=')
+    const name = equals === -1 ? token.slice(2) : token.slice(2, equals)
+    if (!accepted.includes(name)) return `unknown option "--${name}"`
+  }
+  return undefined
 }
 
 /** What was thrown, as prose, for the case where it was not an `Error`. */

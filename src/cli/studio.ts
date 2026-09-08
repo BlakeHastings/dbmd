@@ -127,7 +127,7 @@ export function parseStudioArgs(argv: readonly string[]): StudioOptions & {
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd studio" takes an optional directory, ` +
+      `${offendingOption(argv, ['port', 'no-open']) ?? messageOf(error)}. "dbmd studio" takes an optional directory, ` +
         `--port and --no-open; run "dbmd studio --help".`,
     )
   }

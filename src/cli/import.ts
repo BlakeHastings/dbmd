@@ -851,7 +851,7 @@ function parseImportArgs(argv: readonly string[]): {
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd import" takes --file, --dir, ` +
+      `${offendingOption(argv, ['file', 'dir', 'engine', 'confirm']) ?? messageOf(error)}. "dbmd import" takes --file, --dir, ` +
         `--engine and --confirm; run "dbmd import --help".`,
     )
   }

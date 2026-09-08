@@ -96,7 +96,7 @@ function parseInitArgs(argv: readonly string[]): string {
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd init" takes an optional directory ` +
+      `${offendingOption(argv, []) ?? messageOf(error)}. "dbmd init" takes an optional directory ` +
         `and no flags; run "dbmd init --help".`,
     )
   }

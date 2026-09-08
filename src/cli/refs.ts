@@ -564,7 +564,7 @@ function parseRefsArgs(argv: readonly string[]): {
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd refs" takes a table, an optional ` +
+      `${offendingOption(argv, ['incoming', 'outgoing']) ?? messageOf(error)}. "dbmd refs" takes a table, an optional ` +
         `directory, --incoming and --outgoing; run "dbmd refs --help".`,
     )
   }

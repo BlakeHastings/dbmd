@@ -184,7 +184,7 @@ function parseQueryArgs(argv: readonly string[], providers: ProviderRegistry): s
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd query" takes --engine and nothing ` +
+      `${offendingOption(argv, ['engine']) ?? messageOf(error)}. "dbmd query" takes --engine and nothing ` +
         `else; run "dbmd query --help".`,
     )
   }

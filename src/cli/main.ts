@@ -45,8 +45,13 @@ import {
  * `import` because that is the order they are run in, and a reader of this list
  * should not have to find that out later. `refs` sits beside `check` because
  * both read a model and neither changes one.
+ *
+ * Exported so that a test can hold every command on it to the same contract,
+ * the way `test/cli/output-contract.test.ts` holds every file in `src/` to rule
+ * 1. A contract checked against a list written out again in a test is a
+ * contract the eighth command is not held to.
  */
-const COMMANDS: readonly Command[] = [
+export const COMMANDS: readonly Command[] = [
   initCommand,
   queryCommand,
   importCommand,

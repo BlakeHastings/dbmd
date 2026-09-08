@@ -209,7 +209,7 @@ function parseCheckArgs(argv: readonly string[]): {
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd check" takes an optional directory ` +
+      `${offendingOption(argv, ['strict']) ?? messageOf(error)}. "dbmd check" takes an optional directory ` +
         `and --strict; run "dbmd check --help".`,
     )
   }

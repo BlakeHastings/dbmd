@@ -331,7 +331,7 @@ function parseExportArgs(
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd export" takes an optional directory, ` +
+      `${offendingOption(argv, ['format', 'stdout']) ?? messageOf(error)}. "dbmd export" takes an optional directory, ` +
         `--format and --stdout; run "dbmd export --help".`,
     )
   }
