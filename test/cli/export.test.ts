@@ -12,13 +12,49 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { SECTION_BEGIN, SECTION_END } from '../../src/export/mermaid.js'
 import { runCli, type Run } from './harness.js'
+
+/**
+ * Which write refuses, and with what. `vi.hoisted` because the mock factory is
+ * lifted above every import, so the switch has to exist before this file's top
+ * level runs, and a hook returning `undefined` lets the real call through,
+ * which is what keeps every model this file builds on disk.
+ *
+ * **Why it is mocked, and what that costs.** The gesture that produces this is
+ * the Windows read-only attribute, `attrib +R`, which answers `EPERM`; the
+ * POSIX equivalent is a permission bit, which answers `EACCES` and does nothing
+ * at all when the suite runs as root, and CI here runs on Linux. The seam being
+ * tested is not the disk. It is what the command does with a `writeFile` that
+ * rejected, and `vi.mock` reaches that on any platform, which is the same
+ * reason `test/studio/unreadable.test.ts` and `test/model/write.test.ts` are
+ * written this way. The real read-only attribute is in the pull request that
+ * closed the item, driven on Windows, with the output pasted.
+ */
+const fail = vi.hoisted(() => ({
+  writeFile: undefined as undefined | ((path: string) => unknown),
+}))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  type Call = (path: unknown, ...rest: readonly unknown[]) => Promise<unknown>
+  const real = actual.writeFile as Call
+  return {
+    ...actual,
+    default: actual,
+    writeFile: async (path: unknown, ...rest: readonly unknown[]) => {
+      const thrown = typeof path === 'string' ? fail.writeFile?.(path) : undefined
+      if (thrown !== undefined) throw thrown
+      return await real(path, ...rest)
+    },
+  }
+})
 
 const temporaries: string[] = []
 
 afterEach(async () => {
+  fail.writeFile = undefined
   for (const directory of temporaries.splice(0)) {
     await rm(directory, { recursive: true, force: true })
   }
@@ -220,6 +256,53 @@ Also theirs, and still here afterwards.
     expect(await readme(directory)).toBe(`# Notes\n\n${SECTION_BEGIN}\n`)
   })
 
+  test('a closing marker above the opening one is told it is out of order', async () => {
+    const directory = await twoTables()
+    // Both markers, the wrong way round. Until this was fixed the command told
+    // this file it had the opening marker "and not" the closing one, which is
+    // false of it, and then gave it two instructions that both make it worse:
+    // adding a second closing marker leaves the stray one embedded in the prose
+    // forever, and deleting the opening marker, which is the one the sentence
+    // named as present, lands the reader in the opposite error.
+    const before = `# Notes\n\n${SECTION_END}\n\nMine.\n\n${SECTION_BEGIN}\n`
+    await writeFile(join(directory, 'README.md'), before, 'utf8')
+
+    const jsonRun = await runCli(['export', directory, '--json'])
+    const proseRun = await runCli(['export', directory])
+
+    expect(jsonRun.code).toBe(1)
+    // Its own code, because a caller branching on `markers-unbalanced` would
+    // take the branch for a file that is missing a marker, and this one is not.
+    expect(payload(jsonRun).error).toEqual({
+      code: 'markers-out-of-order',
+      message: `the file has ${SECTION_END} above ${SECTION_BEGIN}`,
+    })
+    expect(payload(jsonRun).file).toMatch(/\/README\.md$/)
+    // The wording is the whole defect, so it is what this asserts on.
+    expect(proseRun.code).toBe(1)
+    expect(proseRun.err).toContain(`${SECTION_END} above ${SECTION_BEGIN}`)
+    expect(proseRun.err).toContain('Move the closing marker below the opening one')
+    expect(proseRun.err).not.toContain('and not')
+    expect(proseRun.err).not.toContain('Add the missing marker')
+    expect(await readme(directory)).toBe(before)
+  })
+
+  test('a stray closing marker above a whole pair still has one region to write', async () => {
+    const directory = await twoTables()
+    // Not the case above: the opening marker is closed by the marker after it,
+    // so which part is generated is not in doubt and the stray one above is
+    // prose. Refusing this would be refusing a file the command can answer.
+    const before = `# Notes\n\n${SECTION_END}\n\n${SECTION_BEGIN}\nold\n${SECTION_END}\n`
+    await writeFile(join(directory, 'README.md'), before, 'utf8')
+
+    const run = await runCli(['export', directory, '--json'])
+
+    expect(run.code).toBe(0)
+    const after = await readme(directory)
+    expect(after.startsWith(`# Notes\n\n${SECTION_END}\n\n${SECTION_BEGIN}`)).toBe(true)
+    expect(after).not.toContain('old')
+  })
+
   test('the unbalanced-marker error names the same file the --json report does', async () => {
     const directory = await twoTables()
     await writeFile(join(directory, 'README.md'), `# Notes\n\n${SECTION_BEGIN}\n`, 'utf8')
@@ -234,6 +317,55 @@ Also theirs, and still here afterwards.
     // so this fails there unless the prose is put through `slashed` the same
     // way the rest of the file's path prints already are.
     expect(proseRun.err).toContain(file as string)
+  })
+})
+
+describe('a file the disk refused', () => {
+  /** The shape of a real one: the Windows read-only attribute on the README. */
+  function refused(path: string): Error {
+    return Object.assign(new Error(`EPERM: operation not permitted, open '${path}'`), {
+      code: 'EPERM',
+    })
+  }
+
+  test('a write that fails is reported in the command voice, not thrown at the caller', async () => {
+    const directory = await twoTables()
+    fail.writeFile = (path) => (path.endsWith('README.md') ? refused(path) : undefined)
+
+    const jsonRun = await runCli(['export', directory, '--json'])
+    const proseRun = await runCli(['export', directory])
+
+    expect(jsonRun.code).toBe(1)
+    expect(proseRun.code).toBe(1)
+    const report = payload(jsonRun)
+    // The last-resort handler in `main.ts` reports `failed` and knows none of
+    // these three fields, so this is the assertion that the refusal was
+    // answered here rather than escaping in Node's voice.
+    expect(report).toMatchObject({ ok: false, format: 'mermaid', error: { code: 'write-failed' } })
+    expect(report.directory).toBe(directory)
+    expect(report.file).toMatch(/\/README\.md$/)
+    // The system's words survive, because the errno is the half that tells the
+    // reader whether this is a permission, a full disk or a lock. ADR 0083.
+    expect(report.error?.message).toContain('EPERM: operation not permitted')
+    expect(proseRun.err).toContain(`Could not write ${report.file as string}`)
+    expect(proseRun.err).toContain('EPERM: operation not permitted')
+    // The command's own sentence carries no machine-specific path: ADR 0006
+    // rule 4, which is what `slashed` exists for. The only such string in the
+    // whole message is inside the system's own words on the second line.
+    expect(proseRun.err.split('\n')[0]).not.toContain('\\')
+    // Which is what "Nothing was changed" claims, asked rather than assumed.
+    await expect(readme(directory)).rejects.toThrow()
+  })
+
+  test('a run that had nothing to write cannot fail on a write it does not make', async () => {
+    const directory = await twoTables()
+    await runCli(['export', directory])
+    fail.writeFile = (path) => (path.endsWith('README.md') ? refused(path) : undefined)
+
+    const run = await runCli(['export', directory, '--json'])
+
+    expect(run.code).toBe(0)
+    expect(payload(run).written).toBe(false)
   })
 })
 

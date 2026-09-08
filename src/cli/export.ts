@@ -61,7 +61,8 @@ Options:
 Everything between "${SECTION_BEGIN}" and "${SECTION_END}" is replaced on every
 run and everything outside them is left alone, so the rest of that file is a
 place to write. A file with neither marker gets the section appended; a file
-with one of the pair and not the other is an error rather than a guess.
+with one of the pair and not the other, or with the closing one above the
+opening one, is an error rather than a guess.
 
 The file is not written at all when the diagram has not changed, so running
 this in a loop leaves "git status" empty.
@@ -126,6 +127,22 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
   try {
     after = splice(before, section.text)
   } catch (error) {
+    if (error instanceof MarkersOutOfOrder) {
+      return out.report({
+        code: EXIT_FAILURE,
+        text:
+          `${out.style.bad('dbmd:')} ${out.style.strong(slashed(path))} has ${SECTION_END} ` +
+          `above ${SECTION_BEGIN}, so export cannot tell which part of it is generated.\n` +
+          `Move the closing marker below the opening one, or delete both and let the next run ` +
+          `append a fresh section.\n`,
+        json: {
+          directory,
+          format: 'mermaid',
+          file: slashed(path),
+          error: { code: 'markers-out-of-order', message: error.message },
+        },
+      })
+    }
     if (!(error instanceof LonelyMarker)) throw error
     return out.report({
       code: EXIT_FAILURE,
@@ -143,7 +160,37 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
   }
 
   const written = after !== before
-  if (written) await writeFile(path, after, 'utf8')
+  if (written) {
+    try {
+      await writeFile(path, after, 'utf8')
+    } catch (error) {
+      // ADR 0083, reaching the CLI: lead with the file the developer was
+      // working on and keep the system's own words, because a read-only
+      // attribute, an ACL, a lock, antivirus and a full disk all arrive here
+      // and naming one of them would be wrong often enough to be worse than
+      // the raw error. What can be said without guessing is which file, that
+      // nothing was changed, and that clearing whatever the system is refusing
+      // is the thing to do. The studio says the same three things in
+      // `writeFailureNotice`; the difference is the middle one, because there
+      // is no pending edit to lose here and the diagram is rebuilt from the
+      // model on every run.
+      const message = messageOf(error)
+      return out.report({
+        code: EXIT_FAILURE,
+        text:
+          `${out.style.bad('dbmd:')} Could not write ${out.style.strong(slashed(path))}. ` +
+          `Nothing was changed, so clearing whatever the system is refusing and running the ` +
+          `command again is enough.\n` +
+          `What the system said: ${out.style.faint(message)}\n`,
+        json: {
+          directory,
+          format: 'mermaid',
+          file: slashed(path),
+          error: { code: 'write-failed', message },
+        },
+      })
+    }
+  }
 
   return out.report({
     code: 0,
@@ -179,16 +226,48 @@ function splice(before: string | undefined, section: string): string {
   if (before === undefined || before.trim() === '') return section
 
   const begin = before.indexOf(SECTION_BEGIN)
+  // The closing marker that ends the section is the first one after the opening
+  // one, so a file that has a stray closing marker above a well-formed pair
+  // still has one unambiguous generated region and is spliced rather than
+  // refused.
   const end = before.indexOf(SECTION_END, begin < 0 ? 0 : begin)
   if (begin < 0 && end < 0) return `${before.replace(/\n*$/, '')}\n\n${section}`
   if (begin < 0) throw new LonelyMarker(SECTION_END, SECTION_BEGIN)
-  if (end < 0) throw new LonelyMarker(SECTION_BEGIN, SECTION_END)
+  if (end < 0) {
+    // Nothing closes the opening marker, and the two ways that happens are
+    // different things to be told. A file that has the closing marker above the
+    // opening one has both, so "add the missing marker" would be a lie to it.
+    if (before.includes(SECTION_END)) throw new MarkersOutOfOrder()
+    throw new LonelyMarker(SECTION_BEGIN, SECTION_END)
+  }
 
   const head = before.slice(0, begin)
   const tail = before.slice(end + SECTION_END.length)
   // The section is newline-terminated and the closing marker took its own line
   // with it, so the newline that ended that line is dropped rather than doubled.
   return head + section + tail.replace(/^\r?\n/, '')
+}
+
+/**
+ * Both markers, in the wrong order: the closing one above the opening one.
+ *
+ * It is a third state rather than a wording of `LonelyMarker`, because both of
+ * that error's instructions are wrong for this file. It has both markers, so
+ * there is no missing one to add, and deleting the one the message would name
+ * as present leaves the other one behind and lands the reader in the opposite
+ * error. It carries no fields: which marker is where is the whole of what
+ * happened and the pair is only ever this way round.
+ *
+ * It stays an error rather than becoming a guess. A closing marker above an
+ * opening one splits the file into two regions and nothing in it says which one
+ * the developer meant to be generated, so writing into either is a rewrite of
+ * somebody's prose. That is the property this command's file comment opens with.
+ */
+class MarkersOutOfOrder extends Error {
+  override readonly name = 'MarkersOutOfOrder'
+  constructor() {
+    super(`the file has ${SECTION_END} above ${SECTION_BEGIN}`)
+  }
 }
 
 /** One marker of the pair, with no partner. Its own type so the report can name both. */
