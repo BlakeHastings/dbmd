@@ -9,44 +9,57 @@
  * avoid.
  */
 
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { SECTION_BEGIN, SECTION_END } from '../../src/export/mermaid.js'
 import { runCli, type Run } from './harness.js'
 
 /**
- * Which write refuses, and with what. `vi.hoisted` because the mock factory is
- * lifted above every import, so the switch has to exist before this file's top
- * level runs, and a hook returning `undefined` lets the real call through,
- * which is what keeps every model this file builds on disk.
+ * Which half of the write refuses, and with what. `vi.hoisted` because the mock
+ * factory is lifted above every import, so the switch has to exist before this
+ * file's top level runs, and a hook returning `undefined` lets the real call
+ * through, which is what keeps every model this file builds on disk.
+ *
+ * Two calls rather than one, because the command writes through a temporary
+ * file and a rename and the two ends of that fail differently. `rename` is the
+ * one a read-only target refuses, after the whole diagram is safely on disk
+ * somewhere else. `open` is the one a full disk or a directory nobody may write
+ * refuses, before there is anything at all.
  *
  * **Why it is mocked, and what that costs.** The gesture that produces this is
  * the Windows read-only attribute, `attrib +R`, which answers `EPERM`; the
  * POSIX equivalent is a permission bit, which answers `EACCES` and does nothing
  * at all when the suite runs as root, and CI here runs on Linux. The seam being
- * tested is not the disk. It is what the command does with a `writeFile` that
+ * tested is not the disk. It is what the command does with a write that
  * rejected, and `vi.mock` reaches that on any platform, which is the same
  * reason `test/studio/unreadable.test.ts` and `test/model/write.test.ts` are
- * written this way. The real read-only attribute is in the pull request that
- * closed the item, driven on Windows, with the output pasted.
+ * written this way, the second of them by mocking this same `rename`. The real
+ * read-only attribute is in the pull request that closed the item, driven on
+ * Windows, with the output pasted.
  */
 const fail = vi.hoisted(() => ({
-  writeFile: undefined as undefined | ((path: string) => unknown),
+  rename: undefined as undefined | ((from: string, to: string) => unknown),
+  open: undefined as undefined | ((path: string) => unknown),
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
-  type Call = (path: unknown, ...rest: readonly unknown[]) => Promise<unknown>
-  const real = actual.writeFile as Call
+  type Open = (path: unknown, ...rest: readonly unknown[]) => Promise<unknown>
+  const realOpen = actual.open as Open
   return {
     ...actual,
     default: actual,
-    writeFile: async (path: unknown, ...rest: readonly unknown[]) => {
-      const thrown = typeof path === 'string' ? fail.writeFile?.(path) : undefined
+    rename: async (from: string, to: string) => {
+      const thrown = fail.rename?.(from, to)
       if (thrown !== undefined) throw thrown
-      return await real(path, ...rest)
+      return await actual.rename(from, to)
+    },
+    open: async (path: unknown, ...rest: readonly unknown[]) => {
+      const thrown = typeof path === 'string' ? fail.open?.(path) : undefined
+      if (thrown !== undefined) throw thrown
+      return await realOpen(path, ...rest)
     },
   }
 })
@@ -54,7 +67,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 const temporaries: string[] = []
 
 afterEach(async () => {
-  fail.writeFile = undefined
+  fail.rename = undefined
+  fail.open = undefined
   for (const directory of temporaries.splice(0)) {
     await rm(directory, { recursive: true, force: true })
   }
@@ -321,16 +335,33 @@ Also theirs, and still here afterwards.
 })
 
 describe('a file the disk refused', () => {
-  /** The shape of a real one: the Windows read-only attribute on the README. */
-  function refused(path: string): Error {
-    return Object.assign(new Error(`EPERM: operation not permitted, open '${path}'`), {
+  /** Somebody's prose, and a section out of date, so the run has to write. */
+  const STALE = `# The shop model
+
+A paragraph a person wrote, which is the thing at risk here.
+
+${SECTION_BEGIN}
+a diagram from three columns ago
+${SECTION_END}
+
+And one below, also theirs.
+`
+
+  /** The shape of a real one: the Windows read-only attribute on the target. */
+  function refusedRename(from: string, to: string): Error {
+    return Object.assign(new Error(`EPERM: operation not permitted, rename '${from}' -> '${to}'`), {
       code: 'EPERM',
     })
   }
 
   test('a write that fails is reported in the command voice, not thrown at the caller', async () => {
     const directory = await twoTables()
-    fail.writeFile = (path) => (path.endsWith('README.md') ? refused(path) : undefined)
+    await writeFile(join(directory, 'README.md'), STALE, 'utf8')
+    let temporary = ''
+    fail.rename = (from, to) => {
+      temporary = from
+      return to.endsWith('README.md') ? refusedRename(from, to) : undefined
+    }
 
     const jsonRun = await runCli(['export', directory, '--json'])
     const proseRun = await runCli(['export', directory])
@@ -349,18 +380,64 @@ describe('a file the disk refused', () => {
     expect(report.error?.message).toContain('EPERM: operation not permitted')
     expect(proseRun.err).toContain(`Could not write ${report.file as string}`)
     expect(proseRun.err).toContain('EPERM: operation not permitted')
-    // The command's own sentence carries no machine-specific path: ADR 0006
-    // rule 4, which is what `slashed` exists for. The only such string in the
-    // whole message is inside the system's own words on the second line.
-    expect(proseRun.err.split('\n')[0]).not.toContain('\\')
-    // Which is what "Nothing was changed" claims, asked rather than assumed.
-    await expect(readme(directory)).rejects.toThrow()
+    // The file the reader was working on comes first, and the one they have
+    // never seen comes last, behind the sentence that says why it is there at
+    // all. ADR 0083 is the record of what the other order costs.
+    const first = proseRun.err.split('\n')[0] ?? ''
+    const second = proseRun.err.split('\n')[1] ?? ''
+    expect(first).toContain('Could not write')
+    expect(first).not.toContain('.tmp')
+    expect(second.indexOf('temporary file')).toBeLessThan(second.indexOf(basename(temporary)))
+    // The command's own sentences carry no machine-specific path: ADR 0006
+    // rule 4, which is what `slashed` exists for. The only such strings in the
+    // whole message are inside the system's own words, at the end of the
+    // second line.
+    expect(first).not.toContain('\\')
+    expect(second.slice(0, second.indexOf('EPERM'))).not.toContain('\\')
+  })
+
+  test('a refused write leaves the file byte for byte as it was', async () => {
+    const directory = await twoTables()
+    await writeFile(join(directory, 'README.md'), STALE, 'utf8')
+    fail.rename = (from, to) => (to.endsWith('README.md') ? refusedRename(from, to) : undefined)
+
+    const run = await runCli(['export', directory, '--json'])
+
+    expect(run.code).toBe(1)
+    // Which is what "Nothing was changed" claims, asked rather than assumed. A
+    // plain `writeFile` truncates at open, so the paragraphs in `STALE` would
+    // already be gone by the time that sentence was printed about them, and the
+    // reason this passes is the temporary file and the rename.
+    expect(await readme(directory)).toBe(STALE)
+    // And the temporary is not left behind in somebody's model directory.
+    expect((await readdir(directory)).filter((entry) => entry.includes('.tmp'))).toEqual([])
+  })
+
+  test('a refusal before there is anything to rename says the same thing', async () => {
+    const directory = await twoTables()
+    await writeFile(join(directory, 'README.md'), STALE, 'utf8')
+    // The other end of the same write. A full disk refuses the temporary file
+    // rather than the rename, so the failure lands before a byte of the new
+    // diagram exists anywhere, and the file is untouched for a second reason.
+    fail.open = (path) =>
+      path.includes('README.md') && path.endsWith('.tmp')
+        ? Object.assign(new Error(`ENOSPC: no space left on device, open '${path}'`), {
+            code: 'ENOSPC',
+          })
+        : undefined
+
+    const run = await runCli(['export', directory, '--json'])
+
+    expect(run.code).toBe(1)
+    expect(payload(run).error?.code).toBe('write-failed')
+    expect(payload(run).error?.message).toContain('ENOSPC')
+    expect(await readme(directory)).toBe(STALE)
   })
 
   test('a run that had nothing to write cannot fail on a write it does not make', async () => {
     const directory = await twoTables()
     await runCli(['export', directory])
-    fail.writeFile = (path) => (path.endsWith('README.md') ? refused(path) : undefined)
+    fail.rename = (from, to) => (to.endsWith('README.md') ? refusedRename(from, to) : undefined)
 
     const run = await runCli(['export', directory, '--json'])
 

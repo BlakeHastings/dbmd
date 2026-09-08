@@ -497,8 +497,16 @@ async function currentText(target: string): Promise<string | undefined> {
  * reading it has never seen that name and cannot find that file. `path` is what
  * they were editing and `temporary` is what the message opens with, and this is
  * the only frame that holds both. ADR 0083.
+ *
+ * Exported for `dbmd export`, which writes one file of somebody's prose with a
+ * generated section inside it and wants the same promise for the same reason: a
+ * plain `writeFile` truncates at open, so a failure part way through leaves the
+ * developer's own paragraphs gone, and the command's refusal says nothing was
+ * changed. It is not on `src/index.ts`, because a library caller writing a
+ * model has `writeModel` and a library caller writing anything else is not a
+ * thing this package offers.
  */
-async function writeAtomically(path: string, target: string, text: string): Promise<void> {
+export async function writeAtomically(path: string, target: string, text: string): Promise<void> {
   const temporary = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`)
   try {
     const handle = await open(temporary, 'wx')

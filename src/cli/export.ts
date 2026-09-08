@@ -22,13 +22,14 @@
  *    need to touch puts noise in somebody's diff.
  */
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { sortDiagnostics } from '../diagnostics.js'
 import { SECTION_BEGIN, SECTION_END, mermaidSection } from '../export/mermaid.js'
 import { readModel } from '../model/read.js'
 import { validate } from '../model/validate.js'
+import { writeAtomically } from '../model/write.js'
 import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
 import type { Output } from './output.js'
 
@@ -162,7 +163,13 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
   const written = after !== before
   if (written) {
     try {
-      await writeFile(path, after, 'utf8')
+      // Through a temporary file and a rename, which is what lets the refusal
+      // below say nothing was changed. `writeFile` truncates at open, so a
+      // failure part way through the write would leave this file holding half a
+      // diagram and none of the prose somebody wrote around it, under a message
+      // promising the opposite. That is the same argument `writeModel` makes
+      // for a model file, so it is the same function rather than a second one.
+      await writeAtomically(slashed(path), path, after)
     } catch (error) {
       // ADR 0083, reaching the CLI: lead with the file the developer was
       // working on and keep the system's own words, because a read-only
@@ -170,10 +177,14 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
       // and naming one of them would be wrong often enough to be worse than
       // the raw error. What can be said without guessing is which file, that
       // nothing was changed, and that clearing whatever the system is refusing
-      // is the thing to do. The studio says the same three things in
-      // `writeFailureNotice`; the difference is the middle one, because there
-      // is no pending edit to lose here and the diagram is rebuilt from the
-      // model on every run.
+      // is the thing to do.
+      //
+      // The second line is that record's other half. Every failure this can
+      // report happened to the temporary file or to the rename, so the system's
+      // words always open with a name the reader has never seen, and the
+      // sentence in front of them exists so that name is explained rather than
+      // met cold. Trimming it out of the message was rejected there: the paths
+      // are the only part that can say the write went to a network share.
       const message = messageOf(error)
       return out.report({
         code: EXIT_FAILURE,
@@ -181,7 +192,8 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
           `${out.style.bad('dbmd:')} Could not write ${out.style.strong(slashed(path))}. ` +
           `Nothing was changed, so clearing whatever the system is refusing and running the ` +
           `command again is enough.\n` +
-          `What the system said: ${out.style.faint(message)}\n`,
+          `The write goes through a temporary file in the same directory, which is why the ` +
+          `system names that one first: ${out.style.faint(message)}\n`,
         json: {
           directory,
           format: 'mermaid',
