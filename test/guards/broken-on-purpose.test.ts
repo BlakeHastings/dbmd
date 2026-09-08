@@ -308,6 +308,72 @@ describe('check:adr, broken on purpose', () => {
 
 describe('check:commands, broken on purpose', () => {
   /**
+   * One command module, in the shape `src/cli/*.ts` has it: a `Command` whose
+   * help carries an `Options:` block, and the options table the same file hands
+   * `parseArgs`.
+   *
+   * Both are written from one argument on purpose. The checker's whole claim
+   * about those two lists is that they are hand-written and can disagree, so a
+   * fixture that let them disagree by accident would make every case below
+   * about something else. The two tests that want a disagreement write the
+   * module out by hand, which is what makes them say something.
+   */
+  function commandSource(name: string, flags: Record<string, 'string' | 'boolean'>): string {
+    const named = Object.keys(flags)
+    const lines = [
+      `export const ${name}Command: Command = {`,
+      `  name: '${name}',`,
+      `  help: \`Usage: dbmd ${name} [directory] [options]`,
+    ]
+    if (named.length > 0) {
+      lines.push('', 'Options:', ...named.map((flag) => `      --${flag}   what it does`), '')
+    }
+    lines.push('`,', '}', '')
+    const table = named.map((flag) => `${flag}: { type: '${flags[flag] ?? ''}' }`).join(', ')
+    lines.push(
+      `function parse${name}Args(argv: readonly string[]) {`,
+      `  const options = { ${table} } as const`,
+      '  return parseArgs({ args: [...argv], options, allowPositionals: true, strict: true })',
+      '}',
+      '',
+    )
+    return lines.join('\n')
+  }
+
+  /**
+   * The entry point, in the shape `src/cli/main.ts` has it: the registry the
+   * command list is read from, and the two places the global flags are read
+   * from.
+   *
+   * The globals are here rather than in the checker because a copy of them
+   * inside it would be one more hand-written list of one fact. Every fixture
+   * that adds a command has to bring them along, which is why this is a
+   * function rather than three near-identical literals: the one case below that
+   * leaves them out is doing it on purpose.
+   */
+  function mainSource(names: readonly string[]): string {
+    return [
+      ...[...names].sort().map((name) => `import { ${name}Command } from './${name}.js'`),
+      '',
+      `const COMMANDS: readonly Command[] = [${names.map((name) => `${name}Command`).join(', ')}]`,
+      '',
+      'function takeGlobalFlags(argv: readonly string[]) {',
+      '  for (const token of argv) {',
+      "    if (token === '--json') json = true",
+      "    else if (token === '--no-color') noColor = true",
+      '    else rest.push(token)',
+      '  }',
+      '}',
+      '',
+      'function dispatch(rest: readonly string[]) {',
+      "  if (rest.includes('--help') || rest.includes('-h')) return 0",
+      '  return 1',
+      '}',
+      '',
+    ].join('\n')
+  }
+
+  /**
    * A real git repository again, for the same reason: the check reads
    * `git ls-files`, so a page written but not added proves nothing.
    *
@@ -321,6 +387,12 @@ describe('check:commands, broken on purpose', () => {
    * The `README.md` is there because the check reads both directions: a command
    * on the registry with no entry in it is a failure too, so a tree without one
    * would fail every case below for a reason none of them is about.
+   *
+   * `main.ts` carries the two shapes the global flags are read out of, because
+   * they are read out of the source rather than copied into the checker: a tree
+   * where `--json` resolved against nothing would fail every case here for a
+   * reason none of them is about either. `check.ts` carries a flag and `init.ts`
+   * carries none, which is the two shapes a command comes in.
    */
   async function repository(files: Record<string, string>): Promise<string> {
     const root = await scratchWith('check-commands.mjs')
@@ -336,15 +408,9 @@ describe('check:commands, broken on purpose', () => {
         '**`dbmd check`** says whether it is still good.',
         '',
       ].join('\n'),
-      'src/cli/main.ts': [
-        "import { checkCommand } from './check.js'",
-        "import { initCommand } from './init.js'",
-        '',
-        'const COMMANDS: readonly Command[] = [initCommand, checkCommand]',
-        '',
-      ].join('\n'),
+      'src/cli/main.ts': mainSource(['init', 'check']),
       'src/cli/init.ts': "export const initCommand: Command = {\n  name: 'init',\n}\n",
-      'src/cli/check.ts': "export const checkCommand: Command = {\n  name: 'check',\n}\n",
+      'src/cli/check.ts': commandSource('check', { strict: 'boolean' }),
     }
     for (const [path, contents] of Object.entries({ ...base, ...files })) {
       const full = join(root, path)
@@ -574,15 +640,8 @@ describe('check:commands, broken on purpose', () => {
         '**`dbmd export [directory]`** draws it.',
         '',
       ].join('\n'),
-      'src/cli/main.ts': [
-        "import { checkCommand } from './check.js'",
-        "import { exportCommand } from './export.js'",
-        "import { initCommand } from './init.js'",
-        '',
-        'const COMMANDS: readonly Command[] = [initCommand, checkCommand, exportCommand]',
-        '',
-      ].join('\n'),
-      'src/cli/export.ts': "export const exportCommand: Command = {\n  name: 'export',\n}\n",
+      'src/cli/main.ts': mainSource(['init', 'check', 'export']),
+      'src/cli/export.ts': commandSource('export', { stdout: 'boolean' }),
     })
     expect((await runScript(after, 'check-commands.mjs')).code).toBe(0)
   })
@@ -653,15 +712,8 @@ describe('check:commands, broken on purpose', () => {
   async function withUndocumentedExport(readme?: string): Promise<string> {
     return await repository({
       ...(readme === undefined ? {} : { 'README.md': readme }),
-      'src/cli/main.ts': [
-        "import { checkCommand } from './check.js'",
-        "import { exportCommand } from './export.js'",
-        "import { initCommand } from './init.js'",
-        '',
-        'const COMMANDS: readonly Command[] = [initCommand, checkCommand, exportCommand]',
-        '',
-      ].join('\n'),
-      'src/cli/export.ts': "export const exportCommand: Command = {\n  name: 'export',\n}\n",
+      'src/cli/main.ts': mainSource(['init', 'check', 'export']),
+      'src/cli/export.ts': commandSource('export', { stdout: 'boolean' }),
     })
   }
 
@@ -856,6 +908,364 @@ describe('check:commands, broken on purpose', () => {
 
     expect(ran.code).toBe(1)
     expect(ran.err).toContain('package.json has no version')
+  })
+
+  // -------------------------------------------------------------------------
+  // The flag beside the command, which is the same claim and was not read
+  // -------------------------------------------------------------------------
+
+  test('a flag the command does not take fails, with the line and what it does take', async () => {
+    const root = await repository({
+      'README.md': [
+        '# scratch',
+        '',
+        '## The commands',
+        '',
+        '**`dbmd init`** writes a model to start from.',
+        '',
+        '**`dbmd check`** says whether it is still good.',
+        '',
+        '```',
+        '$ dbmd check examples/shop --deep',
+        '```',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('README.md:10')
+    expect(ran.err).toContain('`--deep` is not a flag of `dbmd check`')
+    // What it does take, so the fix does not need a second command to find out,
+    // and the globals beside it, because the answer to "why is --json fine
+    // then" is the difference between a rule and an obstacle.
+    expect(ran.err).toContain('"dbmd check" takes --strict')
+    expect(ran.err).toContain('--json, --no-color, --help, -h are accepted after every command')
+  })
+
+  test('the same line with the flag the command has passes, so the failure was the flag', async () => {
+    const root = await repository({
+      'docs/guide.md': ['```', '$ dbmd check examples/shop --strict', '```', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('so does the 1 flag')
+  })
+
+  test('a global flag is accepted after every command, and is read from main.ts', async () => {
+    // `--json`, `--no-color` and `--help` are stripped by the entry point before
+    // a command parses, so they are valid everywhere and appear in no command's
+    // own table. A copy of that list inside the checker would be a fourth
+    // hand-written list of one fact, which is the defect the whole file is
+    // about, so it is read out of `main.ts`. `dbmd init` takes no flags at all
+    // and still accepts them, which is what makes the point.
+    const root = await repository({
+      'docs/guide.md': ['Run `dbmd check --json` and then `dbmd init --no-color --help`.', ''].join(
+        '\n',
+      ),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('so do the 3 flags')
+  })
+
+  test('an entry point that strips no global flag stops the build rather than failing every page', async () => {
+    // The other half of the sentence above. If this list came back empty the
+    // checker would call every `dbmd check --json` in the tree a defect, which
+    // is the false-positive failure that gets a guard deleted rather than
+    // fixed, so it refuses to run at all instead.
+    const root = await repository({
+      'src/cli/main.ts': [
+        "import { checkCommand } from './check.js'",
+        "import { initCommand } from './init.js'",
+        '',
+        'const COMMANDS: readonly Command[] = [initCommand, checkCommand]',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('src/cli/main.ts strips no global flag')
+  })
+
+  test("the runner's own flags are not the command's", async () => {
+    // `npx --yes dbmd@0.1.0 check db-model --deep` is the recipe shape from
+    // `docs/ci.md`, and it has two flags on it. Only one of them is dbmd's:
+    // --yes sits in front of the package name and belongs to npx. Reading what
+    // is left after the match is what gets that right without a rule about npx.
+    const root = await repository({
+      'docs/ci.md': [
+        '```yaml',
+        '      - run: npx --yes dbmd@0.1.0 check db-model --deep',
+        '```',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/ci.md:2')
+    expect(ran.err).toContain('`--deep` is not a flag of `dbmd check`')
+    expect(ran.err).not.toContain('--yes')
+  })
+
+  test('the same recipe with a real flag passes, npx flag and all', async () => {
+    const root = await repository({
+      'docs/ci.md': [
+        '```yaml',
+        '      - run: npx --yes dbmd@0.1.0 check db-model --strict',
+        '```',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+  })
+
+  test('everything after a bare -- is a positional, whatever it is spelled like', async () => {
+    // The entry point says so in `takeGlobalFlags`: a file really can be named
+    // --deep. A guard that read it as a flag would fail a command line that
+    // works.
+    const root = await repository({
+      'docs/guide.md': ['Run `dbmd check -- --deep`.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('so do the 0 flags')
+  })
+
+  test('a shell operator ends the command line, so what follows is not read as a flag', async () => {
+    const root = await repository({
+      'docs/guide.md': ['Run `dbmd check 2>/dev/null | grep --deep`.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+  })
+
+  test("a string option's value is its value, even when it looks like a flag", async () => {
+    // `dbmd studio --port -1` is a usage error the CLI has its own message for,
+    // and -1 is not a flag anybody wrote. The option's declared type is what
+    // tells the two apart, which is the reason the table is read as types
+    // rather than as names.
+    const root = await repository({
+      'src/cli/check.ts': commandSource('check', { at: 'string' }),
+      'docs/guide.md': ['Run `dbmd check --at -1`.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('so does the 1 flag')
+  })
+
+  test('prose about a flag is not a command line', async () => {
+    // The false-positive half, and it matters more than the other one. This
+    // tree is full of sentences with a flag in backticks and none of them is a
+    // command being run, so a flag is read only where a command was read.
+    const root = await repository({
+      'docs/guide.md': [
+        'Pass `--strict` when warnings should fail the run, and `--deep` never,',
+        'because there is no such flag.',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('so do the 0 flags')
+  })
+
+  test('a flag beside a command that does not exist is not a second finding', async () => {
+    const root = await repository({
+      'docs/guide.md': ['Run `dbmd fmt --deep` one day.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('`dbmd fmt` is not a dbmd command')
+    // The one thing wrong with that line is the command. Naming its flags too
+    // puts noise in front of the answer. The advice at the bottom of the
+    // failure shows what a marked flag looks like, so what is asserted is that
+    // nothing was reported about one.
+    expect(ran.err).not.toContain('is not a flag of')
+  })
+
+  test('a flag can be marked hypothetical, and the marker goes stale when it lands', async () => {
+    const sentence = 'A future `dbmd check --deep` will look inside the SQL.'
+
+    const excused = await repository({
+      'docs/guide.md': `${sentence} <!-- hypothetical: dbmd check --deep -->\n`,
+    })
+    expect((await runScript(excused, 'check-commands.mjs')).code).toBe(0)
+
+    const bare = await repository({ 'docs/guide.md': `${sentence}\n` })
+    expect((await runScript(bare, 'check-commands.mjs')).code).toBe(1)
+
+    // And the half that makes the marker worth having: on the day the flag
+    // ships, the build names every page still talking about it in the future
+    // tense. Nothing on the page moved.
+    const landed = await repository({
+      'src/cli/check.ts': commandSource('check', { strict: 'boolean', deep: 'boolean' }),
+      'docs/guide.md': `${sentence} <!-- hypothetical: dbmd check --deep -->\n`,
+    })
+    const ran = await runScript(landed, 'check-commands.mjs')
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('the marker for `dbmd check --deep` is stale')
+  })
+
+  // -------------------------------------------------------------------------
+  // The two lists of one command's flags, which are hand-written and can drift
+  // -------------------------------------------------------------------------
+
+  test('a flag the command accepts and does not document fails, and names which list is short', async () => {
+    const root = await repository({
+      'src/cli/check.ts': [
+        'export const checkCommand: Command = {',
+        "  name: 'check',",
+        '  help: `Usage: dbmd check [directory] [options]',
+        '',
+        'Options:',
+        '      --strict   treat warnings as errors',
+        '',
+        '`,',
+        '}',
+        '',
+        'function parseCheckArgs(argv: readonly string[]) {',
+        "  const options = { strict: { type: 'boolean' }, deep: { type: 'boolean' } } as const",
+        '  return parseArgs({ args: [...argv], options, allowPositionals: true, strict: true })',
+        '}',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('"dbmd check" accepts --deep and its --help does not list it')
+  })
+
+  test('a flag the help lists and the command does not accept fails the other way', async () => {
+    const root = await repository({
+      'src/cli/check.ts': [
+        'export const checkCommand: Command = {',
+        "  name: 'check',",
+        '  help: `Usage: dbmd check [directory] [options]',
+        '',
+        'Options:',
+        '      --strict   treat warnings as errors',
+        '      --deep     look inside the SQL',
+        '',
+        '`,',
+        '}',
+        '',
+        'function parseCheckArgs(argv: readonly string[]) {',
+        "  const options = { strict: { type: 'boolean' } } as const",
+        '  return parseArgs({ args: [...argv], options, allowPositionals: true, strict: true })',
+        '}',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('"dbmd check" lists --deep in its --help and does not accept it')
+  })
+
+  test('an options table this can no longer find stops the build rather than checking nothing', async () => {
+    // The failure mode a source-reading check has to have and usually does not.
+    // The table is read out of the source as text, so a rename of the thing it
+    // is read out of would leave every flag in the repository unchecked and
+    // every page passing, which is exactly the shape ADR 0034 is about. The
+    // help block is the independent witness, and this is it working.
+    const root = await repository({
+      'src/cli/check.ts': [
+        'export const checkCommand: Command = {',
+        "  name: 'check',",
+        '  help: `Usage: dbmd check [directory] [options]',
+        '',
+        'Options:',
+        '      --strict   treat warnings as errors',
+        '',
+        '`,',
+        '}',
+        '',
+        'function parseCheckArgs(argv: readonly string[]) {',
+        "  const flagTable = { strict: { type: 'boolean' } } as const",
+        '  return parseArgs({ args: [...argv], options: flagTable, strict: true })',
+        '}',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('src/cli/check.ts calls parseArgs and has no')
+    // And it says so instead of printing the success line, which is the whole
+    // difference between a guard and a decoration.
+    expect(ran.out).not.toContain('files scanned')
+  })
+
+  test('an option named some way this cannot read is counted and refused', async () => {
+    // One step subtler than the case above: the table is found, and one entry
+    // in it is spelled some way the reader does not know. Counting the type
+    // declarations the other way round is what says so, rather than quietly
+    // checking one flag out of two.
+    const root = await repository({
+      'src/cli/check.ts': [
+        'export const checkCommand: Command = {',
+        "  name: 'check',",
+        '  help: `Usage: dbmd check [directory] [options]',
+        '',
+        'Options:',
+        '      --strict   treat warnings as errors',
+        '',
+        '`,',
+        '}',
+        '',
+        'function parseCheckArgs(argv: readonly string[]) {',
+        "  const options = { strict: { type: 'boolean' }, [DEEP]: { type: 'boolean' } } as const",
+        '  return parseArgs({ args: [...argv], options, allowPositionals: true, strict: true })',
+        '}',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('declares 2 options and only 1 of them could be named')
+  })
+
+  test('a command that parses no arguments at all takes no flags, which is not a broken shape', async () => {
+    // `dbmd init` is this: an optional directory and nothing else. A checker
+    // that demanded a table would fail a correct command, and the two lists
+    // still have to agree, which for this one is both of them empty.
+    const root = await repository({
+      'docs/guide.md': ['Run `dbmd init db-model` and then `dbmd init --json`.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('so does the 1 flag')
   })
 })
 

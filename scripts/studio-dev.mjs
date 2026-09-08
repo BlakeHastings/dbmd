@@ -14,6 +14,12 @@
 // seam is there and the CLI does not have to grow anything. Nothing in
 // `src/studio/` changes for this.
 //
+// The flag in that paragraph is one this repository decided against rather than
+// one it has not written yet, and the marker is the same either way: it fails
+// on the day somebody adds the option, which is the day the paragraph above
+// stops being true and wants rereading.
+// hypothetical: dbmd studio --client-dir
+//
 // WHY IT IMPORTS FROM dist/
 // `startStudio` is TypeScript and this is a plain `.mjs` script, the same as
 // every other file in this directory. `npm run studio:dev` builds first, so

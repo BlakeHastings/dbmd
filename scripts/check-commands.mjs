@@ -1,5 +1,5 @@
-// Fail when something in this repository names a command that does not exist,
-// and when a command that exists is not documented in `README.md`.
+// Fail when something in this repository names a command or a flag that does
+// not exist, and when a command that exists is not documented in `README.md`.
 //
 // WHAT THIS PREVENTS
 // `dbmd query` was named by four error messages in `src/import/contract.ts`, by
@@ -13,12 +13,17 @@
 // run it. It was found weeks late and by accident.
 //
 // A hand sweep on 2026-09-07 found it was the only one. This is that sweep,
-// repeated on every run, over four kinds of reference:
+// repeated on every run, over five kinds of reference:
 //
 //   `dbmd <command>`        against the CLI's registered commands
+//   `dbmd <command> --flag`  against that command's own options table
 //   `npm run <script>`      against `package.json`
 //   `node scripts/<file>`   against the filesystem
 //   `scripts/<file>`        against the filesystem
+//
+// The second one arrived last and closed a hole the first four left wide open:
+// a flag was never read at all, so `dbmd check --deep` passed on three pages.
+// "WHY A FLAG IS A REFERENCE TOO" below is the whole of that argument.
 //
 // WHY IT READS BACKTICKS AND NOT PROSE
 // The obvious check parses prose for anything shaped like a command, and the
@@ -62,6 +67,85 @@
 // Inferring it instead, from nearby words like "future" or "would", was
 // rejected: it guesses at intent, and the day it guesses wrong it either fails
 // a correct page or waves through the defect this exists to catch. ADR 0036.
+//
+// WHY A FLAG IS A REFERENCE TOO
+// Everything above resolved a name and stopped at the first space after it. A
+// flag written beside that name is the same claim in the same backticks and
+// nothing read it, so three pages said `dbmd check --deep` and three passed.
+// The sharpest of them is docs/ci.md, which is the workflow this project hands
+// a stranger to paste into their own repository: that line would exit 2 in
+// their CI and nothing here would have said so.
+//
+// The summary line this used to print was honest about it. It promised that
+// every reference resolves, and a flag was not a reference. Closing the gap is
+// what lets that sentence say more, and the sentence at the bottom of this file
+// moved with the rule rather than after it.
+//
+// WHICH LIST OF FLAGS IS THE TRUTH, AND WHY IT IS BOTH
+// There are two lists per command and they are written by hand, in the same
+// file, a hundred lines apart. The `Options:` block inside the command's `help`
+// is what a person reads. The options table it hands `parseArgs` is what the
+// program accepts. Reading only the help would fail a correct command line the
+// day a flag works and is undocumented, and a guard with false positives gets
+// deleted. Reading only the table would let that documentation gap live
+// forever, unnoticed, which is the shape of every defect this file already
+// exists for.
+//
+// So the table is the authority on what a command takes, and the help is
+// checked against it. They agree today, all seven commands, which was measured
+// before choosing rather than assumed. Two hand-written lists of one fact that
+// can silently disagree is the defect in `dbmd query`, in the README count and
+// in the version pins, three times over in this one file, and the answer each
+// time was to make the disagreement loud. ADR 0089.
+//
+// It also buys the loud failure a source-reading check has to have. A parse
+// that finds nothing reports success, and this repository has a section of
+// orchestrating.md about exactly that. If the options table moves out from
+// under the regex below, the help still says `--strict` and the command now
+// takes nothing, so the two disagree and the build stops. A check that read one
+// list would have gone quiet instead.
+//
+// WHICH TOKENS ON A LINE ARE dbmd'S
+// The ones after the command word and before anything that ends the command.
+// `npx --yes dbmd check db-model --deep` has two flags on it and only one
+// of them is dbmd's: --yes sits in front of the package name and belongs to
+// npx, and it falls out for free because the reference shapes already match
+// from the runner through the command word, so reading what is left after the
+// match is reading what the command was given.
+//
+// After that it is deliberately conservative, because a token this cannot
+// classify is left alone rather than reported. A bare `--` ends the flags, the
+// way it does for `takeGlobalFlags`. A shell operator ends the command line, so
+// `dbmd check 2>/dev/null` stops at the redirect. The value of a string option
+// is skipped using the option's own declared type, so `--engine postgres` reads
+// as one flag and `--port -1` does not report a flag called -1. What is read is
+// `--name`, `--name=value` on the name half, and a one-letter short, with
+// surrounding brackets and trailing punctuation trimmed so that a synopsis
+// written `dbmd check [directory] [--strict]` is read as the claim it is.
+//
+// Prose is not a command line, and the answer is the one this file already
+// gave: a flag is read only where a command was read, which is a code span or a
+// fenced line that a dbmd invocation begins. The tree is full of sentences with
+// `--strict` in backticks on their own and none of them is a command line, so
+// none of them is scanned. The three real cases are a fenced `$ dbmd check
+// examples/shop --deep`, a YAML `- run: npx --yes dbmd check db-model
+// --deep`, and a fenced `dbmd check --deep`, and all three are a command with a
+// flag after it.
+//
+// A flag is only checked where the command resolves. `dbmd fmt --deep` has one
+// finding in it and it is `dbmd fmt`; naming a second one about the flags of a
+// command that does not exist is noise in front of the answer.
+//
+// WHY THE GLOBAL FLAGS ARE READ FROM main.ts
+// `--json`, `--no-color`, `--help` and `-h` are valid after every command and
+// appear in no command's own list, because `src/cli/main.ts` takes them out of
+// the argument list before the command ever sees them. A copy of those four
+// here would be a fourth hand-written list of one fact, which is the thing this
+// file is about, so they are read from the two places in that file that
+// implement them. `--version` is deliberately not among them: it is read only
+// as the first token, so "dbmd check --version" is not a thing, and writing it
+// here in quotes rather than in backticks is this file obeying its own new
+// rule on the first line that could have broken it.
 //
 // WHY A VERSION AFTER dbmd@ IS READ, AND WHAT IT IS READ AGAINST
 // docs/ci.md hands a reader a workflow to copy and pins the version in it,
@@ -151,7 +235,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 // ---------------------------------------------------------------------------
 
 /**
- * The CLI's commands, read from the registry rather than listed here.
+ * The CLI's commands, read from the registry rather than listed here, each one
+ * against the file that declares it.
  *
  * A second copy of the list in this file would be one more fact that can
  * silently disagree with the truth, which is the whole defect this script is
@@ -159,6 +244,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
  * one lives in its own module, and the word a user types is that module's
  * `name`. Reading the source rather than the build is what lets this run before
  * `npm run build`, beside the other checks.
+ *
+ * The module travels with the name because the flags are in it, and looking it
+ * up a second way further down would be the same duplication one level in.
  */
 function cliCommands() {
   const main = read('src/cli/main.ts')
@@ -176,7 +264,7 @@ function cliCommands() {
     }
   }
 
-  const names = new Set()
+  const named = new Map()
   for (const identifier of identifiers) {
     const imported = new RegExp(
       `import\\s*\\{\\s*${identifier}\\s*\\}\\s*from\\s*'\\./([\\w.-]+)\\.js'`,
@@ -185,12 +273,98 @@ function cliCommands() {
     if (!module) {
       throw new Error(`src/cli/main.ts dispatches on ${identifier} but does not import it`)
     }
+    const file = `src/cli/${module[1]}.ts`
     const declared = new RegExp(`export const ${identifier}: Command = \\{\\s*name: '([^']+)'`)
-    const name = declared.exec(read(`src/cli/${module[1]}.ts`))
-    if (!name) throw new Error(`src/cli/${module[1]}.ts declares no name for ${identifier}`)
-    names.add(name[1])
+    const name = declared.exec(read(file))
+    if (!name) throw new Error(`${file} declares no name for ${identifier}`)
+    named.set(name[1], file)
   }
-  return names
+  return named
+}
+
+/**
+ * The options table a command hands `parseArgs`, as a map of flag to type.
+ *
+ * This is the authority on what a command accepts, because it is the thing the
+ * program runs. See the header for why the help block is read as well and what
+ * that second read is worth.
+ *
+ * A command that never calls `parseArgs` takes no flags, which is a real shape
+ * and not a shape that has moved. A command that calls it and has no table this
+ * can read is the failure ADR 0034 is about, and it stops the build here rather
+ * than reporting that every flag in the repository is fine.
+ */
+function commandFlags(file) {
+  const source = read(file)
+  const flags = new Map()
+  if (!source.includes('parseArgs(')) return flags
+
+  const table = /const options = (\{[\s\S]*?\}) as const/.exec(source)
+  if (!table) {
+    throw new Error(
+      `${file} calls parseArgs and has no "const options = { ... } as const" to read it from`,
+    )
+  }
+  for (const [, name, type] of table[1].matchAll(
+    /(?:^|[{,\s])'?([a-z][\w-]*)'?\s*:\s*\{\s*type:\s*'(string|boolean)'/g,
+  )) {
+    flags.set(`--${name}`, type)
+  }
+  // The table is read by shape, so a key spelled some way this does not know is
+  // a flag that would silently stop being checked. Counting the declarations
+  // the other way round says so instead.
+  const declared = [...table[1].matchAll(/type:\s*'(?:string|boolean)'/g)].length
+  if (declared !== flags.size) {
+    throw new Error(
+      `${file} declares ${declared} options and only ${flags.size} of them could be named`,
+    )
+  }
+  return flags
+}
+
+/**
+ * The flags the command's own `--help` lists, which is what a person reads.
+ *
+ * The block is the one `Options:` in the `help` template, and it runs to the
+ * blank line under it, the way all seven are written. A command with no flags
+ * has no block, which is `dbmd init`.
+ *
+ * A flag counts where it begins its own line, under the indent, which is where
+ * all seventeen of them are. A flag named inside the sentence that describes
+ * another one is that sentence's business, and reading those would make an
+ * entry that mentions --strict in passing look like a second entry.
+ */
+function helpFlags(file) {
+  const source = read(file)
+  const block = /\nOptions:\n((?:[^\n]*\n)*?)\n/.exec(source)
+  if (!block) return new Set()
+  return new Set([...block[1].matchAll(/^\s+(--[a-z][a-z0-9-]*)/gm)].map((match) => match[1]))
+}
+
+/**
+ * The flags every command takes because no command sees them: `src/cli/main.ts`
+ * strips them before dispatching.
+ *
+ * Read from the two places in that file that implement them rather than copied
+ * here. `takeGlobalFlags` compares tokens to decide what to pull out, and
+ * `dispatch` asks what is left whether it wants help. Both are asserted to find
+ * something, because a copy of this list that quietly emptied would make every
+ * `dbmd check --json` in the tree a finding, which is the false-positive
+ * failure that gets a guard deleted rather than fixed.
+ */
+function globalFlags() {
+  const main = read('src/cli/main.ts')
+  const stripped = [...main.matchAll(/token === '(--[a-z][a-z0-9-]*)'/g)].map((match) => match[1])
+  const asked = [...main.matchAll(/rest\.includes\('(-{1,2}[a-zA-Z][a-z0-9-]*)'\)/g)].map(
+    (match) => match[1],
+  )
+  if (stripped.length === 0) {
+    throw new Error('src/cli/main.ts strips no global flag this could read')
+  }
+  if (asked.length === 0) {
+    throw new Error('src/cli/main.ts reads no help flag out of what it hands a command')
+  }
+  return new Set([...stripped, ...asked])
 }
 
 /** The scripts `npm run` will find. */
@@ -356,9 +530,15 @@ const DIST_TAG = /^[a-z][a-z0-9-]*$/
  * author writes `// hypothetical: dbmd fmt` and both are the same convention.
  * The reference itself ends the match, so whatever closes the comment is not
  * this pattern's business.
+ *
+ * A flag can be marked too, `hypothetical: dbmd check --deep`, because a page
+ * describing a flag that is coming is the same sentence as a page describing a
+ * command that is coming and a shape with no escape hatch is a shape people
+ * work around. The `-->` that closes a markdown comment is not a flag, so an
+ * existing marker reads exactly as it did.
  */
 const MARKER =
-  /hypothetical:\s*(dbmd\s+[a-z][a-z0-9-]*|npm\s+run\s+[a-z][a-z0-9:_-]*|node\s+scripts\/[\w.-]+|scripts\/[\w.-]+)/g
+  /hypothetical:\s*(dbmd\s+[a-z][a-z0-9-]*(?:\s+--[a-z][a-z0-9-]*)?|npm\s+run\s+[a-z][a-z0-9:_-]*|node\s+scripts\/[\w.-]+|scripts\/[\w.-]+)/g
 
 /** A shell prompt, which is punctuation in front of the command and not code. */
 const PROMPT = /^\s*(?:[$>]\s+)?/
@@ -396,9 +576,65 @@ function referencesIn(file, text) {
     for (const { kind, pattern, anchored, named } of REFERENCES) {
       for (const match of segment.matchAll(pattern)) {
         if (anchored && match.index !== 0) continue
-        found.push({ kind, named: named(match[1]), line })
+        const reference = { kind, named: named(match[1]), line }
+        // What the command was given is what is left of the code after the
+        // match, which is why `npx --yes` never reaches this: the shapes match
+        // from the runner through the command word.
+        found.push(
+          kind === 'dbmd command'
+            ? { ...reference, flags: flagsAfter(segment.slice(match.index + match[0].length), match[1]) }
+            : reference,
+        )
       }
     }
+  }
+  return found
+}
+
+/** A flag, as written: `--name`, `--name=value` read on the name half, or a short. */
+const FLAG = /^(--[a-z][a-z0-9-]*|-[a-zA-Z])(?:=.*)?$/
+
+/**
+ * What stops a command line, so that what follows is not read as its flags.
+ *
+ * A pipe, a redirect, a separator, a substitution. `dbmd check 2>/dev/null` is
+ * in this repository's own root help, and the token after the redirect is a
+ * path rather than an argument.
+ */
+const ENDS_THE_COMMAND = /[|;&<>]|\$\(/
+
+/**
+ * The flags written after a command on one command line, in order.
+ *
+ * Conservative on purpose: a token this cannot classify is skipped rather than
+ * reported, because a guard with false positives gets deleted rather than
+ * fixed. See the header for what each rule here is for.
+ *
+ * The value of a string option is skipped using that option's own declared
+ * type, which is what keeps `dbmd studio --port -1` from reporting a flag
+ * called -1. An unknown flag has no type to read, so nothing after it is
+ * skipped: it is about to be reported anyway, and a positional is not a flag.
+ */
+function flagsAfter(rest, command) {
+  const takes = flagsOf.get(command) ?? new Map()
+  const found = []
+  let valueExpected = false
+
+  for (const raw of rest.split(/\s+/)) {
+    if (raw === '') continue
+    // A bare `--` ends the flags, the same way it does in `takeGlobalFlags`.
+    if (raw === '--' || ENDS_THE_COMMAND.test(raw)) break
+    if (valueExpected) {
+      valueExpected = false
+      continue
+    }
+    // A synopsis writes `[--strict]` and a sentence ends `--json.`, and both
+    // are the same claim as the bare token.
+    const token = raw.replace(/^[[("']+/, '').replace(/[\])"',.]+$/, '')
+    const flag = FLAG.exec(token)
+    if (!flag) continue
+    found.push(flag[1])
+    valueExpected = !token.includes('=') && takes.get(flag[1]) === 'string'
   }
   return found
 }
@@ -490,6 +726,32 @@ function documentedCommands() {
 const commands = cliCommands()
 const scripts = npmScripts()
 const version = packageVersion()
+const globals = globalFlags()
+
+/** Every command's own flags, against the flag each one is declared to be. */
+const flagsOf = new Map([...commands].map(([name, file]) => [name, commandFlags(file)]))
+
+/**
+ * Where the two hand-written lists of one command's flags disagree.
+ *
+ * The table is what the program accepts and the help is what a person reads,
+ * and this is the whole of what the second read buys: a flag that works and is
+ * undocumented, a flag documented and removed, and a rename that moved one of
+ * them. It is also the loud failure a source-reading check owes: a table this
+ * stopped being able to find leaves the help saying --strict over a command
+ * that now takes nothing. See the header, and ADR 0089.
+ */
+const disagreements = []
+for (const [name, file] of commands) {
+  const table = flagsOf.get(name)
+  const helped = helpFlags(file)
+  for (const flag of table.keys()) {
+    if (!helped.has(flag)) disagreements.push({ file, name, flag, missing: 'help' })
+  }
+  for (const flag of helped) {
+    if (!table.has(flag)) disagreements.push({ file, name, flag, missing: 'table' })
+  }
+}
 
 function kindOf(named) {
   if (named.startsWith('npm run ')) return 'npm script'
@@ -509,19 +771,36 @@ function resolves(named) {
     const path = named.startsWith('node ') ? named.slice('node '.length) : named
     return existsSync(join(ROOT, path))
   }
-  return commands.has(named.slice('dbmd '.length))
+  // A marker can name a flag, `dbmd check --deep`, and then both halves have to
+  // be real before it is stale. Without this the marker for a flag would still
+  // be excusing a page on the day the flag shipped, which is the day the
+  // sentence around it needs rereading.
+  const [command, flag] = named.slice('dbmd '.length).split(' ')
+  if (!commands.has(command)) return false
+  if (flag === undefined) return true
+  return globals.has(flag) || flagsOf.get(command)?.has(flag) === true
 }
 
 function describe(kind) {
   if (kind === 'npm script') return 'a script in package.json'
   if (kind === 'script file') return 'a file in scripts/'
-  return `a dbmd command. There are ${[...commands].join(', ')}`
+  return `a dbmd command. There are ${[...commands.keys()].join(', ')}`
+}
+
+/** What a command does take, for the reader of a failure about one that it does not. */
+function takes(command) {
+  const own = [...(flagsOf.get(command) ?? new Map()).keys()]
+  const after = [...globals].join(', ')
+  return own.length === 0
+    ? `"dbmd ${command}" takes no flags of its own, and ${after} are accepted after every command`
+    : `"dbmd ${command}" takes ${own.join(', ')}, and ${after} are accepted after every command`
 }
 
 const files = scannedFiles()
 const problems = []
 const mispinned = []
 let pinned = 0
+let checked = 0
 
 for (const file of files) {
   const text = readFileSync(join(ROOT, file), 'utf8')
@@ -529,19 +808,41 @@ for (const file of files) {
   const excused = new Set()
   const reported = new Set()
 
-  for (const { kind, named, line } of referencesIn(file, text)) {
-    if (resolves(named)) continue
-    // A line inside a fence is read both as code and as its spans, and the
-    // shapes overlap, so the same reference can be found more than once. Where
-    // it is wrong is a line, not an offset, so one report per line is the
-    // whole of what a reader needs.
-    if (reported.has(`${line} ${named}`)) continue
-    reported.add(`${line} ${named}`)
-    if (markers.has(named)) {
-      excused.add(named)
+  for (const { kind, named, line, flags } of referencesIn(file, text)) {
+    if (!resolves(named)) {
+      // A line inside a fence is read both as code and as its spans, and the
+      // shapes overlap, so the same reference can be found more than once.
+      // Where it is wrong is a line, not an offset, so one report per line is
+      // the whole of what a reader needs.
+      if (reported.has(`${line} ${named}`)) continue
+      reported.add(`${line} ${named}`)
+      if (markers.has(named)) {
+        excused.add(named)
+        continue
+      }
+      problems.push({ file, line, text: `\`${named}\` is not ${describe(kind)}` })
       continue
     }
-    problems.push({ file, line, text: `\`${named}\` is not ${describe(kind)}` })
+
+    // Flags are read only where the command resolved. `dbmd fmt --deep` has one
+    // finding in it and it is the command; a second one about the flags of
+    // something that does not exist is noise in front of the answer.
+    const command = named.slice('dbmd '.length)
+    for (const flag of flags ?? []) {
+      if (reported.has(`${line} ${named} ${flag}`)) continue
+      reported.add(`${line} ${named} ${flag}`)
+      checked++
+      if (globals.has(flag) || flagsOf.get(command)?.has(flag) === true) continue
+      if (markers.has(`${named} ${flag}`)) {
+        excused.add(`${named} ${flag}`)
+        continue
+      }
+      problems.push({
+        file,
+        line,
+        text: `\`${flag}\` is not a flag of \`${named}\`. ${takes(command)}`,
+      })
+    }
   }
 
   for (const { version: pin, line } of pinsIn(file, text)) {
@@ -571,14 +872,14 @@ for (const file of files) {
 }
 
 const documented = documentedCommands()
-const undocumented = [...commands].filter((command) => !documented.has(command))
+const undocumented = [...commands.keys()].filter((command) => !documented.has(command))
 
 let failed = false
 
 if (problems.length > 0) {
   failed = true
   console.error(
-    `${problems.length} reference${problems.length === 1 ? '' : 's'} to a command that does not exist:\n`,
+    `${problems.length} reference${problems.length === 1 ? '' : 's'} to something that does not exist:\n`,
   )
   for (const { file, line, text } of problems) {
     console.error(`  ${file}:${line}`)
@@ -590,10 +891,15 @@ claims. \`dbmd query\` was named by four error messages, a documentation page, a
 decision record and AGENTS.md before it existed, and every one of them agreed
 with every other, so there was nothing inconsistent to notice.
 
+A flag beside the command is the same claim. \`dbmd check --deep\` was written on
+three pages, one of them the CI recipe this project hands a stranger to paste
+into their own repository, and it would have exited 2 in their CI. ADR 0089.
+
 If you meant something that does not exist yet, say so where you wrote it, on
 its own line or at the end of one:
 
     <!-- hypothetical: dbmd fmt -->
+    <!-- hypothetical: dbmd check --deep -->
 
 The marker holds for the file it is written in and has to name the reference
 exactly. It fails once the thing exists, so the sentence around it gets read
@@ -647,8 +953,43 @@ lines above the thing it counts is what went stale. ADR 0043.
 `)
 }
 
+if (disagreements.length > 0) {
+  failed = true
+  console.error(
+    `${disagreements.length} flag${disagreements.length === 1 ? '' : 's'} ${disagreements.length === 1 ? 'is' : 'are'} on one of a command's two lists and not the other:\n`,
+  )
+  for (const { file, name, flag, missing } of disagreements) {
+    console.error(`  ${file}`)
+    console.error(
+      missing === 'help'
+        ? `    "dbmd ${name}" accepts ${flag} and its --help does not list it`
+        : `    "dbmd ${name}" lists ${flag} in its --help and does not accept it`,
+    )
+  }
+  console.error(`
+A command writes its flags down twice, in the same file: once in the Options
+block a person reads, and once in the options table it hands parseArgs. The
+table is what the program does, so it is what a flag written anywhere in this
+tree is resolved against, and this is the check that stops the two drifting.
+
+It is also what makes this script fail loudly rather than quietly. The table is
+read out of the source as text, and a table this can no longer find would leave
+every flag in the repository unchecked and every page passing. The help block
+is the independent witness that says so. ADR 0089.
+`)
+}
+
 if (failed) process.exit(1)
 
+// What this is allowed to claim moved with the rule. It used to promise that
+// every reference resolves, which was true and was the whole of the hole: a
+// flag was not a reference, so three pages naming one that does not exist were
+// covered by that sentence and by nothing else. The flag count is here for the
+// same reason the pin count is: a sweep that quietly stopped finding anything
+// prints the same success line as one that swept.
 console.log(
-  `${files.length} files scanned, every \`dbmd\`, \`npm run\` and \`scripts/\` reference resolves, ${pinned} pinned version${pinned === 1 ? '' : 's'} ${pinned === 1 ? 'names' : 'name'} ${version}, and ${DOCUMENTATION} documents all ${commands.size} commands.`,
+  `${files.length} files scanned, every \`dbmd\`, \`npm run\` and \`scripts/\` reference resolves, ` +
+    `so ${checked === 1 ? 'does the 1 flag' : `do the ${checked} flags`} written beside a \`dbmd\` command, ` +
+    `${pinned} pinned version${pinned === 1 ? '' : 's'} ${pinned === 1 ? 'names' : 'name'} ${version}, ` +
+    `and ${DOCUMENTATION} documents all ${commands.size} commands.`,
 )
