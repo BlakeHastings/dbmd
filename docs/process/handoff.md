@@ -4,7 +4,7 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-08, late, with four agents out, two pull requests open and every
+**As of 2026-09-08, late, with five agents out, two pull requests open and every
 epic closed.**
 
 ## Where the work is
@@ -17,9 +17,9 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 226 |
-| decision records | 86 |
-| tests | 1309 passing, 1 skipped, across 46 files |
+| merged pull requests | 230 |
+| decision records | 88 |
+| tests | 1358 passing, 1 skipped, across 46 files |
 | backlog | 123 closed, 3 open, and it still cannot be written to |
 | the gate | 58, 58 and 60 seconds, timed three times on 2026-09-08 |
 
@@ -501,6 +501,20 @@ document a write failure in their own exit-code lists both leak the raw error
 instead, and `dbmd import` names a temporary file that no longer exists. That is
 a decision that was made and then not carried to the surfaces it was about, which
 is a different failure from a decision nobody made.
+
+## Six diagnostic messages are dispatched, and four were reproduced first
+
+**All six are now out** on `model/six-sentences-and-the-states-that-make-them-false`,
+and the three that were with an agent landed as #231. Four of the six were
+reproduced by hand before the brief was written rather than taken from the
+sweep's report: `kind-mismatch`'s three false clauses, `kind-missing` run side
+by side with the same message one directory down where every word of it is true,
+and both halves of the `unknown-key` contradiction, the group half followed end
+to end by writing the key the message calls known and reading what comes back.
+
+The section below is the queue as it stood, kept because it carries the evidence
+and the mechanisms, and a successor who needs to re-dispatch any of them should
+read it rather than re-run the sweep.
 
 ## Six diagnostic messages are queued and the queue is the point
 
