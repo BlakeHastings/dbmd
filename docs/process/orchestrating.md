@@ -541,6 +541,54 @@ prose, nobody runs a fenced block that has no tag, and nobody opens a path in a
 comment. If a sentence would be equally easy to write whether or not it were
 true, it is worth ten seconds of checking.
 
+## A blocker you wrote is a claim like any other, and you will not re-check it
+
+Twice on 2026-09-07 the loop stalled on something that was not blocked. Both
+times the blocker was mine, written into a backlog item as an instruction, so it
+would have stopped whoever read it next.
+
+- **"Nothing in a session can take a screenshot."** The browser tool's server
+  would not connect, so I concluded the machine could not do it and wrote **do
+  not dispatch an agent at this** on the item. Playwright was installed the whole
+  time and two agents had driven a real browser with it that same day, one of
+  them taking a screenshot. The picture was retaken in an hour once the claim was
+  checked, and the same session settled two open questions in a taste epic that
+  had been waiting on a rendered page.
+- **"It cannot be corrected while the owner has that file open."** A conflict I
+  imagined rather than measured. Their two uncommitted hunks were at lines 14 and
+  17 and the thing to fix was at line 237. I had already merged a change to line
+  22 of that same file under those same edits an hour earlier, reconciled it with
+  one stash and one pop, and not noticed that this disproved the claim.
+
+**The asymmetry is the finding.** Every stale claim hunted that day was somebody
+else's sentence: a count in `AGENTS.md`, a path in a guard's comment, a character
+count on the front page, a branch convention no id could satisfy. Those got
+checked because they were inherited. **These two were not, because they were
+mine, and a conclusion you reached yourself does not present as a claim needing
+verification. It presents as a thing you know.**
+
+So the reference-repeated-everywhere rule above applies to your own reasoning, and
+harder, because there is only one source and it is not going to disagree with
+itself.
+
+**What to do when you write a blocker.** Write down what would have to be true
+for it to be false, and then check that one thing:
+
+- "no browser is available" is false if any browser driver is installed, which is
+  one `npx playwright --version`
+- "editing that file conflicts" is false if the lines are far apart, which is one
+  `git diff -U0` against one `grep -n`
+
+Both were a single command. Neither was run, because the conclusion had already
+been filed and filing it made it feel settled.
+
+**And re-test a stopping point rather than announcing it.** "Nothing is left that
+does not need the owner" was said three times that evening. The first two were
+wrong and produced a retaken screenshot, two measurements that halved a taste
+epic, and a stale number finally removed. The third was tested the same way and
+was right. A stopping point that has been checked is worth stating; one that has
+only been felt is a guess.
+
 ## The tracked backlog export conflicts between any two branches that file an item
 
 `.beads/issues.jsonl` is generated and tracked. Beads rewrites it on every write,
