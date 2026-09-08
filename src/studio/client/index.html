@@ -903,11 +903,16 @@
     </main>
     <aside id="inspector" hidden></aside>
     <footer>
-      <ul
-        id="conflicts"
-        hidden
-        aria-label="Edits dropped rather than written over the file on disk"
-      ></ul>
+      <!-- The name says what the list is and not why any entry is on it,
+           because there are two whys and a list can hold both at once. It read
+           "over the file on disk", which is the `changed` reason, and reaching
+           a list of both kinds is what showed it up: the visible summary said
+           "2 edits were dropped rather than written. Each line below says why."
+           while the name a screen reader announced was still the reason
+           `conflictSummary` was rewritten to stop claiming. An entry whose file
+           could not be read at all was not written over anything: nothing was
+           written and the file is exactly as it was. ADR 0019, dbmd-c7q. -->
+      <ul id="conflicts" hidden aria-label="Edits dropped rather than written"></ul>
       <ul id="diagnostics" hidden></ul>
       <p class="line">
         <span id="status-text">Loading the model.</span>

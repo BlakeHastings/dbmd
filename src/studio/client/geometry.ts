@@ -185,7 +185,27 @@ export function visibleCount(rects: Iterable<Rect>, into: Size, viewport: Viewpo
 }
 
 /**
- * What the page says when **Fit** ran out of zoom before it ran out of model.
+ * What a fit managed, which is not always what it was asked for.
+ *
+ * Counted after the viewport moved rather than predicted from the bounds: the
+ * rectangles are the ones the browser measured, so this is what is on screen
+ * and not what ought to be. `Canvas.fit` is what fills it in and re-exports
+ * this type; it lives here because `didNotFitNotice` is the only thing that
+ * reads it, and the question of whether there is a sentence to say has to be
+ * answerable without a browser.
+ */
+export interface FitReport {
+  /** Objects with any part of themselves inside the canvas afterwards. */
+  readonly shown: number
+  /** Objects on the canvas at all: tables, notes and group boxes. */
+  readonly total: number
+  /** The fit wanted a scale below `MIN_SCALE` and was refused it. */
+  readonly clamped: boolean
+}
+
+/**
+ * What the page says when **Fit** ran out of zoom before it ran out of model,
+ * and `undefined` when it did not.
  *
  * `fitTo` clamps at `MIN_SCALE`, and until now that was the end of it: on a
  * six-hundred-table import the button moved the view, left 530 boxes off the
@@ -202,17 +222,30 @@ export function visibleCount(rects: Iterable<Rect>, into: Size, viewport: Viewpo
  * the toolbar suggests: zooming out further is refused on purpose, so the way
  * to the rest is the keyboard walk the canvas already describes.
  *
- * Nothing is said when the fit fit. A line that fires every time is a line
- * people stop reading, and this one is the whole reason the button is not
- * lying.
+ * **Both halves of "it was not far enough" are asked here, and the second one
+ * is what this used to leave to the caller.** `clamped` says the zoom floor had
+ * its say; it does not say the floor cost anything, and on a small model in a
+ * small window it costs nothing at all. `examples/shop` is eleven objects that
+ * need a scale below 25% to sit inside the fit's margin and fit inside the
+ * canvas anyway once the margin is spent, so the first draw at 420 by 300 said
+ * *11 of the 11 objects on the canvas are on screen and the rest are past the
+ * edges*, with no rest. Measured at three window sizes, and on the first draw,
+ * where nobody pressed anything and so nobody is owed an explanation at all.
+ * ADR 0075's amendment.
+ *
+ * So the sentence and the condition for saying it are one function. They were
+ * two, the caller held the condition, and the condition it held was not the one
+ * the sentence claims: that is the shape of defect worth not repeating, rather
+ * than the missing comparison itself.
  */
-export function didNotFitNotice(shown: number, total: number): string {
+export function didNotFitNotice(report: FitReport): string | undefined {
+  if (!report.clamped || report.shown >= report.total) return undefined
   const floor = `${Math.round(MIN_SCALE * 100)}%`
   return (
-    `Fit is as far out as this page goes, and it was not far enough: ${shown} of the ${total} ` +
-    `objects on the canvas are on screen and the rest are past the edges. The zoom stops at ` +
-    `${floor} so that a box still says what it is, so the way to the others is the arrow keys, ` +
-    `which walk to one object at a time and bring it into view.`
+    `Fit is as far out as this page goes, and it was not far enough: ${report.shown} of the ` +
+    `${report.total} objects on the canvas are on screen and the rest are past the edges. The ` +
+    `zoom stops at ${floor} so that a box still says what it is, so the way to the others is ` +
+    `the arrow keys, which walk to one object at a time and bring it into view.`
   )
 }
 

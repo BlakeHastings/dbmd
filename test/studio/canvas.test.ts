@@ -207,11 +207,35 @@ describe('coordinates', () => {
   })
 
   it('says how much of the model is off screen, in the counts and not in the abstract', () => {
-    const notice = didNotFitNotice(70, 600)
+    const notice = didNotFitNotice({ shown: 70, total: 600, clamped: true })
     expect(notice).toContain('70 of the 600')
     expect(notice).toContain('25%')
     // The one thing a reader can act on, since zooming further out is refused.
     expect(notice).toContain('arrow keys')
+  })
+
+  it('says nothing about a fit that fitted, whatever the zoom floor had to do', () => {
+    // The measured defect, in the state that produced it. `examples/shop` is
+    // eleven objects that want a scale under 25% to sit inside the fit's
+    // margin and are all on screen at 25% anyway, so the first draw at 420 by
+    // 300 announced that 11 of the 11 objects were on screen and the rest were
+    // past the edges. There is no rest. ADR 0075's amendment.
+    expect(didNotFitNotice({ shown: 11, total: 11, clamped: true })).toBeUndefined()
+  })
+
+  it('says nothing when the zoom floor was never reached', () => {
+    // The ordinary case, and the reason the notice is not noise: a line that
+    // fires every time is a line people stop reading.
+    expect(didNotFitNotice({ shown: 8, total: 8, clamped: false })).toBeUndefined()
+  })
+
+  it('still says it about a model that genuinely does not go in', () => {
+    // The counterfactual ADR 0075 measured at 264 of 600, which has to keep
+    // working: this is the whole reason the sentence exists.
+    expect(didNotFitNotice({ shown: 264, total: 600, clamped: true })).toContain('264 of the 600')
+    // And one object over the edge is the same fact in the small, which is what
+    // separates "the clamp cost something" from "the clamp happened".
+    expect(didNotFitNotice({ shown: 10, total: 11, clamped: true })).toContain('10 of the 11')
   })
 })
 
@@ -497,7 +521,7 @@ describe('edges', () => {
       ),
     )
     expect(edge.unanchored).toEqual([
-      { table: 'api_keys', column: 'account_id', why: 'table-did-not-parse' },
+      { table: 'api_keys', column: 'account_id', why: 'rows-not-drawn' },
     ])
     // Still the header rather than the middle of the box, which is the part
     // that was already right and has to stay right.
@@ -521,7 +545,7 @@ describe('edges', () => {
       ),
     )
     expect(edge.unanchored).toEqual([
-      { table: 'api_keys', column: 'account_id', why: 'table-did-not-parse' },
+      { table: 'api_keys', column: 'account_id', why: 'rows-not-drawn' },
       { table: 'customers', column: 'nope', why: 'no-such-column' },
     ])
   })
@@ -593,13 +617,17 @@ describe('what an edge says about itself', () => {
     ['orders', parent],
   ])
 
-  function titleOf(spec: EdgeSpec, canvas: ReadonlyMap<string, TableBox> = boxes): string {
+  function titleOf(
+    spec: EdgeSpec,
+    canvas: ReadonlyMap<string, TableBox> = boxes,
+    unreadable?: (table: string) => string | undefined,
+  ): string {
     const routed = routeEdges([spec], canvas)
     const edge = routed[0]
     if (edge === undefined || routed.length !== 1) {
       throw new Error(`one edge was expected, got ${routed.length}`)
     }
-    return edgeTitle(edge)
+    return unreadable === undefined ? edgeTitle(edge) : edgeTitle(edge, unreadable)
   }
 
   const orderItemsToOrders: EdgeSpec = {
@@ -660,6 +688,53 @@ describe('what an edge says about itself', () => {
     expect(titleOf(atAMissingColumn, broken)).toBe(
       "order_items.order_id references orders.nope. Drawn at the table's name because " +
         'order_items did not parse, so its columns are not drawn and there is no orders.nope.',
+    )
+  })
+
+  it('does not say a file did not parse when the reader could not open it', () => {
+    // The fourth surface of ADR 0019's `complete: false` being two facts
+    // wearing one flag, and the one dbmd-c7q left. Driven against a real
+    // exclusive lock on `customers.md`: the box said the file could not be read
+    // just now and there was nothing in it to fix, while every edge into it
+    // said `customers did not parse`, which is a file to go and fix.
+    const broken = new Map<string, TableBox>([
+      ['order_items', unparsed],
+      ['orders', parent],
+    ])
+    const title = titleOf(orderItemsToOrders, broken, (table) =>
+      table === 'order_items' ? 'cannot read the file: the file is in use (EBUSY)' : undefined,
+    )
+    expect(title).toBe(
+      "order_items.order_id references orders.id. Drawn at the table's name because " +
+        'order_items could not be read just now, so its columns are not drawn.',
+    )
+    expect(title).not.toContain('did not parse')
+  })
+
+  it('names no cause, because a lock and a permission change look the same here', () => {
+    // The rule every other sentence about an unreadable file follows: the
+    // reader turned the errno into a clause, and this one repeats no clause at
+    // all rather than inventing a second one. The box beside the edge carries
+    // the reader's words.
+    const broken = new Map<string, TableBox>([
+      ['order_items', unparsed],
+      ['orders', parent],
+    ])
+    expect(titleOf(orderItemsToOrders, broken, () => 'cannot read the file: EPERM')).not.toMatch(
+      /lock|another program|permission|antivirus/i,
+    )
+  })
+
+  it('still says a table did not parse when the file is there and is wrong', () => {
+    // The counterfactual, and the reason the two reasons are two: this one is a
+    // file to fix and the sentence is the instruction to go and fix it.
+    const broken = new Map<string, TableBox>([
+      ['order_items', unparsed],
+      ['orders', parent],
+    ])
+    expect(titleOf(orderItemsToOrders, broken, () => undefined)).toBe(
+      "order_items.order_id references orders.id. Drawn at the table's name because " +
+        'order_items did not parse, so its columns are not drawn.',
     )
   })
 
