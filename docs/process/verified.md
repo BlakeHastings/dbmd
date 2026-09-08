@@ -1949,3 +1949,45 @@ plugin’s rather than this repository’s.
   guard expecting it to be missing and was wrong**, which is the tenth time in one
   night an assumption of mine was the defect rather than the product, and the
   first time I checked before dispatching an agent at it.
+
+## 2026-09-08: a model built to be awkward, and the notice that generalised
+
+Six hundred tables was a synthetic shape. This is the other kind of awkward: two
+tables, one of them three hundred columns wide and one of them named
+`kundenaufträge`.
+
+- **`dbmd check` reads it clean**, `2 tables, 0 notes, 0 groups, no problems`.
+- **The studio draws 301 rows in one box**, 1469 screen pixels tall at 25% zoom,
+  first paint in 571ms, no console or page errors.
+- **The non-ASCII name survives every layer.** The box id is
+  `table-kundenaufträge`, the edge id is
+  `edge-kundenaufträge.wide_id->wide.id`, and `agentation`'s own selector rule
+  returns `#edge-kundenaufträge\.wide_id-\>wide\.id`, matching exactly one
+  element with no duplicate id anywhere. So a person annotating a relationship in
+  a German schema gets the same thing an English one gets.
+- **`dbmd export` produces valid mermaid.** 311 lines, all three hundred columns,
+  the name quoted, and `mermaid.parse` accepts it, run in this repository so the
+  parser resolves.
+
+**The finding is the Fit notice, and it is better than the thing it was built
+for.** ADR 0075 added a sentence for when Fit cannot fit, measured against six
+hundred boxes. Here it fires on **two**:
+
+```
+Fit is as far out as this page goes, and it was not far enough: 1 of the 2
+objects on the canvas are on screen and the rest are past the edges.
+```
+
+Because the condition it tests is the drawing not fitting rather than the count
+being large. One table with three hundred columns is about 5900 model pixels
+tall, which no zoom this canvas offers can bring into a 798 pixel viewport. **A
+notice written for a synthetic six hundred table import turns out to be the one a
+person meets on their second real table**, and nothing about it needed changing
+to do that.
+
+- **The supply chain is one dependency.** `npm audit` reports 0 vulnerabilities
+  with and without dev dependencies, and the only runtime dependency is `yaml`.
+  Somebody installing this gets the package and a YAML parser.
+- **`gh pr checks` exits non-zero while anything is pending**, so a script that
+  waits on it throws instead of waiting unless it catches. Two attempts at a
+  wait loop died on that tonight before the third caught it.
