@@ -5997,14 +5997,26 @@ corrected by whoever fixed the thing and the other was nobody's job.
   "abc". 0, the default, lets the operating system pick a free one.` The advice
   exists and is not given in the one situation where the reader needs it.
 
-- **The README shows thirteen command sessions and two of them are checked.**
-  `test/docs/readme.test.ts` runs a fenced block tagged `dbmd-run` and compares
-  its output. Two blocks carry that tag; thirteen plain fences begin with
-  `$ dbmd` and nothing reads them. The drift that mechanism exists to catch then
-  happened while it was watched: merging #223 changed the `dbmd refs` banner for
-  a model whose errors are all the validator's, and the README's
-  `dbmd refs addresses shop` session still shows the old wording. It is a plain
-  fence, so nothing went red.
+- **Eleven of the README's thirteen command lines are in fences nothing reads.**
+  Counted rather than estimated, from `git show origin/main:README.md` because
+  the working copy carries the owner's uncommitted edit. Thirteen lines begin
+  `$ dbmd`. Two of them sit inside the two blocks tagged `dbmd-run`, which
+  `test/docs/readme.test.ts` executes and compares. The other eleven are in
+  plain fences.
+
+  **This is not the same as the README being unchecked**, and an earlier version
+  of this entry said "thirteen command sessions and two of them are checked",
+  which reads that way and is loose about what a session is. The page's other
+  blocks are covered by machinery that exists and works: a file's head, a file's
+  whole content and a sketch each carry their own tag and are read by the same
+  test file, and its one plain JSON payload is claimed by
+  `test/docs/payloads.test.ts`, which fails if a new payload block appears that
+  no case claims. What has no such cover is the command sessions.
+
+  The drift that machinery exists to catch then happened while it was watched:
+  merging #223 changed the `dbmd refs` banner for a model whose errors are all
+  the validator's, and the README's `dbmd refs addresses shop` block still shows
+  the old wording. It is a plain fence, so nothing went red.
 
 - **PR #223 was verified by building its sha and driving four states**, not by
   reading its report: a dangling ref alone, an unparseable file alone, both

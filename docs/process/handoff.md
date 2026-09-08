@@ -453,11 +453,15 @@ whatever the README needs. The third is the one that waits on the owner, because
 it edits a file holding their uncommitted work.
 
 **One of those is blocked on the owner rather than on an agent.** `README.md`
-shows thirteen `$ dbmd` sessions and `test/docs/readme.test.ts` checks two of
-them, the ones tagged `dbmd-run`. The drift that mechanism exists to catch then
-happened while it was watched: #223 changed the `dbmd refs` banner and the
-README's `dbmd refs addresses shop` block still shows the old wording. Fixing it
-means editing a file with the owner's uncommitted work in it, so it waits.
+holds thirteen lines beginning `$ dbmd`, and two of them, the two inside blocks
+tagged `dbmd-run`, are executed by `test/docs/readme.test.ts`. The other eleven
+are in plain fences. **That is not the same as the page being unchecked**: its
+file heads, its file bodies, its sketch and its one JSON payload all have working
+cover, and an exhaustiveness rule turns the payload test red if a new one appears
+unclaimed. What has no cover is the command sessions, and the drift arrived while
+it was watched. #223 changed the `dbmd refs` banner and the README's
+`dbmd refs addresses shop` block still shows the old wording. Fixing it means
+editing a file with the owner's uncommitted work in it, so it waits.
 
 **The third of those is the one to read first if time is short.** ADR 0083
 decided that a refusal from the disk leads with the file and keeps the system's
