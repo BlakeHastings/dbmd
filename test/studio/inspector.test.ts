@@ -722,7 +722,7 @@ describe('what the page says when the disk refused the write', () => {
   // read-only attribute was cleared, the file still held its pre-drag
   // coordinates and the red line was still up; one unrelated drag landed both.
   // `recheck` retries on the page's beat now, so the sentence is a promise the
-  // studio keeps. ADR 0091.
+  // studio keeps. ADR 0092.
   it('promises a retry, which is a thing that now happens', () => {
     const notice = writeFailureNotice(orders, said)
     expect(notice).toContain('this page keeps retrying it')

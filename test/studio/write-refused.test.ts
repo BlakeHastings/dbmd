@@ -149,7 +149,7 @@ describe('a write the disk refuses', () => {
    * coordinates with the red line still up. One unrelated drag of another table
    * landed both at once. "The edit is still here" was true, "rides out with the
    * next write" was true and was the trap, and the "yet" in "nothing is lost
-   * yet" was load-bearing. ADR 0091.
+   * yet" was load-bearing. ADR 0092.
    *
    * `flush` is deliberately not called here. That is the assertion.
    */

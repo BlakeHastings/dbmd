@@ -548,7 +548,7 @@ export class Edits {
    * Measured on 2026-09-08, six seconds after the attribute was cleared, and
    * cleared by one unrelated drag of another table. Clearing a permission is
    * not a filesystem event under the model directory either, so this is where
-   * it belongs rather than in a timer of its own. ADR 0091.
+   * it belongs rather than in a timer of its own. ADR 0092.
    *
    * The gate closes itself here too: the flush that lands sets `failure` back
    * to null, and a flush with nothing pending is a re-read.
@@ -681,7 +681,7 @@ export class Edits {
         for (const file of this.writing) this.edited.add(file)
         // Which file was already refusing when this attempt started, so that a
         // retry that fails the same way is not a second line. `recheck` retries
-        // on the page's beat now (ADR 0091), and a permission nobody clears
+        // on the page's beat now (ADR 0092), and a permission nobody clears
         // would otherwise write a line every two seconds for as long as the tab
         // stayed open. Compared on the path rather than on the message, because
         // the message carries a fresh temporary file name every attempt and

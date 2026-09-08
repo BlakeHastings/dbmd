@@ -221,7 +221,7 @@ async function route(
     // about either and the answer would otherwise go on being an error that is
     // no longer true. The page already asks here on a slow beat and whenever it
     // regains focus, so hanging the recheck off the request costs no timer and
-    // no route. ADR 0061 for the read, ADR 0091 for the write.
+    // no route. ADR 0061 for the read, ADR 0092 for the write.
     await edits.recheck()
     const { model, diagnostics } = edits.snapshot()
     const payload: WireModelResponse = {

@@ -244,7 +244,7 @@ export function createdNotice(path: string): string {
  * page sat in front of a red line over an unwritten edit. Measured six seconds
  * after the attribute was cleared on 2026-09-08, and cleared by one unrelated
  * drag. The retry is real now, on the beat this page already keeps, so the
- * sentence says what it does. ADR 0091.
+ * sentence says what it does. ADR 0092.
  */
 export function writeFailureNotice(file: WireWriteErrorFile | null, message: string): string {
   if (file === null) return `The last write failed. ${message}`

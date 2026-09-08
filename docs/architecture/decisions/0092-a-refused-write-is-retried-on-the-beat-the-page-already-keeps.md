@@ -1,4 +1,4 @@
-# 0091. A refused write is retried on the beat the page already keeps
+# 0092. A refused write is retried on the beat the page already keeps
 
 Answers a condition ADR 0083 wrote down for itself, and it is the cheap half of
 what that record expected the answer to cost.
