@@ -136,11 +136,13 @@ says so and stops rather than sitting there. A caller that starts it with a
 pipe it is not going to write to gets no such warning and no such stop, and
 either closes that pipe or passes --file.
 
-Over a directory that already holds a model this is a re-import. It compares
-what the database says against what the files say, prints every difference as
-an itemised list naming the file it is about, and writes nothing. Read the
-list, then run it again with --confirm to make exactly those changes. An
-unchanged database prints one line and exits 0, so a re-import is safe in CI.
+Over a directory that is not empty this is a re-import, and emptiness is the
+whole of the test: a directory holding files that are not a model lists every
+table as an addition rather than being written into unasked. It compares what
+the database says against what the files say, prints every difference as an
+itemised list naming the file it is about, and writes nothing. Read the list,
+then run it again with --confirm to make exactly those changes. An unchanged
+database prints one line and exits 0, so a re-import is safe in CI.
 
 Prose bodies, layout coordinates and group membership are never touched by a
 re-import, and a file no item on the list names is never opened. A column or a

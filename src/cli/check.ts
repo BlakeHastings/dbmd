@@ -65,7 +65,12 @@ Exit codes:
   2   the command line was wrong
 
 A file that does not parse is reported and then skipped, and every other file
-is still checked, so one broken file does not hide the rest.
+is still checked, so one broken file does not hide the other nine. What it does
+silence is the three diagnostics that would otherwise conclude something is
+missing, because a file that is there and did not load is not a file that is
+absent. So read a run with an error in it as incomplete rather than as clean:
+fix the file it names, then read the next one. docs/format.md names the three
+and says which of them stands down for the whole model.
 
 Diagnostics are prose on stderr and the exit code is the answer a script reads.
 --json puts them on stdout instead, sorted, with the same exit code: the codes

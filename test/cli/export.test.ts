@@ -173,6 +173,31 @@ describe('dbmd export writes a diagram GitHub will render', () => {
     expect(text).toContain('  "customers" ||..o{ "orders" : "customer_id"')
   })
 
+  /**
+   * Every other case here builds its model in a directory called `db-model`,
+   * so none of them can tell "into the directory it was given" apart from
+   * "into db-model". `dbmd export --help` said the second one until this test
+   * existed, and a reader who ran it over `examples/shop` was told a path the
+   * command never touches. The name here is deliberately not the default.
+   */
+  test('it writes into the README of the directory it was given, whatever that is called', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'dbmd-export-elsewhere-'))
+    temporaries.push(parent)
+    const directory = join(parent, 'shop')
+    await mkdir(join(directory, 'tables'), { recursive: true })
+    await writeFile(join(directory, '_model.md'), MODEL_FILE, 'utf8')
+    await writeFile(join(directory, 'tables', 'customers.md'), CUSTOMERS, 'utf8')
+
+    const { code, err } = await runCli(['export', directory])
+
+    expect(code).toBe(0)
+    expect(err).toContain('README.md')
+    expect(await readme(directory)).toContain(SECTION_BEGIN)
+    // Nothing called db-model was created anywhere, which is the half of this
+    // the assertion above cannot see.
+    expect(await readdir(parent)).toEqual([basename(directory)])
+  })
+
   test('the --json payload carries the counts and the same exit code', async () => {
     const directory = await twoTables()
 

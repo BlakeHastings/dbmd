@@ -68,9 +68,11 @@ Options:
 
 This is the question to ask before a rename, a delete or a column removal, and
 it is the one question a model answers badly by hand. A ref is written on the
-referring column, so the table being asked about is the one file the answer is
-not in, and "grep" cannot stand in for it, because "ref: orders.id" and the word
-"orders" in a paragraph are the same string.
+referring column, so the answer is spread across other tables' files rather
+than sitting in the file of the table being asked about, and a self-reference
+is the one row that is written there. "grep" cannot stand in for it either,
+because "ref: orders.id" and the word "orders" in a paragraph are the same
+string.
 
 Exit codes:
   0   answered, whether or not anything points at it
