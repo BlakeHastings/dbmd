@@ -99,6 +99,62 @@ export function agreeing(count: number, one: string, more: string): string {
  */
 export type RenameSubject = Pick<WireModel, 'body' | 'tables' | 'notes' | 'groups'>
 
+/**
+ * What the tables say about their groups, and what the read found at the paths
+ * those `group:` lines name.
+ *
+ * `refused` is in it because the two absences it separates are the whole of
+ * ADR 0090: a group that is not an object here is either a file the read could
+ * not build, or nothing at all, and only the second means the path is empty.
+ */
+export type GroupSubject = Pick<WireModel, 'tables' | 'groups' | 'refused'>
+
+/**
+ * That deleting this table leaves its group with nothing in it, said before it
+ * goes, or nothing when it does not.
+ *
+ * Here rather than in the panel for the reason `renamePlan` is (ADR 0016): it
+ * is one of the paragraphs of the confirmation that stands in front of the only
+ * thing in this studio that destroys a file, and a paragraph that important
+ * should be provable without a browser. The two states below are why it moved.
+ *
+ * **The group file is deliberately left alone**, so the sentence is about what
+ * survives: deleting somebody's prose about a region because the last table in
+ * it went is a thing that cannot be undone and was never asked for. What is
+ * left is an empty group, which draws as a placeholder so it does not look
+ * deleted, and which `dbmd check` reports as `group-empty` because that is
+ * nearly always a rename that missed a file.
+ *
+ * **Every clause of that is about a group file, so which sentence is said
+ * depends on what the model knows is at `groups/<name>.md`.** ADR 0090, one
+ * surface along. A `group:` naming no file is a `group-unknown` error and is
+ * exactly the state a rename that missed a file leaves behind, and this
+ * answered it by describing a label, prose, a box and a `group-empty` that do
+ * not exist, closing with an instruction to go and delete the file. The model
+ * already holds the answer, from the same read that raised the diagnostic: the
+ * group is an object here, or it is a file this read refused, or there is
+ * nothing at that path.
+ */
+export function lastMemberWarning(model: GroupSubject, table: Table): string[] {
+  const name = table.group
+  if (name === undefined) return []
+  if (model.tables.some((held) => held.group === name && held.name !== table.name)) return []
+  const path = `groups/${name}.md`
+  if (model.groups.some((group) => group.name === name)) {
+    return [
+      `\`${name}\` will have nothing in it. ${path} is not deleted and not edited: it keeps its label and its prose, draws as an empty box, and dbmd reports it as \`group-empty\` until something joins it or you delete the file yourself.`,
+    ]
+  }
+  if (model.refused.some((file) => file.kind === 'group' && file.name === name)) {
+    return [
+      `\`${name}\` will have nothing in it. ${path} is there and this read could not build a group from it, so nothing here can say what it holds, and it is not deleted and not edited either way. The error already reported against that file is the one to fix.`,
+    ]
+  }
+  return [
+    `Nothing is at ${path}, so this file's \`group: ${name}\` is the last thing in the model that names it. Deleting this file takes the name and its \`group-unknown\` error with it, and leaves nothing behind: there is no group file to keep a label, and nothing is drawn for it.`,
+  ]
+}
+
 /** One body whose prose names a table inside backticks, and how often. */
 export interface Mention {
   /** Where the prose is: slash-separated, relative to the model root. */
@@ -181,10 +237,13 @@ export type RenamePlan =
  * Here rather than in the panel for the reason `fields.ts` and `tables.ts` are
  * (ADR 0016): this is the most carefully worded sentence in the studio, said at
  * the one moment it can still change somebody's mind, and a sentence that
- * important should be provable without a browser. The two things it used to get
- * wrong are both about accuracy at that moment: it offered the decision for a
- * name that was already taken, and it counted the file it is deleting among the
- * other files it would edit.
+ * important should be provable without a browser. The three things it used to
+ * get wrong are all about accuracy at that moment: it offered the decision for a
+ * name that was already taken, it counted the file it is deleting among the
+ * other files it would edit, and it said nothing at all about the one rename
+ * that is destructive on a filesystem that ignores case, because the only name
+ * that clashes there is the table's own and the list it asked had that name
+ * taken out of it.
  *
  * **The last paragraph is about the files this rename will not touch**, and it
  * is here rather than in the line said afterwards because of what the rest of
@@ -199,14 +258,30 @@ export type RenamePlan =
  * writing paragraphs for. dbmd-x82, ADR 0044.
  */
 export function renamePlan(model: RenameSubject, from: string, to: string): RenamePlan {
-  const others = model.tables.map((table) => table.name).filter((name) => name !== from)
-  const clash = clashFor(to, others)
-  if (clash?.kind === 'same') {
+  const names = model.tables.map((table) => table.name)
+  // Two questions over two lists, because the table being renamed answers them
+  // differently.
+  //
+  // "Is this name taken" is about some *other* table, so the subject is left
+  // out: renaming a table to what it is already called is not a name somebody
+  // else holds.
+  //
+  // "Is there already a file whose name folds to this one" is about the disk,
+  // and the subject still has a file on it until this rename finishes. Renaming
+  // `products` to `Products` is the one rename where the only folding name is
+  // the table's own, and it is also the one rename that is destructive on a
+  // filesystem that ignores case. Asking both questions of the list with the
+  // subject filtered out is why that case reached the confirmation with no
+  // warning on it at all, over a first line promising to write one file and
+  // delete another that are the same file.
+  const others = names.filter((name) => name !== from)
+  if (clashFor(to, others)?.kind === 'same') {
     return {
       kind: 'refused',
       said: `There is already a table called \`${to}\`, so nothing here can be renamed to it. Pick another name, or rename that one first.`,
     }
   }
+  const clash = clashFor(to, names)
 
   const referrers = referrersTo(model, from)
   // A ref from this table to itself is rewritten inside the file being created,
@@ -234,11 +309,20 @@ export function renamePlan(model: RenameSubject, from: string, to: string): Rena
     lines: [
       `Rename \`${from}\` to \`${to}\`?`,
       `This writes tables/${to}.md and deletes tables/${from}.md.`,
-      ...(clash?.kind === 'case'
-        ? [
-            `\`${clash.held}\` differs from this only in case, which is two tables on Linux and one file on Windows and macOS, where this rename is refused.`,
-          ]
-        : []),
+      ...(clash?.kind !== 'case'
+        ? []
+        : clash.held === from
+          ? [
+              // Measured on 2026-09-08: confirming this one reaches the server,
+              // which finds `tables/Products.md` already there and stops. What
+              // the sentence has to carry is that the two names are one file,
+              // because the line above it has just promised to write one and
+              // delete the other.
+              `This changes only the case of the name. On Linux tables/${to}.md and tables/${from}.md are two files and the rename goes through; on Windows and macOS they are one file, so the file this writes is the file it deletes, and the rename is refused.`,
+            ]
+          : [
+              `\`${clash.held}\` differs from this only in case, which is two tables on Linux and one file on Windows and macOS, where this rename is refused.`,
+            ]),
       count === 0
         ? 'Nothing else in the model refs this table, so no other file changes.'
         : files.length === 0

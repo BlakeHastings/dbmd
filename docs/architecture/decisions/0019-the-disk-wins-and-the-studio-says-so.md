@@ -490,3 +490,63 @@ Nothing in this record changes. The re-read goes through the same `reload`, so
 **the watcher still only ever says "look again"** and the echo is still answered
 by the fingerprint comparison, which is the sentence `src/studio/watch.ts` leans
 on and which this leans on harder.
+
+## Amended a fourth time: the panel's "did not parse" no longer asks for a reload
+
+The third amendment kept _"fix the file and reload"_ on the grounds that it is
+"advice somebody can act on", which is right about the first half and was never
+measured about the second. Measured on 2026-09-08, driving the built studio
+against a copy of `examples/shop` outside the repository: with the panel showing
+that sentence over a broken `tables/subscriptions.md`, the file was fixed in an
+editor and **nothing was touched in the browser**. 1.7 seconds later the panel
+was the full editable one, the box had lost its `broken` class, and the
+diagnostics list was empty. The reload the sentence asks for is a reload that
+has already happened.
+
+That is not a new fact about this record. The section above headed _A file that
+stops parsing keeps its last good version_ already ends "fixing the file brings
+it back without a restart", and
+[ADR 0061](0061-a-read-that-hangs-off-the-question-the-page-was-already-asking.md)
+is why the beat reaches even a file nothing else would wake the session for. What
+was new is that the sentence in front of a person did not say so.
+
+**And this repository had already ruled on the other half of it.**
+`src/studio/unreadable.ts` says the sibling sentence's defect is telling somebody
+"to fix a file that has nothing wrong with it **and to reload a page that is
+already up to date**", and answers it by ending with what will happen: _"There is
+nothing in the file to fix; it comes back on its own once the file can be read."_
+Half of that criticism applies here word for word, and the file it applies to is
+the one the two sentences are chosen between.
+
+So the panel's is now:
+
+    tables/subscriptions.md did not parse, so this server is holding less than
+    the file does and will not write over it. Fix the file; this panel comes
+    back on its own once it parses.
+
+The instruction stays, because there really is something in the file to fix and
+that is the whole of what separates these two sentences. What follows it is what
+will happen rather than a second thing to do, which is the shape
+`couldNotBeReadNow` already had, so the pair now ends the same way and differs
+only in whether the file is wrong or unknown.
+
+**`src/studio/edits.ts` still says "Fix the file and reload"** in the
+`incomplete` refusal quoted in the third amendment. That is a 409 to a patch
+rather than a standing notice on a panel, it is held by another change, and it
+should follow. Until it does, the two disagree about the same fact, which is
+exactly the condition the third amendment was opened for. Noted here rather than
+fixed here.
+
+### What was rejected
+
+**Leaving it as it was.** Nothing in the sentence is false, which makes this the
+smallest of the sentences reviewed with it and is a real argument for standing
+still. What decides it is that the repository has already called the same clause
+a defect a few lines away, in a file whose whole reason for existing is that two
+surfaces must not answer one question differently.
+
+**Dropping the instruction as well**, so that both sentences say only what will
+happen. The two are not the same: a file that did not parse has something in it
+to fix and does not come back until somebody fixes it, and a locked file has
+nothing in it to fix and comes back on its own. Saying only the second half of
+each would delete the distinction these two sentences exist to draw.

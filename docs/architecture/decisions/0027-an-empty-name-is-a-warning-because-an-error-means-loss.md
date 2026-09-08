@@ -43,7 +43,7 @@ not mean "wrong". It means **the object is missing something its file has**:
 `complete: false`, `writeModel` then skips that file, `patchTable` refuses the
 edit with a 409, the canvas draws the table as broken and undraggable, and the
 inspector replaces every field with *"did not parse, so this server is holding
-less than the file does and will not write over it. Fix the file and reload"*.
+less than the file does and will not write over it"*.
 
 Nothing is lost reading `name: ""`. The empty string is carried into the model
 exactly as written, survives a write, and reads back equal; the round-trip
