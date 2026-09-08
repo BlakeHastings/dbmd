@@ -2332,6 +2332,13 @@ describe('the merge guard, asked to judge', () => {
       'command npm publish',
       'env npm publish',
       'nice -n 10 npm publish',
+      // `npx` is the one in this set somebody will actually meet. It ships with
+      // npm, it is in this project's own CI recipe, and it sits one word from
+      // the thing the publish rule reads. Same exclusion, named separately in
+      // ADR 0098 and in the guard so it is read rather than discovered.
+      'npx npm publish',
+      'npm exec -- npm publish',
+      'npm run-script publish',
     ]) {
       expect((await judge(line)).denied, line).toBe(false)
     }

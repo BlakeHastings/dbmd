@@ -727,6 +727,14 @@ function pushesTag(args) {
 // the allowing direction everywhere it cannot be sure. `npm --loglevel info
 // publish` therefore reads as a command called `info` and is not caught, which
 // is the same shape as the flag-value gap the push rule already carries.
+//
+// `npx npm publish` and `npm exec npm publish` are open, along with `--yes`,
+// `--`, `npx -c` and `npm run-script publish`. They are the wrapper-command
+// exclusion NOT COVERED states above, and they are called out by name here
+// because `npx` is not `sudo`: it ships with npm, it is in this project's own
+// recipes on `docs/ci.md`, and it sits a hand's width from the word this rule
+// reads. Somebody will meet it, and meeting a decision beats finding a hole.
+// ADR 0098 says why it is not closed.
 const PUBLISH_RUNNERS = new Set(['npm', 'pnpm', 'yarn', 'bun'])
 
 function publishesPackage(tokens) {

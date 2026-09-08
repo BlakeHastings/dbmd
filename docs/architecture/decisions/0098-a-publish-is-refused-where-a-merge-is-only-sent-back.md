@@ -159,6 +159,23 @@ one does not: a generation of drift that nobody saw because the verdicts happene
 to agree. A wrapper fix written here is reverted by the next install of the
 skill, silently.
 
+**`npx` and `npm exec` are named rather than left inside that argument, because
+`npx` is not `sudo`.** All six of these are allowed: `npx npm publish`,
+`npx --yes npm publish`, `npm exec npm publish`, `npm exec -- npm publish`,
+`npx -c "npm publish"` and `npm run-script publish`. They are the same exclusion
+by mechanism, and they are not the same thing to a reader. `sudo` is a word
+nobody in this loop types. `npx` ships with npm, appears in this project's own CI
+recipe on `docs/ci.md`, and sits one word from the thing the rule reads, so
+somebody will meet it. That is the whole reason it is written down here and in
+the guard beside the rule: meeting a decision is different from finding a hole.
+It is not closed, for the reason above and one more of its own. `npx` and
+`npm exec` take a package specifier rather than a command, resolve it from the
+registry when it is not installed, and accept `-c` with a shell string, so
+reading a command out of them is closer to reading a shell than to stripping a
+word. `npm run-script publish` is a third shape again: it runs a package script,
+and this package has no script called `publish`, so today it is a spelling that
+passes rather than a route that works.
+
 **It is pinned as a passing test rather than left as a comment.**
 `test/guards/broken-on-purpose.test.ts` asserts that `env npm publish` and
 `command gh pr merge 42` are allowed. A decision recorded only in a comment is
