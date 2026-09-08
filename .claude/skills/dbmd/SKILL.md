@@ -550,14 +550,17 @@ another; a path that is a plain file is `not-a-directory` and says only the last
 two, because emptying a file leaves a file. Both exit 1. It refuses at all
 because it writes files named after common tables.
 
-### Running import again is a re-import, and it is a delta somebody confirms
+### An import into a directory that is not empty is a delta somebody confirms
 
-`dbmd import` over a directory that already holds a model does not refuse it and
-does not overwrite it. It compares what the database says against what the files
-say, prints every difference as an itemised list naming the file it is about,
-and writes nothing. Run the same command again with `--confirm` to make exactly
-the changes on that list and nothing else. ADR 0050 is the argument, the owner's
-own sentence is in it, and `dbmd import --help` is the four paragraphs.
+`dbmd import` over a directory that is not empty does not refuse it and does not
+overwrite it: that run is a re-import. Emptiness is the whole of the test, so a
+directory holding files that are not a model takes this path too, and lists
+every table as an addition rather than being written into unasked. It compares
+what the database says against what the files say, prints every difference as an
+itemised list naming the file it is about, and writes nothing. Run the same
+command again with `--confirm` to make exactly the changes on that list and
+nothing else. ADR 0050 is the argument, the owner's own sentence is in it, and
+`dbmd import --help` is the long form.
 
 Three exits, and they are what a script reads:
 
