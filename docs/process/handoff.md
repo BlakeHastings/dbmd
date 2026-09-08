@@ -17,9 +17,9 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 235 |
-| decision records | 89 |
-| tests | 1389 passing, 1 skipped, across 47 files |
+| merged pull requests | 239 |
+| decision records | 92 |
+| tests | 1420 passing, 1 skipped, across 47 files |
 | backlog | 123 closed, 3 open, and it still cannot be written to |
 | the gate | 58 to 60 seconds idle, 81 to 89 with five agents running. Both measured |
 
@@ -51,51 +51,38 @@ are listed below.
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-## In flight right now, which is five agents and one held branch
+## In flight right now, which is one agent and two branches of mine
 
-**Written at the point of most confusion rather than at a calm moment**, because
-the calm version of this file was wrong about its largest claim within an hour
-and that is the failure this document keeps a section about.
+**This section went stale in exactly the way it warns about**, listing three
+agents that had all landed. It is rewritten rather than patched, and the date
+below is the thing to distrust first.
 
-**Three agents are out and none has a tracker item**, because `bd` still cannot
-run. Each brief is the whole issue and each pull request body carries it. Of the
-seven dispatched today, four have landed: #235, #236, #237 and the last-resort
-test.
+**As of 2026-09-08, very late.** One agent is out:
+`studio/sentences-that-were-true-when-they-were-written`, carrying the last three
+studio findings and one question a previous branch found and correctly left
+alone: a page that fails a re-read never catches up, because the revision only
+counts changes made underneath the session.
 
-| branch | what it is |
-| --- | --- |
-| `studio/three-sentences-that-cost-somebody-something` | #238, the three studio findings that cost a person something |
-| `studio/a-fit-that-fitted-and-said-it-had-not` | the five canvas and status line findings |
-| `import/two-tables-that-became-one` | two tables differing only in case become one, and a primary key dropped in silence |
+**Two branches of mine are open and neither is urgent.**
+`docs/the-second-engine-driven-end-to-end` carries the SQL Server sweep and the
+import contract seam. **#241 is the README fix and is deliberately not merged**:
+it is two lines, it is proven against a real run, and merging it makes the
+owner's next `git pull` refuse until they stash the edit they have in that file.
+That is theirs to accept.
 
-**Landed today**: #235 the duplication guard, #236 the six diagnostic messages,
-#237 the five inspector findings, and the test that keeps the last-resort error
-code unreachable. **The model diagnostic sweep is closed**: 35 codes driven, 9
-suspect, 9 fixed across #231 and #236.
+**Everything else dispatched today has landed.** Eleven branches: the export and
+refs message fixes, the flag guard, the three false check and init sentences, the
+import partial write, the skill sweep, the last-resort test, the duplication
+guard, the six diagnostic messages, and four studio branches carrying fourteen of
+the fifteen page findings.
 
-**#234 is mine and is held**, carrying the studio sweep's full record.
-
-**Three studio findings are not dispatched and are blocked on one file.**
-`src/studio/client/write.ts` is held by the first studio branch, and these three
-live in it: the refusal that says "The page is re-reading the model" in the one
-case where it deliberately is not; "The diagnostics below say what the reader
-saw" standing after the list has emptied; and a conflict entry whose "just now"
-ages, in a list that renders the path twice. Dispatch them when that branch
-lands.
-
-**Five is the ceiling on this machine, and memory is what sets it.** Measured
-with five agents running: CPU at 36 per cent, 40 node processes, and **6.7 GB
-free of 31.9 GB**. Each agent runs `npm ci`, a build and the full suite, so the
-next one costs a gigabyte or two rather than a core. A sixth was not dispatched
-for that reason and the read-only sweep it would have run, the seventeen
-`import/` diagnostic codes, is the obvious next enumeration when a slot frees.
-**Check before dispatching rather than counting agents**: the number that
-matters is free memory, not how many are out.
-
-**What to do if you are picking this up cold.** Read the pull request bodies
-before the briefs: every one of these was measured, and the measurements are in
-the bodies rather than here. Then `gh pr list --state open`, because this table
-is a snapshot and the repository is not.
+**Three sweeps are closed and accounted for**, each with its list written down
+rather than left as a feeling: 35 model diagnostics with 9 fixed, 17 import
+diagnostics with 12 reachable and 3 that cannot be reached from a pasted file,
+and about 90 studio sentences with 15 suspect and 14 fixed. **The fifteenth is
+held on purpose** and is the owner's: a sentence that is true in every clause and
+on screen for 13 milliseconds, where fixing it means deciding how long a status
+line holds.
 
 ## In flight, and what is actually left
 
