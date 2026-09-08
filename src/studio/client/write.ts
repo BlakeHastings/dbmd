@@ -237,11 +237,19 @@ export function createdNotice(path: string): string {
  * **The temporary file is explained only when there is one.** `viaTemporary`
  * comes from the server because only the writer knows whether it got that far,
  * and a failure before it names the real file and nothing else. ADR 0083.
+ *
+ * **The middle clause used to say the edit rode out with the next write**, and
+ * the next write was the next edit: nothing re-armed the debounce, so a
+ * developer who cleared the read-only attribute and then stopped touching the
+ * page sat in front of a red line over an unwritten edit. Measured six seconds
+ * after the attribute was cleared on 2026-09-08, and cleared by one unrelated
+ * drag. The retry is real now, on the beat this page already keeps, so the
+ * sentence says what it does. ADR 0091.
  */
 export function writeFailureNotice(file: WireWriteErrorFile | null, message: string): string {
   if (file === null) return `The last write failed. ${message}`
   return (
-    `Could not write ${file.path}. The edit is still here and rides out with the next write, ` +
+    `Could not write ${file.path}. The edit is still here and this page keeps retrying it, ` +
     `so clearing whatever the system is refusing is enough and nothing is lost yet. ` +
     (file.viaTemporary
       ? `The write goes through a temporary file in the same folder, which is why the system names ` +
@@ -411,19 +419,43 @@ export class ObjectWriter {
  * It carries the sentence rather than the pieces because there is exactly one
  * place that shows it and three things it has to say: what landed, what did
  * not, and that nothing is left pointing at a table that is not there.
+ *
+ * **The undo is two instructions because the rename wrote two kinds of file.**
+ * `tables/<to>.md` is new by construction, so it is untracked, and ADR 0074
+ * settled for the create sentence that `git checkout` does not take away a file
+ * git has never seen. Measured on 2026-09-08: `git checkout --` over the list
+ * this used to print exited 1 with `pathspec ... did not match any file(s)
+ * known to git` and undid **nothing**, including the two files git could have
+ * restored, because one untracked path refuses the whole pathspec.
+ *
+ * **And the last clause is now conditional on the first two.** "rename again on
+ * top of what the files now say" was refused on its own, because the new name
+ * is a real table until the new file is deleted.
+ *
+ * The create is not in `rewritten` because it is not the same kind of undo, and
+ * it is not a constructor parameter either: it is `tables/<to>.md`, which this
+ * already knows, and a rename that reaches here has always got past its create.
  */
 export class RenameStopped extends Error {
   constructor(
     readonly from: string,
     readonly to: string,
-    landed: readonly string[],
+    rewritten: readonly string[],
     reason: string,
   ) {
+    const created = `tables/${to}.md`
+    const wrote = [created, ...rewritten]
     super(
       `the rename of \`${from}\` to \`${to}\` stopped part-way: ${reason} ` +
-        `${landed.length === 0 ? 'Nothing was written' : `Written so far: ${landed.join(', ')}`}, ` +
+        `Written so far: ${wrote.join(', ')}, ` +
         `and tables/${from}.md was not deleted, so nothing is left pointing at a table that is not there. ` +
-        `Undo what landed with git checkout, then rename again on top of what the files now say.`,
+        (rewritten.length === 0
+          ? `Undoing that is a delete rather than a git checkout, because ${created} is new and git ` +
+            `checkout will not take away a file it has never seen. Renaming again works once it is gone.`
+          : `Undoing that is two things, because ${created} is new and git checkout will not take away ` +
+            `a file it has never seen: delete ${created}, then run ` +
+            `git checkout -- ${rewritten.join(' ')}. Renaming again works once ${created} is gone, ` +
+            `on top of what the files then say.`),
     )
     this.name = 'RenameStopped'
   }
@@ -473,17 +505,34 @@ export async function renameTable(
 ): Promise<void> {
   const table = model.tables.find((held) => held.name === from)
   if (table === undefined) throw new Error(`no table called \`${from}\` in this model`)
-  const landed: string[] = []
+  const rewritten: string[] = []
 
-  /** After a step: everything it asked for is on disk and the model has not moved. */
-  const check = async (): Promise<void> => {
+  /**
+   * After a step: everything it asked for is on disk and the model has not
+   * moved.
+   *
+   * `writing` is the file this step asked for, and it is recorded **before**
+   * the throw rather than after the call returns. A `POST /api/flush` writes
+   * and then answers, so the file the flush that noticed the problem had
+   * already written is on disk: the write that triggers the detection was the
+   * one the old code left out of its own list. Measured on 2026-09-08 with two
+   * referrers and an outside save timed against the last of them: the server
+   * logged three files written and `git status` agreed, and the sentence named
+   * two. That is ADR 0087's shape, on this page.
+   *
+   * The refusal list is what says it did not land, and it is the only thing
+   * that can: a `changed` or `unreadable` conflict against that path is the
+   * studio saying it dropped its own edit rather than writing over the disk.
+   */
+  const check = async (writing: string | null): Promise<void> => {
     const status = await flushWrites()
-    if (status.revision === base) return
     const refused = status.conflicts.map((conflict) => conflict.path)
+    if (writing !== null && !refused.includes(writing)) rewritten.push(writing)
+    if (status.revision === base) return
     throw new RenameStopped(
       from,
       to,
-      landed,
+      rewritten,
       refused.length === 0
         ? 'the model changed on disk while it was running.'
         : `${refused.join(' and ')} changed on disk while it was running, so the studio kept the change and dropped its own edit.`,
@@ -505,8 +554,10 @@ export async function renameTable(
     },
     base,
   )
-  landed.push(`tables/${to}.md`)
-  await check()
+  // Nothing to record: the created file is `tables/${to}.md` and
+  // `RenameStopped` says so for itself, because a create that got this far
+  // wrote its file immediately (ADR 0013) rather than through this flush.
+  await check(null)
 
   for (const name of new Set(referrersTo(model, from).map((referrer) => referrer.table))) {
     if (name === from) continue
@@ -514,8 +565,7 @@ export async function renameTable(
     if (referrer === undefined) continue
     writer.patch('table', name, { columns: withRefsRetargeted(referrer.columns, from, to) })
     await writer.settle('table', name)
-    await check()
-    landed.push(`tables/${name}.md`)
+    await check(`tables/${name}.md`)
   }
 
   try {
@@ -525,7 +575,12 @@ export async function renameTable(
     // revision check again after landing what was already queued, because that
     // landing is allowed to discover a refusal. Reaching here means it did.
     if (error instanceof RequestFailed && error.isStale) {
-      throw new RenameStopped(from, to, landed, 'the model changed on disk while it was running.')
+      throw new RenameStopped(
+        from,
+        to,
+        rewritten,
+        'the model changed on disk while it was running.',
+      )
     }
     throw error
   }

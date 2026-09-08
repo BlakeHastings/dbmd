@@ -62,13 +62,16 @@ interface Status {
 /** A debounce no case here reaches, so the only thing that writes is a flush. */
 const ONLY_ON_DEMAND = 60_000
 
-async function withStudio<T>(use: (studio: Studio, dir: string) => Promise<T>): Promise<T> {
+async function withStudio<T>(
+  use: (studio: Studio, dir: string) => Promise<T>,
+  log: (line: string) => void = () => {},
+): Promise<T> {
   return withCopy(exampleShop, async (dir) => {
     const studio = await startStudio({
       dir,
       port: 0,
       open: false,
-      log: () => {},
+      log,
       debounceMs: ONLY_ON_DEMAND,
       // Nothing here edits the files behind the studio's back, and a watcher
       // firing mid-case would be a second clock in a suite about a write.
@@ -137,7 +140,70 @@ describe('a write the disk refuses', () => {
     })
   })
 
-  test('rides out with the next write once the refusal is cleared', async () => {
+  /**
+   * The page's own beat, which is `GET /api/model` every two seconds and on
+   * every focus, and which is now what retries a refused write.
+   *
+   * Measured in Edge on 2026-09-08 before this existed: the read-only attribute
+   * cleared, and six seconds later `addresses.md` still held its pre-drag
+   * coordinates with the red line still up. One unrelated drag of another table
+   * landed both at once. "The edit is still here" was true, "rides out with the
+   * next write" was true and was the trap, and the "yet" in "nothing is lost
+   * yet" was load-bearing. ADR 0091.
+   *
+   * `flush` is deliberately not called here. That is the assertion.
+   */
+  test('lands on the next read once the refusal is cleared, with nothing else asked of it', async () => {
+    await withStudio(async (studio, dir) => {
+      refuse('orders.md')
+      await drag(studio, 'orders', 659, 506)
+      expect((await flush(studio)).writeError).not.toBeNull()
+
+      rename.instead = undefined
+      const after = await status(studio)
+
+      expect(after.writeError).toBeNull()
+      expect(after.lastWrite?.paths).toEqual(['tables/orders.md'])
+      expect(await layoutOf(dir, 'orders')).toEqual({ x: 659, y: 506 })
+    })
+  })
+
+  test('costs a read nothing while no write has failed', async () => {
+    await withStudio(async (studio) => {
+      // The gate is `failure`, and it is null on a session that has never been
+      // refused, so a beat over a healthy model is the read it always was. What
+      // this pins is that the retry cannot write a file nobody edited: the
+      // debounce here is a minute, so an unguarded flush on every read would
+      // land the drag below and set `lastWrite`.
+      await drag(studio, 'orders', 12, 34)
+      expect((await status(studio)).lastWrite).toBeNull()
+      expect((await status(studio)).pendingWrite).toBe(true)
+    })
+  })
+
+  test('says the refusal once rather than once a beat', async () => {
+    const lines: string[] = []
+    await withStudio(
+      async (studio) => {
+        refuse('orders.md')
+        await drag(studio, 'orders', 659, 506)
+        await flush(studio)
+        // Three beats over a refusal that is still standing. The message
+        // carries a fresh temporary file name every attempt, so the repeat is
+        // recognised by the file rather than by the words.
+        await status(studio)
+        await status(studio)
+        await status(studio)
+
+        expect(lines.filter((line) => line.startsWith('failed to write '))).toEqual([
+          expect.stringContaining('failed to write tables/orders.md: EPERM'),
+        ])
+      },
+      (line) => lines.push(line),
+    )
+  })
+
+  test('lands on the next flush once the refusal is cleared', async () => {
     await withStudio(async (studio, dir) => {
       refuse('orders.md')
       await drag(studio, 'orders', 659, 506)

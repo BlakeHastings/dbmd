@@ -216,12 +216,13 @@ async function route(
   if (path.length === 2 && path[1] === 'model') {
     if (method !== 'GET') return methodNotAllowed(response, ['GET'])
     // The one thing this route does before answering, and it does it only while
-    // the session is holding a file it could not read. A lock being released is
-    // not a filesystem event, so the watcher never hears about it and the
-    // answer would otherwise go on being an error that is no longer true. The
-    // page already asks here on a slow beat and whenever it regains focus, so
-    // hanging the recheck off the request costs no timer and no route. ADR 0061.
-    await edits.recheckUnreadable()
+    // the session is stuck. A lock being released is not a filesystem event, and
+    // neither is a read-only attribute being cleared, so the watcher never hears
+    // about either and the answer would otherwise go on being an error that is
+    // no longer true. The page already asks here on a slow beat and whenever it
+    // regains focus, so hanging the recheck off the request costs no timer and
+    // no route. ADR 0061 for the read, ADR 0091 for the write.
+    await edits.recheck()
     const { model, diagnostics } = edits.snapshot()
     const payload: WireModelResponse = {
       model: toWireModel(model),

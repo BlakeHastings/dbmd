@@ -3,7 +3,9 @@ import { access, readFile, writeFile } from 'node:fs/promises'
 import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { readModel } from '../../src/model/read.js'
+import type { CanvasObject } from '../../src/model/types.js'
 import { validate } from '../../src/model/validate.js'
+import { occupiedNotice } from '../../src/studio/edits.js'
 import { startStudio, type Studio } from '../../src/studio/index.js'
 import { REVISION_HEADER } from '../../src/studio/wire.js'
 import { exampleShop, snapshot, untidyModel, withCopy } from '../model/fixtures.js'
@@ -622,6 +624,134 @@ describe('POST and DELETE /api/table', () => {
       const { body } = await call(studio, '/api/model')
       const names = (body['model'] as { tables: { name: string }[] }).tables.map((t) => t.name)
       expect(names).not.toContain('shipments')
+    })
+  })
+
+  // The counterfactual for `occupiedNotice`, over HTTP and on every platform,
+  // because the case-fold half of that function needs a filesystem that folds
+  // and CI runs on one that does not. A file the reader could not turn into an
+  // object is the state this refusal was written for, and it still says so.
+  it('refuses to create over a file that did not parse, and says to fix or delete it', async () => {
+    await withStudio(async ({ studio, dir }) => {
+      await writeFile(
+        join(dir, 'tables', 'ledger.md'),
+        '---\ntable: ledger\ncolumns:\n  - name: id\n   type: uuid\n---\n\nHalf a table.\n',
+      )
+
+      const response = await call(studio, '/api/table', {
+        method: 'POST',
+        ...json({ name: 'ledger' }),
+      })
+
+      expect(response.status).toBe(409)
+      expect(response.body['error']).toBe(
+        '`tables/ledger.md` is already a file, and it is not in the model, which means it did not parse. Fix or delete it rather than writing over it',
+      )
+      // Nothing was written over, which is the point of the refusal.
+      const { model } = await readModel(dir)
+      expect(model.tables.map((table) => table.name)).not.toContain('ledger')
+    })
+  })
+})
+
+/**
+ * The refusal a create gets when the path is taken, which used to be one
+ * sentence and had to be three.
+ *
+ * The name check in `addObject` is case-sensitive and the filesystem check
+ * under it is not, on Windows and macOS. So creating `Orders` beside a healthy
+ * `orders` fell past the first and into the second, and the second says the
+ * file `is not in the model, which means it did not parse. Fix or delete it`.
+ * The file was `tables/orders.md`, it was in the model, it was drawn on the
+ * canvas at that moment, and **following the advice deletes a healthy table.**
+ * Driven in Chromium on 2026-09-08 through the panel's own `Create anyway`.
+ *
+ * `occupiedNotice` is asked directly rather than over HTTP because CI runs on
+ * Linux, where `access` answers `tables/Orders.md` with `no` and the whole
+ * defect is unreachable. The listing it takes is the fact that decides it, so
+ * handing it one is handing it the filesystem the case is about. The case that
+ * *is* reachable everywhere is the counterfactual above.
+ */
+describe('the file already at a new object`s path', () => {
+  const entries = ['addresses.md', 'customers.md', 'orders.md', 'products.md']
+  const held = async (dir: string): Promise<readonly CanvasObject[]> =>
+    (await readModel(dir)).model.tables
+
+  it('says which table the file is, when the filesystem folded the name onto one', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      const notice = occupiedNotice('table', 'Orders', entries, await held(dir))
+
+      expect(notice).toContain(
+        '`tables/Orders.md` and `tables/orders.md` are the same file on this filesystem',
+      )
+      expect(notice).toContain('that file is the table `orders`')
+      // The two sentences the old one got wrong: it did parse, and nothing here
+      // is safe to delete.
+      expect(notice).not.toContain('did not parse')
+      expect(notice).not.toContain('Fix or delete it')
+    })
+  })
+
+  it('says nothing was written, and what a name has to differ by', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      const notice = occupiedNotice('table', 'Orders', entries, await held(dir))
+
+      expect(notice).toContain('Nothing was written')
+      expect(notice).toContain('differs by more than case')
+    })
+  })
+
+  it('keeps the sentence it was written for when the file is a stray nobody could read', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      const notice = occupiedNotice('table', 'ledger', [...entries, 'ledger.md'], await held(dir))
+
+      expect(notice).toBe(
+        '`tables/ledger.md` is already a file, and it is not in the model, which means it did not parse. Fix or delete it rather than writing over it',
+      )
+    })
+  })
+
+  it('says a fold onto a stray is a fold, and still says to fix or delete it', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      const notice = occupiedNotice('table', 'Ledger', [...entries, 'ledger.md'], await held(dir))
+
+      expect(notice).toContain(
+        '`tables/Ledger.md` and `tables/ledger.md` are the same file on this filesystem',
+      )
+      expect(notice).toContain('it is not in the model, which means it did not parse')
+      expect(notice).toContain('Fix or delete it')
+    })
+  })
+
+  // macOS folds the accent as well as the case, so the comparison normalises
+  // before it lowercases. A listing that holds the composed spelling answers a
+  // request for the decomposed one, which is the same defect one character
+  // along.
+  it('folds a decomposed accent the way the filesystem that produced it does', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      // The same six letters twice: an `e` and a combining acute in the name,
+      // one `é` in the listing. Written as escapes because the difference is
+      // invisible in a source file, which is why the fold is asked rather than
+      // eyeballed.
+      const notice = occupiedNotice('table', 'café', ['café.md'], await held(dir))
+
+      expect(notice).toContain('are the same file on this filesystem')
+      expect(notice).toContain('it is not in the model')
+    })
+  })
+
+  it('names the kind it was asked about, because a note is not a table', async () => {
+    await withCopy(exampleShop, async (dir) => {
+      const { model } = await readModel(dir)
+      const notice = occupiedNotice(
+        'note',
+        'There-Is-No-Stock-Column',
+        ['there-is-no-stock-column.md'],
+        model.notes,
+      )
+
+      expect(notice).toContain('that file is the note `there-is-no-stock-column`')
+      expect(notice).toContain('the case of a note is a rename the studio cannot make here')
     })
   })
 })

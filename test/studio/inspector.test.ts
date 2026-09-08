@@ -22,6 +22,7 @@ import {
 import {
   conflictSummary,
   createdNotice,
+  RenameStopped,
   staleNotice,
   unreadableNotice,
   writeFailureNotice,
@@ -712,8 +713,20 @@ describe('what the page says when the disk refused the write', () => {
   it('says what to try, and that nothing has been lost', () => {
     const notice = writeFailureNotice(orders, said)
     expect(notice).toContain('The edit is still here')
-    expect(notice).toContain('rides out with the next write')
     expect(notice).toContain('clearing whatever the system is refusing')
+  })
+
+  // It used to say the edit rode out with the next write, and the next write
+  // was the next edit: `write`'s catch put the files back in the pending set
+  // and re-armed nothing. Measured on 2026-09-08, six seconds after the
+  // read-only attribute was cleared, the file still held its pre-drag
+  // coordinates and the red line was still up; one unrelated drag landed both.
+  // `recheck` retries on the page's beat now, so the sentence is a promise the
+  // studio keeps. ADR 0091.
+  it('promises a retry, which is a thing that now happens', () => {
+    const notice = writeFailureNotice(orders, said)
+    expect(notice).toContain('this page keeps retrying it')
+    expect(notice).not.toContain('rides out with the next write')
   })
 
   it('explains the temporary file only when the write got as far as making one', () => {
@@ -732,6 +745,70 @@ describe('what the page says when the disk refused the write', () => {
     expect(writeFailureNotice(null, 'ENOSPC: no space left on device')).toBe(
       'The last write failed. ENOSPC: no space left on device',
     )
+  })
+})
+
+/**
+ * What a rename that stopped part-way tells the developer to do next.
+ *
+ * Measured on 2026-09-08: a git-tracked copy of `examples/shop`, `products`
+ * renamed to `sweep_items`, and `tables/customers.md` saved from outside while
+ * the rename was running. The studio's own log named three files written and
+ * `git status` agreed; the sentence named two, because `renameTable` recorded
+ * each referrer *after* the flush that wrote it. That is ADR 0087's shape in
+ * the browser.
+ *
+ * Then the instruction was followed. `git checkout --` over the list it printed
+ * exited 1 with `pathspec 'tables/sweep_items.md' did not match any file(s)
+ * known to git` and undid **nothing**, including the two files git could have
+ * restored: one untracked path refuses the whole pathspec, and the new file is
+ * untracked by construction. ADR 0074 settled the same point for the create
+ * sentence, and the successful-rename sentence honours it.
+ */
+describe('what a rename that stopped part-way says it wrote', () => {
+  const stopped = (rewritten: readonly string[]): string =>
+    new RenameStopped(
+      'products',
+      'sweep_items',
+      rewritten,
+      'the model changed on disk while it was running.',
+    ).message
+
+  it('lists the file it created as well as the referrers it rewrote', () => {
+    expect(stopped(['tables/order_items.md', 'tables/stock_movements.md'])).toContain(
+      'Written so far: tables/sweep_items.md, tables/order_items.md, tables/stock_movements.md,',
+    )
+  })
+
+  it('says the old file is still there, which is why nothing dangles', () => {
+    expect(stopped(['tables/order_items.md'])).toContain(
+      'tables/products.md was not deleted, so nothing is left pointing at a table that is not there',
+    )
+  })
+
+  it('undoes the new file with a delete, because git checkout will not take it', () => {
+    const said = stopped(['tables/order_items.md', 'tables/stock_movements.md'])
+    expect(said).toContain('delete tables/sweep_items.md')
+    expect(said).toContain('git checkout -- tables/order_items.md tables/stock_movements.md')
+    // The list git is given holds no untracked path, which is the whole defect:
+    // one of those refuses the command for all of them.
+    expect(said).not.toContain('git checkout -- tables/sweep_items.md')
+  })
+
+  it('offers no git checkout at all when the create is the only thing that landed', () => {
+    const said = stopped([])
+    expect(said).toContain('Written so far: tables/sweep_items.md,')
+    expect(said).toContain('a delete rather than a git checkout')
+    expect(said).not.toContain('git checkout --')
+  })
+
+  it('makes renaming again wait for the delete, because the new name is a table now', () => {
+    // "rename again on top of what the files now say" was refused on its own:
+    // the panel answers that there is already a table called `sweep_items`.
+    for (const said of [stopped([]), stopped(['tables/order_items.md'])]) {
+      expect(said).toContain('Renaming again works once')
+      expect(said).not.toMatch(/then rename again on top of what the files now say/)
+    }
   })
 })
 
