@@ -470,8 +470,8 @@ $ dbmd export shop --stdout
 dbmd: shop has 2 errors in it, so there is nothing safe to draw.
 Run "dbmd check shop" to see them.
 $ dbmd refs addresses shop
-shop has 2 errors in it. A file that did not load is missing from the model along with every ref
-written in it, so what follows may be short. Run "dbmd check shop".
+shop has 2 errors in it, and every file in it loaded. Nothing is missing from what follows: the
+model disagrees with itself rather than failing to read. Run "dbmd check shop".
 
 There is no tables/addresses.md in shop, and something still points at that name.
 
