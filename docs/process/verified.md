@@ -5883,3 +5883,21 @@ written after the answer rather than before it.
 record appends rather than edits, so the mistake stays readable. This file should
 do the same, and the difference between its two stale entries was that one was
 corrected by whoever fixed the thing and the other was nobody's job.
+
+- **A backlog item's text can live in `design` rather than `description`, and
+  reading one field says the item is empty.** `dbmd-6bf` carries the four
+  recovered layout coordinates, the account of what was lost and when, and the
+  table comparing them to what is committed. Its `description` is the empty
+  string. A first read of the export reported the item as having no description
+  at all, which would have made an item whose title promises coordinates look
+  like an item that lost them. **Read every field of a `bd` record before
+  concluding anything about it**, especially while `bd show` cannot run.
+
+- **The four recovered coordinates are drawn rather than listed.** Applied to a
+  copy of `examples/shop` and rendered beside the committed arrangement, both at
+  1600 by 1000. Two of the four barely move; `shipments` rises by nearly three
+  hundred pixels and `stock_movements` moves left and up, which pulls the
+  shipping pair up beside the order tables instead of leaving them below. Sent to
+  the owner, so the last of the three open items is now a decision they can make
+  by looking rather than by reading numbers. Nothing was committed and the
+  tracked example was never touched.
