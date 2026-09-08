@@ -1991,3 +1991,31 @@ to do that.
 - **`gh pr checks` exits non-zero while anything is pending**, so a script that
   waits on it throws instead of waiting unless it catches. Two attempts at a
   wait loop died on that tonight before the third caught it.
+
+## 2026-09-08: the reference shapes that would break a simpler naming scheme
+
+The edge identities added on 2026-09-07 name an edge by the two columns it joins.
+The obvious cheaper scheme names it by the two tables. These are the shapes that
+separate them, and all of them hold.
+
+Sixteen tables in one model, no problems reported, no console or page errors, no
+duplicate id anywhere on the page:
+
+- **Two tables that point at each other.** `left.right_id` at `right.id` and
+  `right.left_id` at `left.id` produce two distinct ids and two distinct edges.
+  A by-table scheme gives both the same name.
+- **Two columns of one table pointing at the same table.**
+  `edge-twice.from_id->left.id` and `edge-twice.to_id->left.id`. A by-table
+  scheme gives these the same name too, and this is the common one: a `from` and
+  a `to` on one row is an ordinary shape.
+- **A self reference.** `edge-twice.self_id->twice.id`, which is the case
+  `examples/shop` already has once and which a by-table scheme reduces to a name
+  that is the same word twice.
+- **A chain twelve deep**, drawn without incident.
+- **A table with no columns at all.** Draws as a box with zero rows, and
+  `dbmd check` says nothing about it. **That silence is deliberate and
+  documented** in `validate.ts` and in `docs/format.md`: a table with columns and
+  no `pk: true` is a warning, and a table with no columns is somebody part way
+  through writing one, where telling them their primary key is missing would be
+  telling them their table is empty in the least useful available words. I went
+  looking for an inconsistency against `group-empty` and found a decision.
