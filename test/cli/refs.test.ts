@@ -20,6 +20,11 @@
  *    one is not, and the two are asserted side by side in one list, because
  *    "the file said nothing" and "the file said no action" are different facts
  *    and it would be easy to ship a version where they read the same.
+ * 6. Which of those errors the answer is short because of. A file that did not
+ *    load takes its refs out of the lists; a ref at a table that is not there
+ *    is an error and is also one of the rows printed. Those are opposite
+ *    sentences to put over a list, so the three states are asserted on the
+ *    words the reader sees rather than on the count.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -152,7 +157,11 @@ interface Envelope {
   readonly exists: boolean
   readonly incoming: readonly Edge[]
   readonly outgoing: readonly Edge[]
-  readonly model: { readonly errors: number; readonly warnings: number }
+  readonly model: {
+    readonly errors: number
+    readonly warnings: number
+    readonly readErrors: number
+  }
   readonly error?: { readonly code: string; readonly message: string }
 }
 
@@ -280,7 +289,122 @@ describe('a model that is half way through a rename', () => {
     expect(run.code).toBe(0)
     expect(payload(run).incoming).toEqual([])
     expect(payload(run).model.errors).toBeGreaterThan(0)
+    expect(payload(run).model.readErrors).toBeGreaterThan(0)
     expect(prose.err).toContain('may be short')
+  })
+})
+
+/**
+ * Which sentence goes above the answer, in the three states a model can be in.
+ *
+ * The defect is entirely the wording, so every assertion here is on the words.
+ * The count was right in all three states before this block existed, and the
+ * sentence built on it was true in one of them.
+ */
+describe('how far to trust the answer', () => {
+  /**
+   * Every file loads and the only error is a ref at a table nothing declares.
+   *
+   * This is the sharpest form of it: the one error being counted is the second
+   * row of the answer, so a warning that the answer may be missing it points at
+   * the line above it.
+   */
+  const DANGLING = ADDRESSES.replace('ref: customers.id', 'ref: ghosts.id')
+
+  /** Opened and never closed, so the reader cannot build it and it is not in the model. */
+  const UNREADABLE = `---
+kind: table
+table: sessions
+columns:
+  - name: id
+    type: uuid
+`
+
+  test('a validation error alone does not say the answer may be short', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/addresses.md': DANGLING,
+    })
+
+    const run = await runCli(['refs', 'addresses', directory, '--outgoing'])
+
+    expect(run.code).toBe(0)
+    expect(unpadded(run)).toContain('addresses.customer_id -> ghosts.id')
+    expect(run.err).toContain('has 1 error in it, and every file in it loaded')
+    expect(run.err).toContain('Nothing is missing from what follows')
+    expect(run.err).toContain('disagrees with itself rather than failing to read')
+    // The whole of the defect: this sentence was printed over the row that is
+    // the error, and it is the one thing that must not be said here.
+    expect(run.err).not.toContain('may be short')
+    expect(run.err).not.toContain('did not load')
+  })
+
+  test('a read error alone still says it, in the words it always used', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/addresses.md': ADDRESSES,
+      'tables/sessions.md': UNREADABLE,
+    })
+
+    const run = await runCli(['refs', 'customers', directory])
+
+    expect(run.code).toBe(0)
+    // The banner that was right all along, held to the byte so that fixing the
+    // other two states cannot quietly reword this one.
+    expect(run.err).toContain(
+      'has 1 error in it. A file that did not load is missing from the model along with every ref\n' +
+        'written in it, so what follows may be short.',
+    )
+    expect(run.err).not.toContain('every file in it loaded')
+  })
+
+  test('both kinds at once is one banner, and it splits the count', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/addresses.md': DANGLING,
+      'tables/sessions.md': UNREADABLE,
+    })
+
+    const run = await runCli(['refs', 'addresses', directory, '--outgoing'])
+
+    expect(run.code).toBe(0)
+    // One banner rather than one per kind, because "what follows may be short"
+    // and "nothing is missing from what follows" cannot both stand over one
+    // list. The short answer wins, and the split count says how much of the
+    // model went missing rather than how much of it is wrong.
+    expect(run.err).toContain('has 2 errors in it, 1 of them in the reading')
+    expect(run.err).toContain('may be short')
+    expect(run.err).not.toContain('Nothing is missing from what follows')
+  })
+
+  test('a caller reads the same split off the report', async () => {
+    const clean = await shop()
+    const dangling = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/addresses.md': DANGLING,
+    })
+    const unreadable = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': CUSTOMERS,
+      'tables/addresses.md': DANGLING,
+      'tables/sessions.md': UNREADABLE,
+    })
+
+    const good = await runCli(['refs', 'customers', clean, '--json'])
+    const invalid = await runCli(['refs', 'addresses', dangling, '--json'])
+    const short = await runCli(['refs', 'addresses', unreadable, '--json'])
+
+    // `errors` still counts everything `dbmd check` would count, so nothing a
+    // caller already reads has changed meaning. `readErrors` is the part that
+    // means the two lists may be short, and it is the only way to tell a model
+    // that is wrong from an answer that is incomplete.
+    expect(payload(good).model).toEqual({ errors: 0, warnings: 0, readErrors: 0 })
+    expect(payload(invalid).model).toEqual({ errors: 1, warnings: 0, readErrors: 0 })
+    expect(payload(short).model).toEqual({ errors: 2, warnings: 0, readErrors: 1 })
   })
 })
 
@@ -395,7 +519,11 @@ describe('what a delete does to the rows that point here', () => {
     // reader built, so it survives the state the command exists for.
     expect(refused.code).toBe(1)
     expect(answered.code).toBe(0)
-    expect(answered.err).toContain('may be short')
+    // Every file in a renamed model still parses, so this is a whole answer
+    // over a model that disagrees with itself. This line said "may be short"
+    // until 2026-09-08, which was the falsehood rather than the assertion.
+    expect(answered.err).toContain('every file in it loaded')
+    expect(answered.err).not.toContain('may be short')
     expect(unpadded(answered)).toContain(
       'postal_addresses.superseded_by -> addresses.id tables/postal_addresses.md on delete: no action',
     )

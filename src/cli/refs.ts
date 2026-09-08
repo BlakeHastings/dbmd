@@ -16,7 +16,9 @@
  *    which is right for a diagram and wrong for a question: half way through a
  *    rename the model has a dangling ref, and that is precisely the minute
  *    somebody wants to ask. So the errors are counted, said out loud first, and
- *    the answer is given anyway.
+ *    the answer is given anyway. The two kinds are counted apart, because only
+ *    a file that did not load takes a ref out of the answer: a dangling ref is
+ *    an error and is also one of the rows printed below it.
  * 2. **A name nothing knows is a failure and an empty list is not.** "Nothing
  *    points at customers" and "there is no table called customerz" are the same
  *    shape of sentence and opposite instructions to whoever asked. The first
@@ -81,9 +83,12 @@ a success; a name the model has never heard of is a failure, because the answer
 to a typo must not read as permission to delete.
 
 A model with an error in it is still answered. The errors are counted and
-reported above the answer, because a file that did not load is missing from the
-model and may hold a ref this could not count. That is the state a rename is in
-half way through, and it is when this is most worth asking.
+reported above the answer, and the line says which kind they are. A file that
+did not load is missing from the model and may hold a ref this could not count,
+so that answer may be short. A model that only disagrees with itself has loaded
+every file, so that answer is whole, and a ref at a table that is not there is
+one of the rows in it. That is the state a rename is in half way through, and it
+is when this is most worth asking.
 
 An "on delete:" or "on update:" beside a row is that ref's own clause, quoted
 from the file. A row without one is a ref the file said nothing about, which is
@@ -92,7 +97,8 @@ not the same fact as "no action" and is not printed as one.
 --json puts the answer on stdout under the usual envelope, with both directions
 in it whichever flags were given, the file each ref is written in, each ref's
 referential actions where the file wrote them, and the model's error and warning
-counts.
+counts. "readErrors" is the part of "errors" that is a file failing to load,
+which is the part that means these lists may be short.
 `,
   run: runRefs,
 }
@@ -122,10 +128,18 @@ async function runRefs(argv: readonly string[], out: Output): Promise<number> {
   // Both halves, as `dbmd check` runs them, for a different purpose. This
   // command does not stop on an error; it counts them, so that the answer can
   // say how much of the model it is an answer about.
+  //
+  // The two halves are counted apart rather than added, because they are
+  // answers to different questions. A reader error is a file the reader could
+  // not build, so its refs are not in the lists below and the answer is short.
+  // A validator error is the model disagreeing with itself, which is what a
+  // dangling ref is, and that ref is one of the rows the answer prints.
   const { model, diagnostics: read } = await readModel(directory)
-  const diagnostics = [...read, ...validate(model)]
-  const errors = diagnostics.filter((d) => d.severity === 'error').length
-  const warnings = diagnostics.length - errors
+  const invalid = validate(model)
+  const readErrors = read.filter((d) => d.severity === 'error').length
+  const validationErrors = invalid.filter((d) => d.severity === 'error').length
+  const errors = readErrors + validationErrors
+  const warnings = read.length + invalid.length - errors
 
   const subject = model.tables.find((candidate) => candidate.name === table)
   const incoming = incomingRefs(model, table)
@@ -141,7 +155,7 @@ async function runRefs(argv: readonly string[], out: Output): Promise<number> {
     exists: subject !== undefined,
     incoming: incoming.map(asJson),
     outgoing: outgoing.map(asJson),
-    model: { errors, warnings },
+    model: { errors, warnings, readErrors },
   }
 
   // Nothing in the model has ever heard this name: no file, no ref. There is no
@@ -170,7 +184,9 @@ async function runRefs(argv: readonly string[], out: Output): Promise<number> {
 
   return out.report({
     code: 0,
-    text: preamble(subject, table, directory, errors, out.style) + sections.join('\n'),
+    text:
+      preamble(subject, table, directory, { readErrors, validationErrors }, out.style) +
+      sections.join('\n'),
     json: payload,
   })
 }
@@ -275,30 +291,33 @@ function asJson(reference: Reference): JsonValue {
 // The prose form.
 // --------------------------------------------------------------------------
 
+/** The two error counts, kept apart because they mean different things. */
+interface ErrorCounts {
+  /** Errors the reader raised: a file, or a whole directory, that is not in the model. */
+  readonly readErrors: number
+  /** Errors the validator raised over a model that was read in full. */
+  readonly validationErrors: number
+}
+
 /**
  * What has to be said before the answer, or nothing.
  *
  * Two things qualify, and both are the reader being told how far to trust what
- * comes next. A model with errors in it may be missing a whole file, and a
- * missing file's refs are missing from the answer. A table that is not there
- * and is still pointed at is the mid-rename state, and saying so first stops
- * the list below from reading as though the table were fine.
+ * comes next. Errors in the model say how much of it was read, which
+ * `errorBanner` turns into the one sentence that is true of this model. A table
+ * that is not there and is still pointed at is the mid-rename state, and saying
+ * so first stops the list below from reading as though the table were fine.
  */
 function preamble(
   subject: Table | undefined,
   table: string,
   directory: string,
-  errors: number,
+  counts: ErrorCounts,
   style: Palette,
 ): string {
   const lines: string[] = []
-  if (errors > 0) {
-    lines.push(
-      `${style.strong(directory)} has ${plural(errors, 'error')} in it. A file that did not ` +
-        `load is missing from the model along with every ref\nwritten in it, so what follows ` +
-        `may be short. Run "dbmd check ${directory}".\n`,
-    )
-  }
+  const banner = errorBanner(directory, counts, style)
+  if (banner !== '') lines.push(banner)
   if (subject === undefined) {
     lines.push(
       `There is no ${style.strong(`tables/${table}.md`)} in ${style.strong(directory)}, and ` +
@@ -306,6 +325,54 @@ function preamble(
     )
   }
   return lines.length === 0 ? '' : `${lines.join('\n')}\n`
+}
+
+/**
+ * How far to trust the list, in the one sentence that is true of this model.
+ *
+ * There are three states and one banner, rather than a paragraph per kind of
+ * error, because the reader is asking one question and the two paragraphs would
+ * answer it in opposite directions: "what follows may be short" and "nothing is
+ * missing from what follows" cannot both stand over one list, and printing both
+ * would leave the reader to work out which one wins.
+ *
+ * The read-error sentence is unchanged, and is the reason this exists: it was
+ * printed over every error, including a dangling `ref:` that the answer below
+ * it had found and printed. The validation sentence says the opposite thing on
+ * purpose. It is not silence, because a model that fails `dbmd check` is worth
+ * knowing about immediately before a rename or a delete, and it is not a
+ * warning about length, because the length is right.
+ *
+ * With both kinds present the read half decides the wording, since a short
+ * answer is the fact that changes what the reader does next, and the count is
+ * split so that "1 of them in the reading" says how much of the model is
+ * missing rather than how much of it is wrong.
+ */
+function errorBanner(directory: string, counts: ErrorCounts, style: Palette): string {
+  const { readErrors, validationErrors } = counts
+  const total = plural(readErrors + validationErrors, 'error')
+  const run = `Run "dbmd check ${directory}".`
+  if (readErrors > 0 && validationErrors > 0) {
+    return (
+      `${style.strong(directory)} has ${total} in it, ${readErrors} of them in the reading. ` +
+      `A file that did not load is missing from the\nmodel along with every ref written in it, ` +
+      `so what follows may be short. ${run}\n`
+    )
+  }
+  if (readErrors > 0) {
+    return (
+      `${style.strong(directory)} has ${total} in it. A file that did not load is missing from ` +
+      `the model along with every ref\nwritten in it, so what follows may be short. ${run}\n`
+    )
+  }
+  if (validationErrors > 0) {
+    return (
+      `${style.strong(directory)} has ${total} in it, and every file in it loaded. Nothing is ` +
+      `missing from what follows: the\nmodel disagrees with itself rather than failing to read. ` +
+      `${run}\n`
+    )
+  }
+  return ''
 }
 
 function incomingText(
