@@ -123,7 +123,8 @@ are `<area>/<N>-<slug>`._ Measured against the tracked export and the merged
 pull requests: **62 of 126 items are numeric and 64 carry a random suffix**
 (`dbmd-v6c`, `dbmd-53w`), because `bd create` hands out a suffix unless it is
 given `--id`, and nobody has been giving it one. Branch names stopped carrying a
-number too: the last dozen to merge are `docs/two-blocks-nothing-checked`,
+number too, and the last one that did merged more than a hundred pull requests
+ago: since then they read `docs/two-blocks-nothing-checked`,
 `tooling/the-merge-names-the-commit-reviewed`, `import/grid-shaped-like-the-window`
 and the like. **A branch says what it does.** Neither drift caused a problem, and
 the example `bd show dbmd-4` still resolves, but a reader following the sentence
@@ -155,15 +156,20 @@ checks are green and when the change is one line.
 `scripts/guard-merge.mjs` refuses several of them.
 
 **As of 2026-09-08 that sentence understates it, and the reason is worth knowing.**
-`guard-merge.mjs` denies `gh pr merge`, a merge through `gh api` and eleven
-prefixed spellings of the same command, and it deliberately permits
-`node scripts/merge-pr.mjs`, which is the route this repository tells everybody
-to use. So the layer that was meant to stop an agent merging allowed the only
-command an agent would reach for, and on 2026-09-08 an agent merged its own pull
-request through it by accident from a call it had labelled a placeholder. Every
-other gate was satisfied: the checks were green, the branch was level with `main`
-and the sha it named was the head. `merge-pr.mjs` now refuses when it is run from
-a linked worktree, which is where every agent stands. ADR 0078.
+`guard-merge.mjs` denies `gh pr merge`, a merge through `gh api` and a `git push`
+whose own arguments name the default branch. It sees through the shell syntax
+that can stand in front of a command, seven keywords and a variable assignment,
+and into a `bash -c` or `pwsh -Command` payload. What it does not cover, on
+purpose and in its own header, is a program that launches another one: `sudo`,
+`env`, `command`, `nohup` and `xargs` in front of a merge are all allowed. And it
+deliberately permits `node scripts/merge-pr.mjs`, which is the route this
+repository tells everybody to use. So the layer that was meant to stop an agent
+merging allowed the only command an agent would reach for, and on 2026-09-08 an
+agent merged its own pull request through it by accident from a call it had
+labelled a placeholder. Every other gate was satisfied: the checks were green,
+the branch was level with `main` and the sha it named was the head.
+`merge-pr.mjs` now refuses when it is run from a linked worktree, which is where
+every agent stands. ADR 0078.
 
 **Decision record numbers are handed out, never taken.** The orchestrator
 assigns the number, checked against `main` and every open branch.
@@ -202,9 +208,9 @@ its own body three times over for two days in September 2026, from a pull reques
 whose diff was `+3688` and whose description said it was a sweep, and nothing in
 the review or the gate was looking at it: a duplicated markdown file has no tests
 to fail and Prettier formats a repeated paragraph as happily as a unique one. The
-limit is three times the largest legitimate repeated run measured across this
-tree, which is 12 lines, and the summary line prints the current margin on every
-green run so raising it can be judged. It reads one file at a time and only
+limit is about three times the largest legitimate repeated run measured across
+this tree, which is 12 lines, and the summary line prints the current margin on
+every green run so raising it can be judged. It reads one file at a time and only
 `.md`, so a page pasted into a second page is not a finding, and one edited word
 inside a pasted block hides the whole of it. ADR 0091.
 
@@ -238,6 +244,14 @@ code, the way the ones already there are written; being named in a sentence
 elsewhere on the page is not one. This file and `docs/ci.md` are not checked,
 because neither promises the full list. `dbmd import` and `dbmd query` each
 shipped over a README that had not heard of them. ADR 0043.
+
+**And a version pinned beside the name is a claim about what to install.** The
+same script reads every version written after `dbmd@` and fails unless it is the
+one in `package.json`, because a pin in a recipe somebody copies into their own
+CI is a supply chain decision. A dist-tag is not a version and is not read, and a
+number in prose is left alone. It says nothing about whether that version is on
+the registry and it cannot, which is the same reason the top of this file sends
+you to `npm view dbmd versions`. ADR 0080.
 
 **A `--json` payload shown on a page is a run.** Every plain ` ```json ` fence
 on `README.md`, `docs/import-format.md`, `docs/ci.md` and `docs/format.md` is a
