@@ -79,11 +79,13 @@ import {
 import {
   boundsOf,
   clampScale,
+  fitScale,
   fitTo,
   panBy,
   panToReveal,
   stepScale,
   toModel,
+  visibleCount,
   zoomAbout,
   type Point,
   type Rect,
@@ -132,6 +134,22 @@ export interface Selected {
 export interface Moved {
   readonly name: string
   readonly position: Point
+}
+
+/**
+ * What `Canvas.fit` managed, which is not always what it was asked for.
+ *
+ * Counted after the viewport moved rather than predicted from the bounds: the
+ * rectangles are the ones the browser measured, so this is what is on screen
+ * and not what ought to be.
+ */
+export interface FitReport {
+  /** Objects with any part of themselves inside the canvas afterwards. */
+  readonly shown: number
+  /** Objects on the canvas at all: tables, notes and group boxes. */
+  readonly total: number
+  /** The fit wanted a scale below `MIN_SCALE` and was refused it. */
+  readonly clamped: boolean
 }
 
 /** Everything the canvas draws, as the page currently holds it. */
@@ -617,15 +635,31 @@ export class Canvas {
    * fix for the toolbar sitting on top of the first table: `fitTo` centres the
    * content inside a margin, so the box a model puts at (40, 40) is no longer
    * drawn underneath the zoom controls at (12, 12).
+   *
+   * It reports what it managed, because it cannot always manage it: the zoom
+   * stops at `MIN_SCALE` and a large enough model does not go into a window at
+   * that scale. The caller is what says so, since this class does not own the
+   * status line, and `didNotFitNotice` is the sentence. ADR 0075.
    */
-  fit(): void {
-    const content = boundsOf(this.everyRect())
+  fit(): FitReport {
+    const rects = this.everyRect()
+    const content = boundsOf(rects)
     const rect = this.host.getBoundingClientRect()
     if (content === undefined) {
       this.setViewport({ pan: { x: 0, y: 0 }, scale: 1 })
-      return
+      return { shown: 0, total: 0, clamped: false }
     }
-    this.setViewport(fitTo(content, { w: rect.width, h: rect.height }))
+    const into = { w: rect.width, h: rect.height }
+    const view = fitTo(content, into)
+    this.setViewport(view)
+    return {
+      shown: visibleCount(rects, into, view),
+      total: rects.length,
+      // Asked of the two scales rather than of `MIN_SCALE` directly, so that a
+      // change to the floor cannot leave this saying the opposite of what the
+      // canvas did.
+      clamped: fitScale(content, into) < view.scale,
+    }
   }
 
   // ------------------------------------------------------------------------

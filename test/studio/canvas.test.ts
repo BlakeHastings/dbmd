@@ -3,11 +3,15 @@ import type { Table } from '../../src/model/types.js'
 import {
   boundsOf,
   clampScale,
+  didNotFitNotice,
+  fitScale,
   fitTo,
+  MIN_SCALE,
   panToReveal,
   stepScale,
   toModel,
   toScreen,
+  visibleCount,
   zoomAbout,
   type Point,
   type Rect,
@@ -166,6 +170,48 @@ describe('coordinates', () => {
 
   it('has no bounds for nothing, rather than a rectangle at infinity', () => {
     expect(boundsOf([])).toBeUndefined()
+  })
+
+  /**
+   * The half of Fit that used to be silent. ADR 0075.
+   *
+   * `fitTo` clamps at `MIN_SCALE` and gives back a viewport either way, so the
+   * only way to know it gave up is to ask for the scale it wanted. These are
+   * the two sides of that: content that goes in, and content that does not.
+   */
+  it('says what scale a fit wanted, which is not always the one it got', () => {
+    const into = { w: 1600, h: 800 }
+    const small: Rect = { x: 40, y: 40, w: 1400, h: 500 }
+    expect(fitScale(small, into)).toBeGreaterThanOrEqual(MIN_SCALE)
+    expect(fitTo(small, into).scale).toBe(fitScale(small, into))
+
+    // A hundred and twenty rows of table, which is what five columns made of a
+    // six-hundred-table import.
+    const ribbon: Rect = { x: 40, y: 40, w: 1424, h: 31172 }
+    expect(fitScale(ribbon, into)).toBeLessThan(MIN_SCALE)
+    expect(fitTo(ribbon, into).scale).toBe(MIN_SCALE)
+  })
+
+  it('counts a box with a corner on screen as one you can see', () => {
+    const into = { w: 1000, h: 500 }
+    const view: Viewport = { pan: { x: 0, y: 0 }, scale: 1 }
+    const rects: Rect[] = [
+      { x: 10, y: 10, w: 100, h: 100 }, // wholly inside
+      { x: 960, y: 460, w: 100, h: 100 }, // a corner inside
+      { x: 1200, y: 10, w: 100, h: 100 }, // off the right
+      { x: 10, y: 900, w: 100, h: 100 }, // off the bottom
+    ]
+    expect(visibleCount(rects, into, view)).toBe(2)
+    // Zooming out brings the other two in, which is the arithmetic Fit relies on.
+    expect(visibleCount(rects, into, { pan: { x: 0, y: 0 }, scale: 0.5 })).toBe(4)
+  })
+
+  it('says how much of the model is off screen, in the counts and not in the abstract', () => {
+    const notice = didNotFitNotice(70, 600)
+    expect(notice).toContain('70 of the 600')
+    expect(notice).toContain('25%')
+    // The one thing a reader can act on, since zooming further out is refused.
+    expect(notice).toContain('arrow keys')
   })
 })
 

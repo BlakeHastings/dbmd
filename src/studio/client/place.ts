@@ -29,8 +29,27 @@ export interface Placeable {
 /** Wide enough for a table box plus a gap that an edge can be seen crossing. */
 const COLUMN_PITCH = 300
 const ROW_PITCH = 260
-const PER_ROW = 5
 const MARGIN = 40
+
+/**
+ * The shape the grid is aimed at, and the width that comes out of it.
+ *
+ * A second copy of `columnsFor` in `src/import/model.ts`, deliberately, for the
+ * reason the pitches above are a second copy: that module is Node's and this is
+ * the browser's, and a line of arithmetic across the seam is a smaller wrong
+ * than the bundle reaching into the CLI. ADR 0029 named the duplication and ADR
+ * 0075 kept it; what makes it safe is that `test/import/model.test.ts` imports
+ * both and asserts they answer the same for every count it walks, so the two
+ * drifting apart is a red test rather than a picture that moves the first time
+ * somebody opens the studio on an import.
+ *
+ * Why it is a count and not the five it used to be is written out there.
+ */
+const VIEWPORT_ASPECT = 16 / 9
+
+function columnsFor(count: number): number {
+  return Math.max(1, Math.round(Math.sqrt((count * VIEWPORT_ASPECT * ROW_PITCH) / COLUMN_PITCH)))
+}
 
 export function placeTables(tables: readonly Placeable[]): Map<string, Point> {
   const positions = new Map<string, Point>()
@@ -44,13 +63,18 @@ export function placeTables(tables: readonly Placeable[]): Map<string, Point> {
 
   // Below everything the files did place, so a model that is half laid out does
   // not get its remaining tables dropped on top of the ones a person arranged.
+  //
+  // The width is worked out from the tables that have no coordinates, because
+  // those are the ones being placed: a model where somebody has arranged forty
+  // and left two is two tables to put down, not forty-two.
   const top = positions.size === 0 ? MARGIN : lowest
+  const columns = columnsFor(tables.filter((table) => table.layout === undefined).length)
   let slot = 0
   for (const table of tables) {
     if (table.layout !== undefined) continue
     positions.set(table.name, {
-      x: MARGIN + (slot % PER_ROW) * COLUMN_PITCH,
-      y: top + Math.floor(slot / PER_ROW) * ROW_PITCH,
+      x: MARGIN + (slot % columns) * COLUMN_PITCH,
+      y: top + Math.floor(slot / columns) * ROW_PITCH,
     })
     slot += 1
   }

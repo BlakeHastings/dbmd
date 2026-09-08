@@ -22,6 +22,7 @@ import { readModel } from '../../src/model/read.js'
 import type { Table } from '../../src/model/types.js'
 import { validate } from '../../src/model/validate.js'
 import { serialiseObject, writeModel } from '../../src/model/write.js'
+import { placeTables } from '../../src/studio/client/place.js'
 
 const temporaries: string[] = []
 
@@ -135,25 +136,66 @@ describe('the layout is a grid and never an opinion', () => {
     expect(backwards.tables.map((t) => `${t.name} ${t.layout?.x},${t.layout?.y}`)).toEqual(
       forwards.tables.map((t) => `${t.name} ${t.layout?.x},${t.layout?.y}`),
     )
+    // Four tables, so two columns and two rows. The width is `columnsFor`'s and
+    // the point of asserting it here is the pairing above, not the number.
     expect(forwards.tables.map((t) => t.layout)).toEqual([
       { x: 40, y: 40 },
       { x: 340, y: 40 },
-      { x: 640, y: 40 },
-      { x: 940, y: 40 },
+      { x: 40, y: 300 },
+      { x: 340, y: 300 },
     ])
   })
 
-  test('wraps at five and starts a second row rather than running off the canvas', () => {
-    const many = document(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => ({ name })))
-    const model = modelFromIntrospection(many).model
-    expect(model.tables.map((table) => table.layout)).toEqual([
+  test('is as wide as the count says and wraps there, rather than always at five', () => {
+    const names = (n: number) =>
+      document(Array.from({ length: n }, (_, i) => ({ name: `t${String(i).padStart(3, '0')}` })))
+
+    // Six tables: three wide, so two rows.
+    expect(modelFromIntrospection(names(6)).model.tables.map((table) => table.layout)).toEqual([
       { x: 40, y: 40 },
       { x: 340, y: 40 },
       { x: 640, y: 40 },
-      { x: 940, y: 40 },
-      { x: 1240, y: 40 },
       { x: 40, y: 300 },
+      { x: 340, y: 300 },
+      { x: 640, y: 300 },
     ])
+
+    // And the shape at the sizes this was changed for. Six hundred tables were
+    // five columns and a hundred and twenty rows, which is a ribbon no zoom the
+    // studio allows can show. ADR 0075.
+    const shape = (n: number) => {
+      const layouts = modelFromIntrospection(names(n)).model.tables.map((t) => t.layout)
+      const xs = new Set(layouts.map((layout) => layout?.x))
+      const ys = new Set(layouts.map((layout) => layout?.y))
+      return `${xs.size}x${ys.size}`
+    }
+    expect(shape(8)).toBe('4x2')
+    expect(shape(100)).toBe('12x9')
+    expect(shape(600)).toBe('30x20')
+  })
+
+  test('is the same grid the canvas would have used, which is why nothing moves', () => {
+    // The two copies of the arithmetic, driven against each other rather than
+    // trusted to a comment: `src/import/model.ts` writes the coordinates and
+    // `src/studio/client/place.ts` invents them for a table whose file has
+    // none. If they disagreed, opening the studio on a hand-written model of
+    // the same size would draw a different picture from importing one. ADR 0029
+    // named the duplication and ADR 0075 kept it; this is what makes it safe.
+    for (const n of [1, 2, 3, 4, 5, 6, 8, 13, 40, 99, 100, 250, 600]) {
+      const tables = Array.from({ length: n }, (_, i) => ({
+        name: `t${String(i).padStart(3, '0')}`,
+      }))
+      const imported = modelFromIntrospection(document(tables)).model.tables
+      const placed = placeTables(tables)
+      expect(
+        imported.map((table) => `${table.name} ${table.layout?.x},${table.layout?.y}`),
+      ).toEqual(
+        imported.map((table) => {
+          const point = placed.get(table.name)
+          return `${table.name} ${point?.x},${point?.y}`
+        }),
+      )
+    }
   })
 })
 

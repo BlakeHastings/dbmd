@@ -77,7 +77,7 @@ import { validate } from '../../model/validate.js'
 import { saidAbout } from '../unreadable.js'
 import type { Diagnostic, Group, Note, ObjectKind, Table } from '../../model/types.js'
 import type { WireConflict, WireModel, WireModelResponse, WireStatus } from '../wire.js'
-import type { Point } from './geometry.js'
+import { didNotFitNotice, type Point } from './geometry.js'
 
 const canvasHost = required('canvas')
 const inspectorHost = required('inspector')
@@ -364,16 +364,6 @@ function adopt(response: WireModelResponse): void {
     { tables: model.tables, notes: model.notes, groups: model.groups },
     placeTables(model.tables),
   )
-  // Only the first draw. A later reload is a change somebody made to a file,
-  // and moving the developer's view because a neighbour saved `orders.md` would
-  // be the same kind of theft `busy` exists to prevent. The first one is
-  // different: nobody has chosen a view yet, and fitting is also what keeps the
-  // model's first box out from under the zoom toolbar, which sits at (12, 12)
-  // and used to overlap the table at (40, 40) that `dbmd init` writes.
-  if (first) {
-    drawnOnce = true
-    canvas.fit()
-  }
   // The panel is rebuilt from the model that just arrived, and it has to be:
   // its rows are the previous model's values held as DOM, and `commitColumns`
   // reads the whole list out of them. A panel left standing over an adopted
@@ -382,6 +372,24 @@ function adopt(response: WireModelResponse): void {
   inspector.show(canvas.selection)
   showDiagnostics()
   showStatus(response)
+  // Only the first draw. A later reload is a change somebody made to a file,
+  // and moving the developer's view because a neighbour saved `orders.md` would
+  // be the same kind of theft `busy` exists to prevent. The first one is
+  // different: nobody has chosen a view yet, and fitting is also what keeps the
+  // model's first box out from under the zoom toolbar, which sits at (12, 12)
+  // and used to overlap the table at (40, 40) that `dbmd init` writes.
+  //
+  // Last rather than straight after the draw, which is where it used to be. The
+  // diagnostics list and the status line are under the canvas and share the
+  // window with it, so a fit taken before they render is taken against a canvas
+  // 128 pixels taller than the one the page ends up with, and on a
+  // six-hundred-table import that was a whole row of boxes that the fit thought
+  // it had shown and had not. Measured, on the page, and it is why this moved.
+  // ADR 0075.
+  if (first) {
+    drawnOnce = true
+    fitAndSay()
+  }
   document.title = model.name === undefined ? 'dbmd studio' : `${model.name} · dbmd studio`
 }
 
@@ -675,11 +683,47 @@ async function rename(from: string, to: string): Promise<void> {
   )
 }
 
+/**
+ * Fit, and say so when it could not.
+ *
+ * Both places that fit go through here, and they are the two places a person
+ * meets this: the button, and the first draw, which is where somebody who has
+ * just imported a real database is standing when they first see it. That first
+ * one is the more important of the two, because nobody pressed anything and so
+ * nobody is expecting an explanation to be owed.
+ *
+ * `say` rather than a line written into the element, for the reason the rename
+ * and the create hold theirs: the heartbeat re-renders the status a second
+ * later out of the server's answer, which knows nothing about the view, and a
+ * sentence written straight in would be gone before it was read. Nothing is
+ * said when the fit fit, so the ordinary line stands and this one is never
+ * noise. ADR 0075.
+ */
+function fitAndSay(): void {
+  const report = canvas.fit()
+  if (!report.clamped) return
+  say(didNotFitNotice(report.shown, report.total))
+  // And then again, because saying it changed the answer. The status bar and
+  // the canvas share the window, this sentence is three lines where the one it
+  // replaced was one, and the canvas that just lost 16 pixels of height is
+  // showing a row fewer than the count in the sentence claims. Measured on a
+  // six-hundred-table import: 308 said, 286 actually on screen, and 264 both
+  // ways on the next press. `fit` reads `getBoundingClientRect`, which flushes
+  // layout, so the second pass sees the canvas this sentence left rather than
+  // the one it was measured against, and there is no third pass because the
+  // status is already as tall as it gets.
+  //
+  // A smaller canvas cannot turn a fit that was refused into one that fits, so
+  // the first sentence is never left standing over a fit that worked.
+  const settled = canvas.fit()
+  if (settled.clamped) say(didNotFitNotice(settled.shown, settled.total))
+}
+
 function wireToolbar(): void {
   required('zoom-out').addEventListener('click', () => canvas.zoomStep(-1))
   required('zoom-in').addEventListener('click', () => canvas.zoomStep(1))
   required('zoom-reset').addEventListener('click', () => canvas.zoomTo(1))
-  required('zoom-fit').addEventListener('click', () => canvas.fit())
+  required('zoom-fit').addEventListener('click', () => fitAndSay())
   addTableButton.addEventListener('click', () => armFor('table'))
   addNoteButton.addEventListener('click', () => armFor('note'))
   // Not armed and not a placement: a group has no coordinates to point at (ADR
