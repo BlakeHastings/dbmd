@@ -159,7 +159,11 @@ own* pull request, which is why the layers below still exist:
    loudly when one does not.
    *Not covered:* prevention. It notices afterwards, which is why it cannot be
    bypassed. It is kept despite the ruleset because the ruleset is an API object
-   that the token agents run under can delete. ADR 0001 has that argument.
+   that the token agents run under can delete. ADR 0001 has that argument. **Nor
+   does it notice an agent merging its own pull request**, which has a pull
+   request behind it and satisfies this audit exactly as the orchestrator's merge
+   does. That is the detection half layer 1's worktree refusal does not have, and
+   ADR 0078 records where two searches for a sound signal ended.
 4. **`scripts/report-merge-aftermath.mjs`**, run by
    [`.github/workflows/aftermath.yml`](../../.github/workflows/aftermath.yml)
    when a workflow finishes on `main` without going green. It comments on the
