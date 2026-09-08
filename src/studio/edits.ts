@@ -65,7 +65,7 @@
 
 import { access, rm } from 'node:fs/promises'
 import { readModel } from '../model/read.js'
-import { serialiseModelFile, serialiseObject, writeModel } from '../model/write.js'
+import { WriteFailed, serialiseModelFile, serialiseObject, writeModel } from '../model/write.js'
 import type {
   CanvasObject,
   Diagnostic,
@@ -91,6 +91,7 @@ import type {
   WireConflict,
   WireStatus,
   WireWrite,
+  WireWriteErrorFile,
 } from './wire.js'
 
 /** The three kinds, in the order a model lists them, for a loop over all of them. */
@@ -214,6 +215,15 @@ export class Edits {
   private timer: NodeJS.Timeout | undefined
   private last: WireWrite | null = null
   private failure: string | null = null
+  /**
+   * Which file the failure above was about, when the throw named one.
+   *
+   * Kept beside the message rather than parsed back out of it. The message is
+   * the operating system's, it names absolute paths, and one of them is a
+   * temporary file the writer made; this is the model's own path, which is the
+   * one the developer has open in an editor. ADR 0083.
+   */
+  private failureFile: WireWriteErrorFile | null = null
   /** Bumped whenever a re-read changed what is served. The client's cue to redraw. */
   private revision = 0
   private watcher: ModelWatcher | undefined
@@ -265,6 +275,7 @@ export class Edits {
       lastWrite: this.last,
       pendingWrite: this.edited.size > 0,
       writeError: this.failure,
+      writeErrorFile: this.failureFile,
       // Sorted, because ADR 0006 wants the same request to produce the same
       // bytes and a Map's order is insertion order.
       conflicts: [...this.refusals.values()].sort((a, b) => (a.path < b.path ? -1 : 1)),
@@ -637,6 +648,7 @@ export class Edits {
       try {
         const result = await writeModel(this.dir, this.model, { only: this.writing })
         this.failure = null
+        this.failureFile = null
         if (result.written.length > 0) {
           this.last = { at: new Date().toISOString(), paths: result.written }
           this.log(`wrote ${result.written.join(', ')}`)
@@ -651,7 +663,20 @@ export class Edits {
         // not.
         for (const file of this.writing) this.edited.add(file)
         this.failure = error instanceof Error ? error.message : String(error)
-        this.log(`write failed: ${this.failure}`)
+        // The file travels beside the operating system's words rather than
+        // replacing them, so the page can lead with what the developer was
+        // editing and still quote the system verbatim. ADR 0083.
+        this.failureFile =
+          error instanceof WriteFailed
+            ? { path: error.path, viaTemporary: error.temporary !== null }
+            : null
+        // Named the way the two refusals above this are named, because somebody
+        // reading this log is scanning it for a file and not for a verb.
+        this.log(
+          this.failureFile === null
+            ? `write failed: ${this.failure}`
+            : `failed to write ${this.failureFile.path}: ${this.failure}`,
+        )
       }
     } finally {
       this.writing = new Set()

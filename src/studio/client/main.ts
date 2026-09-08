@@ -64,6 +64,7 @@ import {
   createdNotice,
   staleNotice,
   unreadableNotice,
+  writeFailureNotice,
 } from './write.js'
 // The two values this page imports from outside its own directory. ADR 0014
 // says a consumer that only wants to print where a diagnostic points should not
@@ -844,7 +845,7 @@ function pollStatus(): void {
 function showStatus(status: WireStatus): void {
   showConflicts(status.conflicts)
   if (status.writeError !== null) {
-    statusText.textContent = `Last write failed: ${status.writeError}`
+    statusText.textContent = writeFailureNotice(status.writeErrorFile, status.writeError)
     statusText.dataset['tone'] = 'bad'
     return
   }

@@ -84,13 +84,49 @@ export interface WireConflict {
   readonly message: string
 }
 
+/**
+ * The file a failed write was for, beside the operating system's words about
+ * it.
+ *
+ * `viaTemporary` is the answer to "why does that message open with a file I
+ * have never seen": the writer writes a temporary file in the same directory
+ * and renames it over the target, so a rename that fails names the temporary
+ * first. It is false for a failure that happened before there was one, where
+ * saying it would send a reader looking for a file that never existed.
+ */
+export interface WireWriteErrorFile {
+  /** The model file, relative and slash-separated, exactly as a write reports one. */
+  readonly path: string
+  /** Whether the message names the studio's temporary file before the file itself. */
+  readonly viaTemporary: boolean
+}
+
 /** On every response, so the client can say where the model stands (ADR 0004). */
 export interface WireStatus {
   readonly lastWrite: WireWrite | null
   /** An edit is in memory and its debounced write has not fired yet. */
   readonly pendingWrite: boolean
-  /** The message from the last write that threw, cleared by the next that did not. */
+  /**
+   * The message from the last write that threw, cleared by the next that did
+   * not, in the operating system's own words and nobody else's.
+   *
+   * Deliberately not shaped here. A rename fails from a read-only attribute, an
+   * ACL, a lock, antivirus, a full disk or a network share, and this string is
+   * the only thing in the exchange that knows which. `writeErrorFile` beside it
+   * is what lets a page lead with the file instead of with the words. ADR 0083.
+   */
   readonly writeError: string | null
+  /**
+   * Which file that write was for, and whether the words above open with the
+   * temporary file it goes through.
+   *
+   * Null when there is no failure, and also when the throw named no file, which
+   * is anything that goes wrong before the writer reaches a job. Both facts are
+   * the server's alone: the page cannot get the model path back out of a
+   * message full of absolute paths without reading prose, and the two travel
+   * together because a page says them in one sentence. ADR 0083.
+   */
+  readonly writeErrorFile: WireWriteErrorFile | null
   /**
    * Edits this session dropped rather than write over a change on disk, sorted
    * by path. One entry stands until the studio successfully writes that file

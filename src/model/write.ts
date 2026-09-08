@@ -322,6 +322,38 @@ export interface WriteResult {
   readonly skipped: readonly WriteSkip[]
 }
 
+/**
+ * A write the filesystem refused, carrying the file it was for.
+ *
+ * The operating system's own words are kept exactly, because they are the only
+ * thing here that knows why: a rename can fail from a read-only attribute, an
+ * ACL, a lock another program holds, antivirus, a full disk or a network share,
+ * and a message that picks one of those is wrong often enough to be worse than
+ * the raw error. What this adds is the two facts the message cannot carry.
+ *
+ * `path` is the model file, relative and slash-separated as `written` reports
+ * one. Only this loop knows it: by the time the throw reaches a caller, the
+ * words name absolute paths and one of them is a temporary file nobody asked
+ * for.
+ *
+ * `temporary` is that file, when the failure happened after it existed, and
+ * `null` when it did not get that far. It is here so that a reader can be told
+ * why the system's message opens with a file they never created, and told it
+ * only when it is true: a failure at the read-before-write names the real file
+ * and no temporary, and explaining a temporary file there would be a sentence
+ * about something that is not on the screen. ADR 0083.
+ */
+export class WriteFailed extends Error {
+  constructor(
+    readonly path: string,
+    readonly temporary: string | null,
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause })
+    this.name = 'WriteFailed'
+  }
+}
+
 export interface WriteOptions {
   /**
    * Write only these files, named by the same relative slash-separated path
@@ -416,12 +448,21 @@ export async function writeModel(
       continue
     }
     const target = join(dir, ...job.path.split('/'))
-    if ((await currentText(target)) === job.text) {
-      skipped.push({ path: job.path, reason: 'unchanged' })
-      continue
+    // Every way this file can be refused is caught here and renamed onto the
+    // model's own path. A caller that has to tell somebody what happened knows
+    // which box they dragged and not which of a dozen files the writer was on
+    // when it stopped, and `writeAtomically` throws the one that already knows
+    // both. ADR 0083.
+    try {
+      if ((await currentText(target)) === job.text) {
+        skipped.push({ path: job.path, reason: 'unchanged' })
+        continue
+      }
+      await mkdir(dirname(target), { recursive: true })
+      await writeAtomically(job.path, target, job.text)
+    } catch (error) {
+      throw error instanceof WriteFailed ? error : new WriteFailed(job.path, null, error)
     }
-    await mkdir(dirname(target), { recursive: true })
-    await writeAtomically(target, job.text)
     written.push(job.path)
   }
 
@@ -449,8 +490,15 @@ async function currentText(target: string): Promise<string | undefined> {
  *
  * The temporary name starts with a dot and does not end in `.md`, so a read
  * racing a write ignores it twice over.
+ *
+ * It is also the reason a refusal here is a `WriteFailed` rather than the
+ * error the filesystem raised. Whatever the system says names the temporary
+ * file first, because that is the first argument of the rename, and a person
+ * reading it has never seen that name and cannot find that file. `path` is what
+ * they were editing and `temporary` is what the message opens with, and this is
+ * the only frame that holds both. ADR 0083.
  */
-async function writeAtomically(target: string, text: string): Promise<void> {
+async function writeAtomically(path: string, target: string, text: string): Promise<void> {
   const temporary = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`)
   try {
     const handle = await open(temporary, 'wx')
@@ -463,6 +511,6 @@ async function writeAtomically(target: string, text: string): Promise<void> {
     await rename(temporary, target)
   } catch (error) {
     await rm(temporary, { force: true })
-    throw error
+    throw new WriteFailed(path, temporary, error)
   }
 }

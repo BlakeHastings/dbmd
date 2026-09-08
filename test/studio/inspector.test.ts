@@ -23,6 +23,7 @@ import {
   createdNotice,
   staleNotice,
   unreadableNotice,
+  writeFailureNotice,
 } from '../../src/studio/client/write.js'
 import type { WireConflict } from '../../src/studio/wire.js'
 
@@ -546,6 +547,76 @@ describe('what the page says once a create has landed', () => {
 
   it('does not say it is still doing it', () => {
     expect(createdNotice('groups/roasting.md')).not.toContain('Creating')
+  })
+})
+
+/**
+ * The one message in the studio that is the operating system talking.
+ *
+ * Every other refusal here is the studio's own and says what happened and what
+ * to do. This one arrived as `Last write failed:` followed by the raw error,
+ * and measured on 2026-09-08 against a studio on a copy of `examples/shop` with
+ * one table file made read-only, that read:
+ *
+ * > Last write failed: EPERM: operation not permitted, rename
+ * > 'C:\...\tables\.orders.md.63ea8eb5-....tmp' -> 'C:\...\tables\orders.md'
+ *
+ * The behaviour behind it was right and is untouched: the write really failed,
+ * the edit stayed in memory, the next flush retried it and nothing was lost.
+ * What was wrong was that it opened with `.orders.md.<uuid>.tmp`, a file the
+ * person never created and cannot find, put `tables/orders.md` at the far end
+ * of a long line after an arrow, and told them nothing to try. ADR 0083.
+ */
+describe('what the page says when the disk refused the write', () => {
+  const orders = { path: 'tables/orders.md', viaTemporary: true }
+  const said =
+    "EPERM: operation not permitted, rename 'C:\\m\\tables\\.orders.md.89184c47.tmp' -> " +
+    "'C:\\m\\tables\\orders.md'"
+
+  it('opens with the file the person was editing', () => {
+    const notice = writeFailureNotice(orders, said)
+    expect(notice.startsWith('Could not write tables/orders.md.')).toBe(true)
+    // The temporary file is still in the sentence, because it is in the words
+    // the system said and those are kept. It is just no longer the first thing
+    // read.
+    expect(notice.indexOf('tables/orders.md')).toBeLessThan(notice.indexOf('.tmp'))
+  })
+
+  it('keeps the system’s words rather than replacing them', () => {
+    expect(writeFailureNotice(orders, said)).toContain(said)
+  })
+
+  it('guesses no cause, because every guess available is wrong most of the time', () => {
+    // Read-only attribute, ACL, a lock another program holds, antivirus, a full
+    // disk, a network share. The message the system gave is the only thing in
+    // the exchange that knows which, and it is quoted whole.
+    const notice = writeFailureNotice(orders, said).replace(said, '')
+    expect(notice).not.toMatch(/read-only|permission|locked|another program|disk is full/i)
+  })
+
+  it('says what to try, and that nothing has been lost', () => {
+    const notice = writeFailureNotice(orders, said)
+    expect(notice).toContain('The edit is still here')
+    expect(notice).toContain('rides out with the next write')
+    expect(notice).toContain('clearing whatever the system is refusing')
+  })
+
+  it('explains the temporary file only when the write got as far as making one', () => {
+    expect(writeFailureNotice(orders, said)).toContain('temporary file in the same folder')
+    const early = writeFailureNotice({ path: 'tables/orders.md', viaTemporary: false }, 'EISDIR')
+    expect(early).toContain('Could not write tables/orders.md.')
+    // Nothing about a temporary file, because there is not one and pointing at
+    // a file that never existed is the defect this whole sentence is fixing,
+    // wearing the other hat.
+    expect(early).not.toContain('temporary')
+  })
+
+  it('falls back to the system’s words alone when the throw named no file', () => {
+    // Anything that goes wrong before the writer reaches a file. There is no
+    // path to lead with, so it does not invent one.
+    expect(writeFailureNotice(null, 'ENOSPC: no space left on device')).toBe(
+      'The last write failed. ENOSPC: no space left on device',
+    )
   })
 })
 
