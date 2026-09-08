@@ -497,6 +497,64 @@ describe('a foreign key to a table the export does not contain', () => {
 })
 
 /**
+ * Two tables of one name in one schema, which Postgres has and a model
+ * directory cannot hold.
+ *
+ * The assertion that matters is the last two: the list the report printed and
+ * the directory that exists are the same list. They were not. On Windows this
+ * command said it had imported two tables, listed `tables/Orders.md` and
+ * `tables/orders.md`, wrote the second over the first and exited 0, so a table
+ * was gone and the reader was also told about a file that was not there.
+ *
+ * There is no platform condition here, and there is not meant to be. On Linux
+ * both files can exist and the second table is still refused, because the
+ * directory is committed and cloned onto machines where they cannot. ADR 0093.
+ */
+describe('two tables whose names differ only in case', () => {
+  test('are one file, so one is refused and the report lists what is on disk', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(
+      ['--dir', dir],
+      piped(postgresFile([table('orders'), table('Orders')])),
+    )
+
+    expect(run.code).toBe(1)
+    expect(run.err).toContain('Imported 1 table from postgres')
+    expect(run.err).toContain('import/name-collision')
+    expect(flat(run.err)).toContain('differ only in case')
+
+    expect(await readdir(join(dir, 'tables'))).toEqual(['Orders.md'])
+    expect(run.err).toContain('tables/Orders.md')
+    // The half that was a defect on every platform: nothing in the report names
+    // a file the run did not write.
+    expect(run.err).not.toContain('tables/orders.md')
+  })
+})
+
+describe('a primary key naming a column the export does not carry', () => {
+  test('is a warning, and no column is quietly marked instead', async () => {
+    const dir = join(await workspace(), 'db-model')
+    const run = await runWithStdin(
+      ['--dir', dir],
+      piped(
+        postgresFile([
+          table('orders', {
+            primary_key: { constraint_name: 'orders_pkey', columns: ['order_id'] },
+          }),
+        ]),
+      ),
+    )
+
+    // A warning, so the import stands and the exit code is still 0: everything
+    // else about the table arrived as it was exported.
+    expect(run.code).toBe(0)
+    expect(run.err).toContain('import/key-column-not-exported')
+    expect(run.err).toContain('`order_id`')
+    expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).not.toContain('pk:')
+  })
+})
+
+/**
  * Re-importing over a model somebody has been writing in. dbmd-42, ADR 0050.
  *
  * The thing these tests are really about is the two files a re-import must not

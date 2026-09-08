@@ -25,9 +25,10 @@
  * broken model is diagnosed.** A check constraint, an index's `INCLUDE` list
  * and a filtered index's predicate have nowhere to go, and `docs/format.md`
  * says so under what the format does not have. A foreign key to a table that is
- * not in the file, two tables that would be written to one file, and a name no
- * file can hold are different: each would leave a model that lies, so each gets
- * a diagnostic naming the table.
+ * not in the file, a primary key on a column that is not in the table, two
+ * tables that would be written to one file, and a name no file can hold are
+ * different: each would leave a model that lies, so each gets a diagnostic
+ * naming the table.
  */
 
 import { isFileName } from '../model/paths.js'
@@ -210,7 +211,7 @@ export function modelFromIntrospection(document: IntrospectionDocument): Importe
 
 function tableOf(table: CatalogTable, slot: number, columns: number, context: Context): Table {
   const refs = refsOf(table, context)
-  const key = table.primaryKey?.columns ?? []
+  const key = keyOf(table, context)
   return {
     kind: 'table',
     name: table.name,
@@ -224,6 +225,61 @@ function tableOf(table: CatalogTable, slot: number, columns: number, context: Co
     },
     body: tableBody(table),
   }
+}
+
+/**
+ * The primary key's columns, and the warning when the table has not got one of
+ * them.
+ *
+ * `columnOf` writes `pk: true` where the key names the column it is looking at,
+ * so a key naming a column that is not in `columns` marked nothing and said
+ * nothing: the table reached disk with no key, and the first `dbmd check` said
+ * `primary-key-missing`, which sends the reader to add a key the database has
+ * already got. That is the same shape as a foreign key pointing outside the
+ * export, one function down, and it is given the same treatment.
+ *
+ * **A warning rather than an error**, for three reasons. The rest of the table
+ * arrives exactly as it was exported and the model does not lie about anything
+ * else, which is the line ADR 0029 draws. An error on this command exits
+ * non-zero and tells the reader to empty the directory and start again, which
+ * is the answer for a lost table and not for a key somebody can put back in one
+ * line. And the sibling case, `import/reference-not-exported`, is a warning for
+ * the first of those reasons.
+ *
+ * `dbmd query` cannot produce this document, because the query builds both
+ * lists from the catalogue in one statement. That is not an argument for
+ * silence: the input is a file a person saved out of their own client and may
+ * have cut short, which is the whole reason `src/import/contract.ts` exists.
+ */
+function keyOf(table: CatalogTable, context: Context): readonly string[] {
+  const key = table.primaryKey?.columns ?? []
+  const has = new Set(table.columns.map((column) => column.name))
+  const absent = key.filter((name) => !has.has(name))
+
+  if (absent.length > 0) {
+    const one = absent.length === 1
+    context.diagnostics.push({
+      code: 'import/key-column-not-exported',
+      severity: 'warning',
+      at: inDocument(`${context.at.get(table) ?? '$'}.primaryKey.columns`),
+      message:
+        `\`${qualified(table)}\` has a primary key on ${quotedList(absent)}, which this file ` +
+        `does not list among the table's columns, so no \`pk:\` was written for ` +
+        `${one ? 'it' : 'them'} and the key in the model is not the key in the database; ` +
+        `re-run the query if ${one ? 'that column belongs' : 'those columns belong'} to the ` +
+        `table`,
+    })
+  }
+
+  return key
+}
+
+/** `` `a` ``, `` `a` and `b` ``, `` `a`, `b` and `c` ``: a list a sentence can hold. */
+function quotedList(names: readonly string[]): string {
+  const quoted = names.map((name) => `\`${name}\``)
+  const last = quoted.pop()
+  if (last === undefined) return ''
+  return quoted.length === 0 ? last : `${quoted.join(', ')} and ${last}`
 }
 
 function columnOf(column: CatalogColumn, key: readonly string[], ref: Ref | undefined): Column {
@@ -366,6 +422,20 @@ const ACTION: Readonly<Record<CatalogAction, ReferentialAction>> = {
  * reads as complete, which is the quietest way this command could lose a table.
  * The first in the document's own order is kept, and the document is sorted by
  * schema then name, so which one that is does not depend on the machine.
+ *
+ * **Names are compared folded, so `public.Orders` and `public.orders` collide
+ * too, on every platform.** Those are two tables in Postgres, which reports
+ * each as it really is, and two files on Linux; on Windows and on macOS they
+ * are one file, and the second write lands on the first. This comparison used
+ * to be `Map.get(table.name)`, which is case-sensitive, so the check that
+ * exists to stop a table being lost could not fire on the one filesystem that
+ * loses it: the run said it had imported two tables, listed two files, wrote
+ * one and exited 0.
+ *
+ * Folding on every platform rather than only where the filesystem folds is
+ * ADR 0093. A model directory is committed and cloned onto all three, so the
+ * question is not what this machine can hold, and an import whose output
+ * depends on the filesystem it ran over is one CI could never have caught.
  */
 function withoutCollisions(
   tables: readonly CatalogTable[],
@@ -376,9 +446,14 @@ function withoutCollisions(
   const out: CatalogTable[] = []
 
   for (const table of tables) {
-    const first = kept.get(table.name)
+    // `toLowerCase` and not `toLocaleLowerCase`: the second folds by the
+    // machine's locale, so a Turkish laptop would answer differently from CI
+    // about `I` and `i`, and this is a decision about a directory both of them
+    // clone.
+    const folded = table.name.toLowerCase()
+    const first = kept.get(folded)
     if (first === undefined) {
-      kept.set(table.name, table)
+      kept.set(folded, table)
       out.push(table)
       continue
     }
@@ -386,15 +461,43 @@ function withoutCollisions(
       code: 'import/name-collision',
       severity: 'error',
       at: inDocument(`${at.get(table) ?? '$'}.name`),
-      message:
-        `\`${qualified(table)}\` and \`${qualified(first)}\` would both be written to ` +
-        `tables/${table.name}.md, and a model directory is flat, so only ` +
-        `\`${qualified(first)}\` was written; import one schema at a time until the format ` +
-        `has somewhere to put the other`,
+      message: collisionMessage(table, first),
     })
   }
 
   return out
+}
+
+/**
+ * What a collision says, which is two sentences rather than one.
+ *
+ * Both name `tables/${first.name}.md` and no other path, because the file in
+ * this sentence is one the reader can go and open. For two schemas holding one
+ * name the two spellings are the same string anyway, so that half of the
+ * message is unchanged.
+ *
+ * A collision that is only a difference of case gets its own words for two
+ * reasons, and neither is decoration. The reader on Linux has two perfectly
+ * good file names in front of them and has to be told that the machine this
+ * model is cloned onto has one. And the other sentence's advice, to import one
+ * schema at a time, does nothing at all here: `public.Orders` and
+ * `public.orders` are one schema, which is the shape this arrives in.
+ */
+function collisionMessage(dropped: CatalogTable, first: CatalogTable): string {
+  if (dropped.name === first.name) {
+    return (
+      `\`${qualified(dropped)}\` and \`${qualified(first)}\` would both be written to ` +
+      `tables/${first.name}.md, and a model directory is flat, so only ` +
+      `\`${qualified(first)}\` was written; import one schema at a time until the format ` +
+      `has somewhere to put the other`
+    )
+  }
+  return (
+    `\`${qualified(dropped)}\` and \`${qualified(first)}\` differ only in case, and a model ` +
+    `directory is flat and is cloned onto machines that do not tell those two file names ` +
+    `apart, so only \`${qualified(first)}\` was written, to tables/${first.name}.md; import ` +
+    `one of them at a time until the format has somewhere to put the other`
+  )
 }
 
 /** `schema.name`, for a table or for the far end of a foreign key. */
