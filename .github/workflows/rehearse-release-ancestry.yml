@@ -1,0 +1,283 @@
+# A rehearsal of the one step in `release.yml` that has never run, on a tag that
+# `release.yml` does not match, in a job that has no way to publish anything.
+#
+# WHAT IS ACTUALLY UNKNOWN
+# `release.yml` has one step that reads `origin/anything`, and its own comment
+# says the thing this file exists to fix: whether `actions/checkout@v7` with
+# `fetch-depth: 0` populates `refs/remotes/origin/main` on a **tag push** is
+# unobserved rather than known, because no tag has ever been pushed here.
+# `provenance.yml` uses the same option, so the option is exercised, but it runs
+# on a push to a branch and that is evidence about a different event.
+#
+# The failure is safe either way: a missing ref makes `git merge-base` exit 128,
+# 128 is not 0, and nothing is uploaded. ADR 0060 is why the step tells those
+# two failures apart. What is left over is that the first execution of that step
+# is also the owner's first release, and finding out on that afternoon is the
+# expensive way to find out.
+#
+# NOBODY CAN REHEARSE IT WITH A REAL RELEASE TAG
+# The version comparison in `release.yml` runs first, so a `v*` tag carrying a
+# deliberately wrong version fails at step one and never reaches the ancestry
+# check. The only `v*` tag that reaches it is one whose version matches, and
+# that tag goes on to publish. There is no `v*` tag that rehearses and stops.
+# So this runs on a tag pattern `release.yml` cannot match.
+#
+# WHY THIS CANNOT PUBLISH, STRUCTURALLY
+# There is no `npm publish` step, no `NPM_TOKEN`, no `secrets.` reference of any
+# kind, and no `registry-url` on any setup step. `release.yml`'s own comment is
+# the argument for the last one: without `registry-url` there is no `.npmrc`
+# carrying `NODE_AUTH_TOKEN`, so even a token that leaked into this job would be
+# set and ignored. `permissions: contents: read` is the fourth layer.
+# `scripts/check-release-rehearsal.mjs` refuses if any of that stops being true,
+# and it runs before anything else here does.
+#
+# WHY THERE IS NO `workflow_dispatch`
+# It would be convenient and it would prove nothing. A dispatched run checks out
+# a branch, and the whole subject here is what a tag push gives the checkout. A
+# green run over the wrong event is the exact failure this file is built to
+# avoid: a rehearsal that reports green about a setup nobody is using.
+#
+# HOW TO RUN IT
+#   git tag rehearsal-1 <a commit on main>
+#   git push origin rehearsal-1
+# Read the job summary, then `git push origin :refs/tags/rehearsal-1` and
+# `git tag -d rehearsal-1` to clean up. Pushing a `v*` tag is a different act
+# with a different consequence and no agent in this repository takes it.
+#
+# THIS IS NOT THE MERGE GATE AND IT IS NOT THE RELEASE. `check.yml` is the gate,
+# `release.yml` is the release, and neither of them knows this file exists.
+name: rehearse release ancestry
+
+on:
+  push:
+    # `release.yml` is `tags: ['v*']`. GitHub's filter pattern cheat sheet says
+    # `v2*` "matches branch and tag names that start with `v2`", and that a bare
+    # name matches "the exact name of a branch or tag name", so a tag pattern is
+    # anchored at both ends and `*` matches zero or more non-slash characters.
+    # A tag matching `rehearsal-*` starts with `rehearsal-`, which is not `v`,
+    # so it cannot match `v*` and this push cannot start a release.
+    # `scripts/check-release-rehearsal.mjs` re-derives that from the two files
+    # rather than trusting this comment.
+    tags: ['rehearsal-*']
+
+# Read-only, and nothing here writes to the repository or to a registry.
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    name: rehearse the ancestry check
+    runs-on: ubuntu-latest
+    steps:
+      # Copied from `release.yml`, and the next step refuses if this stops being
+      # a copy of it. The copy is the subject: a rehearsal on a different
+      # checkout is a rehearsal of a different thing.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Before anything is reported. A rehearsal that has drifted from what it
+      # rehearses reports green about a setup nobody is using, which is worse
+      # than not rehearsing at all. Node is preinstalled on `ubuntu-latest` and
+      # this script imports nothing outside `node:`, so there is no `npm ci`
+      # here and therefore no npm in this job at all.
+      - name: this rehearsal still matches release.yml
+        run: node scripts/check-release-rehearsal.mjs
+
+      # The shell under test, written to disk once and run three times against
+      # three different states. Every probe below runs these exact lines, so
+      # nothing here re-implements the logic in a second place that could be
+      # right when the original is wrong.
+      #
+      # `bash -e` is what GitHub Actions runs a `run:` body under on Linux, so
+      # driving the file that way reproduces the step rather than approximating
+      # it. ADR 0060 used the same technique by hand against throwaway clones;
+      # what this adds is the real tag-push checkout underneath it.
+      #
+      # The heredoc is quoted, so `${GITHUB_SHA}` is written through literally
+      # and expands when the script runs rather than when it is written.
+      - name: the step under rehearsal, written out once
+        run: |
+          cat > "${RUNNER_TEMP}/ancestry.sh" <<'ANCESTRY'
+          if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+            echo "::error::origin/main is not in this checkout, so the tag was never judged"
+            echo "Nothing was published, and this is not a verdict on the tag: the"
+            echo "ancestry check did not run at all. origin/main is here only because"
+            echo "the checkout step asks for fetch-depth: 0, so that is the line to look"
+            echo "at rather than the tag or the branch it was pushed from."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::${GITHUB_SHA} is not an ancestor of origin/main"
+            echo "Nothing was published. A release is cut from a commit that went"
+            echo "through the check gate on a pull request; tag one on main instead."
+            exit 1
+          fi
+          echo "${GITHUB_SHA} is on main."
+          ANCESTRY
+
+      # The open question, asked on its own before anything has been altered.
+      # This step reaches no verdict and publishes no message; it records what
+      # the checkout handed us. The ref is read under the same name the step
+      # under rehearsal compares under, which is ADR 0060's rule, so a yes here
+      # is a yes there.
+      - name: did the tag-push checkout give us refs/remotes/origin/main
+        run: |
+          if sha="$(git rev-parse --verify --quiet origin/main)"; then
+            echo "${sha}" > "${RUNNER_TEMP}/origin-main.txt"
+            echo "origin/main resolved to ${sha}"
+          else
+            echo "missing" > "${RUNNER_TEMP}/origin-main.txt"
+            echo "origin/main did not resolve in this checkout"
+          fi
+
+      # Probe A: the real tagged commit, the real checkout, nothing altered.
+      # This is the only one of the three whose answer is not already known, and
+      # it is deliberately first, before the two probes below change the repo.
+      #
+      # No probe is allowed to fail its own step. All three answers are wanted
+      # in one run, and the verdict step at the end decides, so `set +e` holds
+      # off the errexit GitHub runs a `run:` body under. The log is read from a
+      # file rather than piped, so the exit code recorded is the shell's own and
+      # not some later command's.
+      #
+      # The console copy has the `::error::` prefix stripped, because a probe
+      # that refuses on purpose should not decorate a green run with red
+      # annotations. The file keeps the prefix, and the verdict step reads the
+      # file.
+      - name: probe A, the tagged commit as pushed
+        run: |
+          set +e
+          bash -e "${RUNNER_TEMP}/ancestry.sh" > "${RUNNER_TEMP}/probe-a.log" 2>&1
+          echo "$?" > "${RUNNER_TEMP}/probe-a.code"
+          set -e
+          sed 's/^::error:://' "${RUNNER_TEMP}/probe-a.log"
+
+      # Probe B: a commit that is certainly not on `main`, because it was made
+      # thirty seconds ago in this runner and pushed nowhere. This is the
+      # `exit 1` branch, and the answer is known in advance, which is the point:
+      # a guard nobody has seen fail is not believed here. ADR 0034.
+      #
+      # `GITHUB_SHA` is overridden for this one command rather than exported, so
+      # probe C below still names the commit the tag actually points at. The
+      # commit moves `HEAD`, which nothing here reads: every probe names its
+      # commit by sha and `origin/main` is a ref rather than a branch we are on.
+      - name: probe B, a commit that is not on main
+        run: |
+          git -c user.name=rehearsal -c user.email=rehearsal@invalid \
+            commit --allow-empty -m "not on main, and never will be" --quiet
+          off="$(git rev-parse HEAD)"
+          echo "made ${off}, which exists only in this runner"
+          set +e
+          GITHUB_SHA="${off}" bash -e "${RUNNER_TEMP}/ancestry.sh" \
+            > "${RUNNER_TEMP}/probe-b.log" 2>&1
+          echo "$?" > "${RUNNER_TEMP}/probe-b.code"
+          set -e
+          sed 's/^::error:://' "${RUNNER_TEMP}/probe-b.log"
+
+      # Probe C: the same shell with `refs/remotes/origin/main` deleted, which
+      # is the state ADR 0060 was written about and the one nobody has produced
+      # on a real tag push. Last, because it is destructive, and after probe A
+      # has already recorded whether the ref was there to begin with.
+      - name: probe C, the same shell with origin/main deleted
+        run: |
+          git update-ref -d refs/remotes/origin/main || true
+          set +e
+          bash -e "${RUNNER_TEMP}/ancestry.sh" > "${RUNNER_TEMP}/probe-c.log" 2>&1
+          echo "$?" > "${RUNNER_TEMP}/probe-c.code"
+          set -e
+          sed 's/^::error:://' "${RUNNER_TEMP}/probe-c.log"
+
+      # One place a person reads once. Every assertion below reads the words the
+      # probe printed as well as its exit code, because a step that exits 1 for
+      # the wrong reason is still broken and an exit code cannot tell the
+      # difference. ADR 0034.
+      - name: what the rehearsal found
+        run: |
+          resolved="$(cat "${RUNNER_TEMP}/origin-main.txt")"
+          a_code="$(cat "${RUNNER_TEMP}/probe-a.code")"
+          b_code="$(cat "${RUNNER_TEMP}/probe-b.code")"
+          c_code="$(cat "${RUNNER_TEMP}/probe-c.code")"
+          failed=0
+          note() { echo "::error::$1"; failed=1; }
+
+          if [ "${resolved}" = "missing" ]; then
+            ref_line="**No.** The checkout did not populate it on this tag push."
+            note "origin/main did not resolve in a tag-push checkout, so a real release would print the checkout message rather than a verdict on the tag"
+          else
+            ref_line="**Yes**, at \`${resolved}\`."
+          fi
+
+          if [ "${a_code}" = "0" ]; then
+            a_line="Exit 0. The tagged commit is on \`main\`, and a real release would have gone on to publish."
+          elif [ "${resolved}" = "missing" ]; then
+            a_line="Exit ${a_code}, and it named the checkout rather than the tag, which is the branch ADR 0060 added."
+          else
+            a_line="Exit ${a_code}. This rehearsal tag is not on \`main\`. That is the correct answer if you tagged off \`main\` on purpose, and a real finding if you did not."
+          fi
+
+          # Probe B is only answerable when origin/main is there. Without it the
+          # shell stops at its first branch and never reaches the comparison, so
+          # accusing the probe of not refusing would be this rehearsal repeating
+          # the mistake ADR 0060 was written to fix: one message for two
+          # different failures, pointing the reader at the wrong one.
+          if [ "${resolved}" = "missing" ]; then
+            b_line="Not judged. With \`origin/main\` missing, this probe stops at the first branch too, and the message below is the checkout one rather than an answer about the commit."
+          elif [ "${b_code}" = "0" ] || ! grep -q "is not an ancestor of origin/main" "${RUNNER_TEMP}/probe-b.log"; then
+            b_line="Exit ${b_code}, which is not what this probe should say."
+            note "probe B did not refuse a commit that is certainly not on main: exit ${b_code}"
+          else
+            b_line="Exit ${b_code}, and it named the commit rather than the checkout. The ancestry branch still refuses."
+          fi
+
+          # Probe C is answerable either way: it deletes a ref that may already
+          # be gone, and the shell's first branch is exactly what it is asking
+          # about.
+          if [ "${c_code}" = "0" ] || ! grep -q "origin/main is not in this checkout" "${RUNNER_TEMP}/probe-c.log"; then
+            c_line="Exit ${c_code}, which is not what this probe should say."
+            note "probe C did not name the checkout when origin/main was missing: exit ${c_code}"
+          else
+            c_line="Exit ${c_code}, and it named the checkout rather than the tag. The missing-ref branch still refuses."
+          fi
+
+          {
+            echo "## The release ancestry check, rehearsed"
+            echo
+            echo "Tag \`${GITHUB_REF_NAME}\` at \`${GITHUB_SHA}\`. Nothing was published, and"
+            echo "this job has no way to publish: no upload step, no token, no registry."
+            echo
+            echo "### Did a tag-push checkout give us \`refs/remotes/origin/main\`?"
+            echo
+            echo "${ref_line}"
+            echo
+            echo "### The tagged commit, judged by the shell \`release.yml\` runs"
+            echo
+            echo "${a_line}"
+            echo
+            echo '```'
+            cat "${RUNNER_TEMP}/probe-a.log"
+            echo '```'
+            echo
+            echo "### The same shell on a commit that is not on \`main\`"
+            echo
+            echo "${b_line}"
+            echo
+            echo '```'
+            cat "${RUNNER_TEMP}/probe-b.log"
+            echo '```'
+            echo
+            echo "### The same shell with \`refs/remotes/origin/main\` deleted"
+            echo
+            echo "${c_line}"
+            echo
+            echo '```'
+            cat "${RUNNER_TEMP}/probe-c.log"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "${failed}" != "0" ]; then
+            echo "The rehearsal is red. The job summary says which of the three probes"
+            echo "answered something other than what it should have."
+            exit 1
+          fi
+          echo "origin/main resolved, and both known branches of the check still refuse."
