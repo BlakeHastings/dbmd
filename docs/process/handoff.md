@@ -18,7 +18,7 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 239 |
+| merged pull requests | 242 |
 | decision records | 92 |
 | tests | 1420 passing, 1 skipped, across 47 files |
 | backlog | 123 closed, 3 open, and it still cannot be written to |
@@ -52,26 +52,27 @@ are listed below.
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-## In flight right now, which is two agents and four branches of mine
+## In flight right now, which is two agents and two branches of mine
 
 **This section went stale in exactly the way it warns about**, listing three
 agents that had all landed. It is rewritten rather than patched, and the date
 below is the thing to distrust first.
 
 **As of 2026-09-08, very late.** Two agents are out, and neither is fixing a
-defect: one is sweeping all 315 revisit conditions across the 92 decision
+defect: one is sweeping all 331 revisit conditions across the 92 decision
 records, which were last swept before about twenty changes landed, and one is
 sweeping `.claude/skills/dbmd/SKILL.md`, which has gone stale twice in one day.
 The second also carries a question worth more than the sweep: **what about that
 file could be checked mechanically**, given every page beside it is checked by
 something and it is the only document written to be obeyed rather than read.
 
-**Four branches of mine are open and only one needs a decision.** #241 is the
+**Two branches of mine are open and only one needs a decision.** #241 is the
 README fix and is **deliberately not merged**: it is two lines, proven against a
 real run, and merging it makes the owner's next `git pull` refuse until they
-stash the edit they have in that file. That is theirs to accept. #244 records
-that the studio they have open predates eight studio fixes, and this branch is
-the consolidation you are reading.
+stash the edit they have in that file. That is theirs to accept. The other is
+this branch, the consolidation you are reading. #244, which recorded that the
+studio the owner has open predates eight studio fixes, has landed, and its
+paragraphs are the next section down.
 
 **Everything else dispatched today has landed.** Eleven branches: the export and
 refs message fixes, the flag guard, the three false check and init sentences, the
