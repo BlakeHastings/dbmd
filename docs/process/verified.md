@@ -3262,3 +3262,100 @@ corrected by whoever fixed the thing and the other was nobody's job.
   is missing: `docs/import-format.md` documents `import/unknown-field` as forward
   compatibility without saying that the check sits on a layer which never sees
   the file a person pasted.
+
+## 2026-09-08: what a check stops saying when one file did not load
+
+The skill claimed that one broken file never hides anything, and ADR 0090 had
+already made that false. Three diagnostic codes stand down when a file is on disk
+and did not load, and **they do not stand down in the same way**, which is the
+part that took four models to establish rather than one.
+
+- **`group-empty` stands down for the whole model.** A fresh `dbmd init` model
+  with one group file nobody declares gives one warning and exit 0:
+
+  ```
+  groups/nobody.md
+      warning  no table declares `group: nobody`; an empty group is usually a
+               rename that missed a file (group-empty)
+
+  .: 1 warning across 1 file.
+  ```
+
+  Break one unrelated table file in that same model and the warning is not there.
+  The run is the parse error alone, and exit 1:
+
+  ```
+  tables/api_keys.md
+    6  error  Sequence item without - indicator (frontmatter-invalid)
+
+  .: 1 error across 1 file.
+  ```
+
+  `emptyGroups` in `src/model/validate.ts` returns on its first line when
+  `refusedTables` is non-empty, and again when any table is incomplete. Its own
+  comment names the cost and takes it: one broken table file silences every
+  `group-empty` in the model until it is fixed, because membership is declared by
+  the member and the missing member may be exactly the file that did not load.
+
+- **`ref-table-unknown` and `group-unknown` do not.** This is where a plausible
+  reading of the same record goes wrong, and it went wrong in a report here
+  before it was checked. A fourth model carried all three conditions at once, a
+  ref at a table that does not exist, a `group:` naming no file, and an empty
+  group, and then gained one unrelated broken table file. Only `group-empty`
+  went:
+
+  ```
+  tables/orders.md
+      error  `ref: customers.id` on column `customer_id` names no table; there
+             is no tables/customers.md (ref-table-unknown)
+    4  error  `group: ghost` names no file at groups/ghost.md (group-unknown)
+
+  .: 3 errors across 2 files.
+  ```
+
+  Both stand down only for the specific refused object they name.
+  `validate.ts` continues past one ref whose own target is in `refusedTables`
+  and judges every other ref; `read.ts` skips one `group-unknown` where that
+  group's own file is in the refused set. Neither is model-wide.
+
+  **So the accurate sentence is one code, not three**: one broken table file
+  silences `group-empty` across the model, and the other two say nothing only
+  about the object that did not load.
+
+- **`GET /api/model` carries the same array**, which is how a script tells "there
+  is no table `customers`" from "there is no `tables/customers.md`". Driven
+  against a studio started on an OS-assigned port over a model with one refused
+  file. The response holds `model`, and the model holds
+  `refused: [{"kind":"table","name":"broken","path":"tables/broken.md"}]`,
+  matching `RefusedFile` in `src/model/types.ts` and sorted by path where
+  `src/model/read.ts` sorts it.
+
+## 2026-09-08: two import diagnostics, driven from a provider-shaped file
+
+Both were added to the skill as contract claims and both were checked by
+constructing the state rather than by reading the code that raises them.
+
+- **`import/key-column-not-exported` is a warning, exits 0, and leaves a trap in
+  the model it wrote.** A table whose `primary_key.columns` names `invoice_no`
+  while its `columns` holds only `id` imports successfully, and the very next
+  `dbmd check` on the directory it wrote says
+  `` `invoices` has no primary key; put `pk: true` on the column or columns that
+  identify one row `` . So the check sends a person to invent a key the database
+  already has. The import's own warning is the one to read first, and it says so:
+  re-run the query if that column belongs to the table.
+
+- **`import/name-collision` folds case, and only the first table is written.**
+  `public.Orders` and `public.orders` in one file is an error, exit 1, with
+  `tables/Orders.md` and `_model.md` on disk and nothing else. The message is
+  about case in its own words rather than the schema advice the non-case
+  collision gets, which matters because "import one schema at a time" is no
+  advice at all for two tables already in one schema. ADR 0093.
+
+**One thing to know before constructing any import case.** A hand-written
+introspection file using the field names a person would guess, `name`, `schema`,
+`columns[].name`, is rejected with a wall of `import/empty-value` errors that
+read like a product defect and are not. The provider reads `table_schema`,
+`table_name`, `column_name`, `format_type` and
+`primary_key: { constraint_name, columns }`. This is the same seam recorded above
+under the seventeen import codes, met from the other side, and it cost two runs
+here before it was recognised.
