@@ -2155,3 +2155,43 @@ a run each.
   and pans. `#table-t0002` reports its header at screen `(-212, -225)`, so a
   script that picks a box by name and clicks its coordinates clicks nothing. Pick
   a box whose rectangle is inside the canvas rectangle.
+
+## 2026-09-08: the local server, probed from outside its own client
+
+`dbmd studio` is a web server that writes files on the machine it runs on, and
+every measurement of it in this file went through its own page. Probed with curl
+instead, against a copy of `examples/shop`:
+
+| what was sent | answer |
+| --- | --- |
+| `GET /api/model` | 200 |
+| `GET /../../../../etc/passwd` | 404 |
+| `GET /api/table/../../../secret` | 404 |
+| `GET /api/nope` | 404 |
+| `PUT /api/model` | 405 |
+| `POST /api/table` with no content type | 415 |
+| `PATCH` with `text/plain` | 415 |
+| `PATCH` with `{bad json` | 400 |
+| `DELETE /api/table/..%2f..%2fescape` | 400 |
+
+**The revision check runs before anything else**, which is the ordering worth
+noticing. A mutation with no `x-dbmd-revision` is refused before the body is
+parsed and before the path is resolved, so the traversal attempts above never
+reached the path logic at all, and the refusal explains the header rather than
+the path.
+
+**With a valid revision, the path logic refuses them by name.** Three spellings
+of the same escape, backslash, forward slash and double-encoded, all answered:
+
+```
+refusing `../../escaped`: a table name has to be one file name inside the model
+directory, and this one resolves outside it or is not a name a file can have
+```
+
+The same request with `orders` in the same position returns the table, so the
+refusal is about the name rather than about the request being malformed. Nothing
+named `escaped` exists anywhere under or beside the model directory afterwards,
+and the model still holds exactly `_model.md`, `groups`, `notes` and `tables`.
+
+So a local server that writes files refuses a traversal twice over, once for a
+missing revision and once by name, and says which is which.
