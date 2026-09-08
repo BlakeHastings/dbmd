@@ -37,7 +37,7 @@
 
 import { parseArgs } from 'node:util'
 import { registry, type ProviderRegistry } from '../import/providers/index.js'
-import { UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { UsageError, usageProblem, type Command } from './command.js'
 import type { Output } from './output.js'
 
 /**
@@ -173,18 +173,19 @@ export async function runQuery(
  * given at all, and that a bare word is not a model directory.
  */
 function parseQueryArgs(argv: readonly string[], providers: ProviderRegistry): string {
+  const options = { engine: { type: 'string' } } as const
   let values: { engine?: string }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: { engine: { type: 'string' } },
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd query" takes --engine and nothing ` +
+      `${usageProblem(error, argv, options)}. "dbmd query" takes --engine and nothing ` +
         `else; run "dbmd query --help".`,
     )
   }

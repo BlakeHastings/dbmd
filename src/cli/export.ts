@@ -30,7 +30,7 @@ import { SECTION_BEGIN, SECTION_END, mermaidSection } from '../export/mermaid.js
 import { readModel } from '../model/read.js'
 import { validate } from '../model/validate.js'
 import { writeAtomically } from '../model/write.js'
-import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, messageOf, usageProblem, type Command } from './command.js'
 import type { Output } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The same default `dbmd init` writes. */
@@ -320,18 +320,19 @@ function parseExportArgs(
   argv: readonly string[],
   json: boolean,
 ): { readonly directory: string; readonly stdout: boolean } {
+  const options = { format: { type: 'string' }, stdout: { type: 'boolean' } } as const
   let values: { format?: string; stdout?: boolean }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: { format: { type: 'string' }, stdout: { type: 'boolean' } },
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv) ?? messageOf(error)}. "dbmd export" takes an optional directory, ` +
+      `${usageProblem(error, argv, options)}. "dbmd export" takes an optional directory, ` +
         `--format and --stdout; run "dbmd export --help".`,
     )
   }

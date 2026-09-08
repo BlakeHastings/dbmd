@@ -104,6 +104,78 @@ describe('dbmd studio, as a command', () => {
     expect(err).toContain('dbmd studio --help')
   })
 
+  test('the unknown flag is named even when a good flag was typed first', async () => {
+    // The whole sentence, because the whole sentence is this project's: it used
+    // to answer `unknown option "--no-open"` and then list --no-open as a flag
+    // the command takes, which is the report test/cli/unknown-option.test.ts
+    // exists for.
+    const { code, out, err } = await run('studio', '--no-open', '--bogus')
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toBe(
+      'dbmd: unknown option "--bogus". "dbmd studio" takes an optional directory, ' +
+        '--port and --no-open; run "dbmd studio --help".\n',
+    )
+  })
+
+  /**
+   * The reason clause, which is either this project's sentence or the one
+   * `parseArgs` threw, without the tail every message here ends in.
+   *
+   * The three cases below are value problems rather than unknown flags, so the
+   * clause is Node's own wording and this suite deliberately does not pin it:
+   * that wording is not a contract, it has changed before, and CI runs two Node
+   * versions. What is pinned is what this project promises about it, that the
+   * flag it is about is the flag that was wrong, that nothing is called an
+   * unknown option when nothing is one, and that it arrives as one line that
+   * reads into the rest of the sentence.
+   */
+  function reasonOf(err: string): string {
+    const tail = err.indexOf('. "dbmd studio" takes')
+    return tail === -1 ? err : err.slice(0, tail)
+  }
+
+  /** One line, and it joins the tail with one full stop rather than two. */
+  function readsAsOneSentence(err: string): void {
+    expect(err.trimEnd()).not.toContain('\n')
+    expect(err).not.toContain('..')
+    expect(err).toContain('. "dbmd studio" takes an optional directory')
+    expect(err).toContain('run "dbmd studio --help".\n')
+  }
+
+  test('--port with no value is about --port, and is not called an unknown option', async () => {
+    const { code, out, err } = await run('studio', '--port')
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(reasonOf(err)).toContain('--port')
+    expect(err).not.toContain('unknown option')
+    readsAsOneSentence(err)
+  })
+
+  test('--port -1 is about --port, not about the flag in front of it', async () => {
+    // parseArgs reads "-1" as a dash token rather than as a value, so the error
+    // is about --port having no argument. The old message called --no-open an
+    // unknown option here, which was wrong twice over. Node says it over three
+    // lines and ends on a full stop, which is why the sentence used to reach
+    // the reader with ".." in the middle of it.
+    const { code, out, err } = await run('studio', '--no-open', '--port', '-1')
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(reasonOf(err)).toContain('--port')
+    expect(reasonOf(err)).not.toContain('--no-open')
+    expect(err).not.toContain('unknown option')
+    readsAsOneSentence(err)
+  })
+
+  test('--no-open=yes is about --no-open taking no argument', async () => {
+    const { code, out, err } = await run('studio', '--no-open=yes')
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(reasonOf(err)).toContain('--no-open')
+    expect(err).not.toContain('unknown option')
+    readsAsOneSentence(err)
+  })
+
   test('a directory that is not there is refused rather than served empty', async () => {
     const directory = await missingPath()
     const { code, out, err } = await run('studio', directory)
