@@ -464,6 +464,15 @@ reports a failure through the last-resort handler any more. That was checked by
 driving fourteen failure modes across all seven commands with `--json` and
 reading `error.code`, not by counting the ones that had been fixed.
 
+**Two more were found on 2026-09-08 and both are out with agents.** The agent
+skill contradicted itself within an hour of #227, saying in one place that a
+failed write's record is lost and in another that it is reported, both from the
+same author in the same commit. And `scripts/check-commands.mjs` resolves every
+`dbmd` command name written anywhere in the repository and no flag, so
+`dbmd check --deep` passes in the README, in the published recipe and in the
+skill, all three measured. The recipe is the sharp one: that line would ship to a
+stranger and exit 2 in their CI.
+
 **Three of the four not-dispatched items are one small branch when a slot
 frees**: the studio's busy port, the CI recipe's untracked-README hazard, and
 whatever the README needs. The third is the one that waits on the owner, because
