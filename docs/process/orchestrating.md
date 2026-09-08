@@ -1506,3 +1506,44 @@ least a visible decision rather than an invisible one. Where a range is the only
 practical shape, the heading list is the receipt. This is the same failure as
 quoting a count from arithmetic: the number looked right, so nobody read what it
 was a count of.
+
+## Four places make one claim, and the ones with machinery on them are right
+
+The claim is what `dbmd check` says when a file on disk did not load. ADR 0090
+made one diagnostic stand down for the whole model in that case, and four places
+in this repository describe the behaviour. They were written by different people
+at different times and none of them cites another.
+
+| where | what checks it | verdict |
+| --- | --- | --- |
+| `docs/format.md` | `test/docs/format.test.ts` | right, with its own section and three table rows |
+| `test/cli/check.test.ts` | it is the machinery | right, and it knew first |
+| `.claude/skills/dbmd/SKILL.md` | nothing | wrong, for an unknown number of weeks |
+| `dbmd check --help` | `check-commands.mjs`, names and flags only | wrong, for an unknown number of weeks |
+
+**The two that were wrong were both wrong in the same way and were found
+separately, hours apart, by two agents who never spoke.** One was sweeping the
+skill against recent merges; the other was reading all 258 lines of `--help` as
+assertions. Neither knew about the other's finding. That is what a real class of
+defect looks like from the inside: it does not present as one bug found twice, it
+presents as two people independently noticing the same sentence is not true.
+
+**The test knew before either of them.** `test/cli/check.test.ts` builds its
+four-problem fixture out of a broken **note** rather than a broken table, and the
+comment above it says why in as many words: a broken table would make
+`group-empty` stand down and turn a four-problem fixture into a three-problem
+one. So the exception was understood, precisely, by the person writing the test,
+at the moment ADR 0090 landed. It just never reached the two documents a person
+reads.
+
+**The lesson is not "write more tests".** It is narrower and it is about which
+documents get them. `docs/format.md` is a reference: people look things up in it.
+The skill and `--help` are obeyed: an agent and a person act on them without
+looking anything up. **The two documents that are acted on rather than consulted
+are the two that had no machinery**, and they are the two where being wrong costs
+something immediately.
+
+That ordering is backwards and it is the argument for `test/docs/skill.test.ts`
+and for whatever eventually checks `--help`. It is also the reason the fix for
+both was to correct the sentence rather than the behaviour: the behaviour has a
+decision record, an argued cost, and a test. Only the prose had drifted.
