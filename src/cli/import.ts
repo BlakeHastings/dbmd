@@ -58,7 +58,7 @@ import { readIntrospection } from '../import/read.js'
 import { readModel } from '../model/read.js'
 import type { Model } from '../model/types.js'
 import { writeModel, type WriteSkip } from '../model/write.js'
-import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, messageOf, usageProblem, type Command } from './command.js'
 import { sortedBy, type JsonValue, type Output, type Palette, type Report } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The same default `dbmd init` writes. */
@@ -835,23 +835,24 @@ function parseImportArgs(argv: readonly string[]): {
   readonly engine: string | undefined
   readonly confirm: boolean
 } {
+  const options = {
+    file: { type: 'string' },
+    dir: { type: 'string' },
+    engine: { type: 'string' },
+    confirm: { type: 'boolean' },
+  } as const
   let values: { file?: string; dir?: string; engine?: string; confirm?: boolean }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: {
-        file: { type: 'string' },
-        dir: { type: 'string' },
-        engine: { type: 'string' },
-        confirm: { type: 'boolean' },
-      },
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv, ['file', 'dir', 'engine', 'confirm']) ?? messageOf(error)}. "dbmd import" takes --file, --dir, ` +
+      `${usageProblem(error, argv, options)}. "dbmd import" takes --file, --dir, ` +
         `--engine and --confirm; run "dbmd import --help".`,
     )
   }

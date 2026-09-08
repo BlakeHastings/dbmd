@@ -33,7 +33,7 @@ import {
 import { readModel } from '../model/read.js'
 import type { Model } from '../model/types.js'
 import { validate } from '../model/validate.js'
-import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, usageProblem, type Command } from './command.js'
 import type { Output, Palette } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The same default `dbmd init` writes. */
@@ -198,18 +198,19 @@ function parseCheckArgs(argv: readonly string[]): {
   readonly directory: string
   readonly strict: boolean
 } {
+  const options = { strict: { type: 'boolean' } } as const
   let values: { strict?: boolean }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: { strict: { type: 'boolean' } },
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv, ['strict']) ?? messageOf(error)}. "dbmd check" takes an optional directory ` +
+      `${usageProblem(error, argv, options)}. "dbmd check" takes an optional directory ` +
         `and --strict; run "dbmd check --help".`,
     )
   }

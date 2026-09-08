@@ -41,7 +41,7 @@ import { parseArgs } from 'node:util'
 import { readModel } from '../model/read.js'
 import type { Column, Model, RefEdge, Table } from '../model/types.js'
 import { validate } from '../model/validate.js'
-import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, usageProblem, type Command } from './command.js'
 import type { JsonValue, Output, Palette } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The same default `dbmd init` writes. */
@@ -553,18 +553,19 @@ function parseRefsArgs(argv: readonly string[]): {
   readonly incoming: boolean
   readonly outgoing: boolean
 } {
+  const options = { incoming: { type: 'boolean' }, outgoing: { type: 'boolean' } } as const
   let values: { incoming?: boolean; outgoing?: boolean }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: { incoming: { type: 'boolean' }, outgoing: { type: 'boolean' } },
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv, ['incoming', 'outgoing']) ?? messageOf(error)}. "dbmd refs" takes a table, an optional ` +
+      `${usageProblem(error, argv, options)}. "dbmd refs" takes a table, an optional ` +
         `directory, --incoming and --outgoing; run "dbmd refs --help".`,
     )
   }

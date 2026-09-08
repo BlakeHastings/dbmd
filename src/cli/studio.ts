@@ -21,7 +21,7 @@
 
 import { stat } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, usageProblem, type Command } from './command.js'
 import { startStudio, type StudioOptions } from '../studio/index.js'
 import type { Output } from './output.js'
 
@@ -110,24 +110,25 @@ export function parseStudioArgs(argv: readonly string[]): StudioOptions & {
   readonly port: number
   readonly open: boolean
 } {
+  const options = {
+    // A string, then checked here: `parseArgs` has no number type, and
+    // "--port banana" has to be a usage error rather than a NaN that binds to
+    // whatever the OS makes of it.
+    port: { type: 'string' },
+    'no-open': { type: 'boolean' },
+  } as const
   let values: { port?: string; 'no-open'?: boolean }
   let positionals: string[]
   try {
     ;({ values, positionals } = parseArgs({
       args: [...argv],
-      options: {
-        // A string, then checked here: `parseArgs` has no number type, and
-        // "--port banana" has to be a usage error rather than a NaN that binds
-        // to whatever the OS makes of it.
-        port: { type: 'string' },
-        'no-open': { type: 'boolean' },
-      },
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv, ['port', 'no-open']) ?? messageOf(error)}. "dbmd studio" takes an optional directory, ` +
+      `${usageProblem(error, argv, options)}. "dbmd studio" takes an optional directory, ` +
         `--port and --no-open; run "dbmd studio --help".`,
     )
   }

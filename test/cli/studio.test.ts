@@ -126,12 +126,21 @@ describe('dbmd studio, as a command', () => {
    * clause is Node's own wording and this suite deliberately does not pin it:
    * that wording is not a contract, it has changed before, and CI runs two Node
    * versions. What is pinned is what this project promises about it, that the
-   * flag it is about is the flag that was wrong and that nothing is called an
-   * unknown option when nothing is one.
+   * flag it is about is the flag that was wrong, that nothing is called an
+   * unknown option when nothing is one, and that it arrives as one line that
+   * reads into the rest of the sentence.
    */
   function reasonOf(err: string): string {
     const tail = err.indexOf('. "dbmd studio" takes')
     return tail === -1 ? err : err.slice(0, tail)
+  }
+
+  /** One line, and it joins the tail with one full stop rather than two. */
+  function readsAsOneSentence(err: string): void {
+    expect(err.trimEnd()).not.toContain('\n')
+    expect(err).not.toContain('..')
+    expect(err).toContain('. "dbmd studio" takes an optional directory')
+    expect(err).toContain('run "dbmd studio --help".\n')
   }
 
   test('--port with no value is about --port, and is not called an unknown option', async () => {
@@ -140,20 +149,22 @@ describe('dbmd studio, as a command', () => {
     expect(out).toBe('')
     expect(reasonOf(err)).toContain('--port')
     expect(err).not.toContain('unknown option')
-    expect(err).toContain('run "dbmd studio --help".\n')
+    readsAsOneSentence(err)
   })
 
   test('--port -1 is about --port, not about the flag in front of it', async () => {
     // parseArgs reads "-1" as a dash token rather than as a value, so the error
     // is about --port having no argument. The old message called --no-open an
-    // unknown option here, which was wrong twice over.
+    // unknown option here, which was wrong twice over. Node says it over three
+    // lines and ends on a full stop, which is why the sentence used to reach
+    // the reader with ".." in the middle of it.
     const { code, out, err } = await run('studio', '--no-open', '--port', '-1')
     expect(code).toBe(2)
     expect(out).toBe('')
     expect(reasonOf(err)).toContain('--port')
     expect(reasonOf(err)).not.toContain('--no-open')
     expect(err).not.toContain('unknown option')
-    expect(err).toContain('run "dbmd studio --help".\n')
+    readsAsOneSentence(err)
   })
 
   test('--no-open=yes is about --no-open taking no argument', async () => {
@@ -162,7 +173,7 @@ describe('dbmd studio, as a command', () => {
     expect(out).toBe('')
     expect(reasonOf(err)).toContain('--no-open')
     expect(err).not.toContain('unknown option')
-    expect(err).toContain('run "dbmd studio --help".\n')
+    readsAsOneSentence(err)
   })
 
   test('a directory that is not there is refused rather than served empty', async () => {

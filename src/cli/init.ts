@@ -10,7 +10,7 @@
 import { readdir } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { writeModel } from '../model/write.js'
-import { EXIT_FAILURE, UsageError, messageOf, offendingOption, type Command } from './command.js'
+import { EXIT_FAILURE, UsageError, usageProblem, type Command } from './command.js'
 import { exampleModel } from './example.js'
 import { sortedBy, type Output } from './output.js'
 
@@ -86,17 +86,18 @@ async function runInit(argv: readonly string[], out: Output): Promise<number> {
  * a handful of commands and flags.
  */
 function parseInitArgs(argv: readonly string[]): string {
+  const options = {} as const
   let positionals: string[]
   try {
     ;({ positionals } = parseArgs({
       args: [...argv],
-      options: {},
+      options,
       allowPositionals: true,
       strict: true,
     }))
   } catch (error) {
     throw new UsageError(
-      `${offendingOption(argv, []) ?? messageOf(error)}. "dbmd init" takes an optional directory ` +
+      `${usageProblem(error, argv, options)}. "dbmd init" takes an optional directory ` +
         `and no flags; run "dbmd init --help".`,
     )
   }
