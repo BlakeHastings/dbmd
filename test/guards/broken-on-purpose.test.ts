@@ -303,6 +303,219 @@ describe('check:adr, broken on purpose', () => {
 })
 
 // ---------------------------------------------------------------------------
+// check-duplication.mjs: a page holding a long run of its own lines twice
+// ---------------------------------------------------------------------------
+
+describe('check:duplication, broken on purpose', () => {
+  /**
+   * A real git repository again, for the same reason the two above build one:
+   * the check reads `git ls-files`, so a page written to disk and never added
+   * is not its business, and a test that wrote one would pass while proving
+   * nothing.
+   */
+  async function repository(files: Record<string, string>): Promise<string> {
+    const root = await scratchWith('check-duplication.mjs')
+    for (const [path, contents] of Object.entries(files)) {
+      const full = join(root, path)
+      await mkdir(dirname(full), { recursive: true })
+      await writeFile(full, contents)
+    }
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root, stdio: 'ignore' })
+    execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'ignore' })
+    return root
+  }
+
+  /**
+   * A block of distinct lines, in the shape a section of prose has: no two of
+   * them the same, so a run found across two copies of it is a run this check
+   * found rather than an accident of the fixture repeating itself.
+   */
+  function section(label: string, count: number): string[] {
+    return Array.from({ length: count }, (_, i) => `${label} line ${i + 1} of ${count}.`)
+  }
+
+  test('a page holding its own body twice fails, and both copies are located', async () => {
+    const body = section('body', 60)
+    const root = await repository({
+      'docs/log.md': ['# The log', '', ...body, '', ...body, ''].join('\n'),
+      'docs/fine.md': ['# Fine', '', ...section('other', 200), ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(1)
+    // The file, and how long the run is, so a reader knows whether they are
+    // looking at a pasted paragraph or a pasted document.
+    expect(ran.err).toContain('docs/log.md')
+    expect(ran.err).toContain('61 consecutive lines')
+    // Both line numbers, because the fix is to delete one of the two copies and
+    // the author has to be able to see which is which.
+    expect(ran.err).toContain('at line 2 and again at line 63')
+    // The sentence that says why a build fails over this. Without it the check
+    // is a mystery exit code over a file that looks fine when you open it.
+    expect(ran.err).toContain('does not repeat itself by coincidence')
+    // And it is the only offender. A check that reported every file would also
+    // have exited 1 here.
+    expect(ran.err).toContain('1 tracked markdown file')
+    expect(ran.err).not.toContain('docs/fine.md')
+  })
+
+  test('the same tree with one copy passes, so the failure was the second copy', async () => {
+    const root = await repository({
+      'docs/log.md': ['# The log', '', ...section('body', 60), ''].join('\n'),
+      'docs/fine.md': ['# Fine', '', ...section('other', 200), ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('2 markdown files scanned')
+    expect(ran.out).toContain('none repeating 40 or more consecutive lines of itself')
+  })
+
+  test('the summary line reports the margin, so a raised limit can be judged', async () => {
+    const shared = section('shared', 6)
+    const root = await repository({
+      'docs/page.md': ['# A page', ...shared, 'Something else.', ...shared, ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(0)
+    // The number is the whole point of that line. A sweep that quietly stopped
+    // sweeping prints the same "none" as one that swept, and this is what
+    // separates them: somebody raising the limit reads it and can see whether
+    // they are making room for real repetition or giving the check away.
+    expect(ran.out).toContain('The longest run one file holds twice is 6 lines')
+    expect(ran.out).toContain('docs/page.md')
+  })
+
+  test('a run one line under the limit is not a finding, and one line over is', async () => {
+    const short = section('short', 39)
+    const under = await repository({
+      'docs/page.md': ['# A page', ...short, 'A divider.', ...short, ''].join('\n'),
+    })
+
+    const passed = await runScript(under, 'check-duplication.mjs')
+
+    // 39 is the largest run this deliberately says nothing about. The limit is
+    // a judgement rather than a discovery, so the boundary is asserted from
+    // both sides: a check whose limit had drifted upward would still pass every
+    // case above and fail here.
+    expect(passed.code).toBe(0)
+    expect(passed.out).toContain('The longest run one file holds twice is 39 lines')
+
+    const long = section('long', 40)
+    const over = await repository({
+      'docs/page.md': ['# A page', ...long, 'A divider.', ...long, ''].join('\n'),
+    })
+
+    const failed = await runScript(over, 'check-duplication.mjs')
+
+    expect(failed.code).toBe(1)
+    expect(failed.err).toContain('40 consecutive lines')
+  })
+
+  test('the repetition markdown is made of is not a finding', async () => {
+    // Everything a page repeats without meaning anything by it: blank lines,
+    // list markers, the same two headings under every entry, a table separator.
+    // The naive check is "no line appears twice" and this is the fixture that
+    // check fails on. Nine hundred lines of it, and not one finding.
+    const entry = (n: number) => [
+      `## Entry ${n}`,
+      '',
+      '### Context',
+      '',
+      `Something happened on day ${n}.`,
+      '',
+      '| what | when |',
+      '| --- | --- |',
+      `| a thing | day ${n} |`,
+      '',
+      '- one',
+      '- two',
+      '- three',
+      '',
+    ]
+    const root = await repository({
+      'docs/entries.md': ['# Entries', '', ...Array.from({ length: 64 }, (_, i) => entry(i + 1))]
+        .flat()
+        .join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(0)
+  })
+
+  test('the same block in two files is not a finding', async () => {
+    // Pages in this repository quote each other on purpose and at length, and
+    // this check is deliberately blind to that. Asserting it means the day
+    // somebody widens the check to compare files, this test says what they are
+    // giving up rather than turning red for no stated reason.
+    const shared = section('shared', 120).join('\n')
+    const root = await repository({
+      'docs/one.md': `# One\n\n${shared}\n`,
+      'docs/two.md': `# Two\n\n${shared}\n`,
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(0)
+  })
+
+  test('a duplicated file that is not markdown is not a finding', async () => {
+    // The other half of what this does not cover, asserted for the same reason.
+    // A module pasted over itself is a real defect and this is not the check
+    // for it.
+    const body = section('body', 120).join('\n')
+    const root = await repository({
+      'src/twice.ts': `// a module\n${body}\n${body}\n`,
+      'docs/one.md': '# One\n\nOne paragraph.\n',
+      'docs/two.md': '# Two\n\nAnother paragraph.\n',
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(0)
+    // And it did not silently scan nothing: the two markdown files were read.
+    expect(ran.out).toContain('2 markdown files scanned')
+  })
+
+  test('one edited word inside a pasted block hides the whole of it', async () => {
+    // The honest limit of comparing lines, and the reason the script's header
+    // says so. A test that proved only the true positive would leave a reader
+    // believing this catches a duplicate somebody has since been editing.
+    const body = section('body', 200)
+    const edited = body.map((line, i) => (i % 30 === 0 ? `${line} Edited.` : line))
+    const root = await repository({
+      'docs/log.md': ['# The log', '', ...body, '', ...edited, ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(0)
+  })
+
+  test('a wall of identical lines is measured as two halves rather than one run', async () => {
+    // The two occurrences a run is reported at never overlap, which is what
+    // stops ninety identical lines being described as a run of eighty nine
+    // repeated one line later. Ninety of them is a run of forty five.
+    const root = await repository({
+      'docs/wall.md': ['# A wall', ...Array.from({ length: 90 }, () => 'the same line'), ''].join(
+        '\n',
+      ),
+    })
+
+    const ran = await runScript(root, 'check-duplication.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('45 consecutive lines')
+    expect(ran.err).toContain('at line 2 and again at line 47')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // check-commands.mjs: a page naming a command that is not there
 // ---------------------------------------------------------------------------
 
