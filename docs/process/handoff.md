@@ -75,10 +75,13 @@ have now worked between the afternoon of 2026-09-07 and here.
 
 **Two more waves went out after those, both from driving the command line.**
 
-- **`cli/the-flag-it-names-is-the-flag-that-was-wrong`.** `offendingOption` in
-  `src/cli/command.ts` returns the first argv token starting with a dash rather
-  than the one that offended, so every command can name a valid flag as unknown
-  in a sentence that then lists it as accepted. All seven call it.
+- **LANDED as #225.** `offendingOption` returned the first argv token starting
+  with a dash rather than the one that offended, so every command could name a
+  valid flag as unknown in a sentence that then listed it as accepted. It now
+  takes the object the command handed `parseArgs`, types included, which is what
+  lets it tell a mistyped short flag from an option's value. Sent back once,
+  because the first version traded away a case that had been correct. Verified by
+  building the sha and driving twelve command lines.
 - **`cli/three-sentences-that-are-false-about-the-thing-in-front-of-them`.**
   `dbmd init` tells a plain file it is a directory that is not empty and offers
   a remedy that provably fails; `dbmd check` counts diagnostic headings and calls

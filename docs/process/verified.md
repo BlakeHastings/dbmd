@@ -6133,3 +6133,23 @@ corrected by whoever fixed the thing and the other was nobody's job.
   rather than a false sentence. `git status --porcelain` on the directory, or
   `git add -N` before the diff, closes it in one line. Worth doing before the
   recipe ships with the package.
+
+- **PR #225 was verified by building its sha and driving twelve command lines.**
+  Every one of the seven commands names the flag that was actually wrong, in both
+  orders, and `dbmd export -abc` names `-abc`, which is a case nobody asked for.
+  The three value cases come out on one line with no doubled full stop and keep
+  Node's `use '--port=-XYZ'`, which is the only sentence in that message telling
+  the reader what to type. `dbmd import --file --dir` is the case the rework
+  found on its own: `--dir` is a flag the command takes, sitting where a value
+  belongs, so nothing is called unknown and the sentence is about `--file`. A
+  names-only helper would have called an accepted flag unknown there, which is
+  the original defect in a new place. Nothing ordinary moved: `init`, `check` on
+  the example model, `refs`, `export`, `query` at its 12403 bytes and `import`
+  all behave as they did.
+
+- **The one thing that helper now stands aside on cannot happen yet, and says
+  so.** A short cluster like `-qz` is one token to the helper and two options to
+  `parseArgs`, so it falls back rather than guessing. No command declares a short
+  option today. The trade is deliberate and written down: a helper that guesses
+  there could call an accepted flag unknown the day somebody adds one, which is
+  worse than a fallback that reads slightly louder.
