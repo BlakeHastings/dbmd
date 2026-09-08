@@ -54,12 +54,12 @@ this survived.
 ## Decision
 
 **`DiagnosticLocation` gains a third variant, `{ in: 'directory', path }`, and
-the model reader uses it for the four codes that are about a directory.**
+the model reader uses it for every code that is about a directory.**
 `model-directory-unreadable` (`.`), `unknown-kind-directory`,
-`object-in-subdirectory`, `object-not-a-file`, and the `file-unreadable` that a
-kind directory raises when it cannot be listed. `kind-not-a-directory` keeps a
-file location, because there a plain file really is what is on disk and the whole
-message is about it.
+`object-in-subdirectory`, `object-not-a-file`, `model-file-not-a-file`, and the
+`file-unreadable` that a kind directory raises when it cannot be listed.
+`kind-not-a-directory` keeps a file location, because there a plain file really
+is what is on disk and the whole message is about it.
 
 There is deliberately no `line`. A directory has none, and the point of ADR
 0014's union is that a consumer wanting to open an editor at a line has to ask
@@ -110,18 +110,38 @@ this fix that leaves such a consumer both working and correct. `docs/format.md`
 and [`docs/import-format.md`](../../import-format.md) both say what the shapes
 are, and `test/diagnostics.test.ts` holds one of each and tells them apart.
 
-## `model-file-missing` keeps its file location, and that is on purpose
+## The two diagnostics about `_model.md` land on opposite sides, and that is the interesting part
 
+`_model.md` is the one path in a model that two codes complain about, for two
+different reasons, and they take different location kinds. That looks
+inconsistent from a distance and it is the rule, stated once:
+
+**Nothing at the path is a file location, because that is where the fix goes.**
 `dbmd check` on an empty directory says "1 warning across 1 file" about a
-`_model.md` that is not there. The file does not exist and the sentence still
-says file, which looks like the same defect and is not.
+`_model.md` that is not there. Nothing exists at that path, so there is no
+directory to name; the diagnostic is about a file that has to be written, its
+whole message is "add one with `kind: model`, a `name:` and an `engine:`", and
+ADR 0068 is the argument for naming that fix. A directory location would say the
+opposite of what the diagnostic means. The count says one file, and what it
+counts is one file's worth of problem rather than one file on disk.
 
-`model-file-missing` is about a path a file has to be written at. Its whole
-message is "add one with `kind: model`, a `name:` and an `engine:`", ADR 0068 is
-the argument for naming that fix, and the location is where the fix goes. A
-directory location would say the opposite of what the diagnostic means. So the
-count says one file, and what it counts is one file's worth of problem, not one
-file on disk.
+**A directory at the path is a directory location, because that is what is there
+and what the message is about.** `model-file-not-a-file` opens with "`_model.md`
+is a directory rather than a file". A file location under that would have
+`dbmd check` print "1 warning across 1 file" two lines below a sentence calling
+it a directory, which is a smaller copy of the defect this record exists to
+remove, in the one code this change adds.
+
+That is the same sentence `kind-not-a-directory` is carved out by, applied the
+other way up: there a plain file really is what is on disk and the whole message
+is about it, so it keeps a file location. What decides a location kind is what is
+at the path, and where there is nothing at the path, what has to end up there.
+
+This was drawn the other way first, on the reasoning that both codes are
+ultimately about a file that has to exist. That reasoning proves too much: it
+would give `object-not-a-file` a file location as well, since a `tables/orders.md`
+that is a directory is also a file that has to exist, and then the variant would
+have almost no members left.
 
 ## Consequences
 

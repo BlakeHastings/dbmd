@@ -1093,6 +1093,10 @@ describe('_model.md', () => {
     ])
     expect(model.name).toBeUndefined()
     expect(model.tables).toHaveLength(1)
+    // A file location, and the other half of ADR 0086's rule: nothing is at
+    // this path, so there is no directory to name and the location is where the
+    // fix goes. The directory case below takes the opposite kind.
+    expect(location(diagnostics[0]).path).toBe('_model.md')
   })
 
   test('and an empty directory gets the same sentence, unchanged', async () => {
@@ -1136,6 +1140,19 @@ describe('_model.md', () => {
         '`kind: model`, a `name:` and an `engine:`',
     ])
     expect(model.name).toBeUndefined()
+  })
+
+  test('it points at a directory, which is what is at the path', async () => {
+    // The opposite side from `model-file-missing` above, which points at a file
+    // because nothing is at the path and a file is what has to end up there.
+    // Here a directory is at the path and the message is about it, so a file
+    // location would have `dbmd check` count a directory as a file. ADR 0086.
+    const { diagnostics } = await withModel(
+      { '_model.md/keep.md': 'anything at all\n' },
+      { modelFile: false },
+    )
+
+    expect(directoryLocation(diagnostics[0]).path).toBe('_model.md')
   })
 
   test('and it is not also told that there is no _model.md', async () => {

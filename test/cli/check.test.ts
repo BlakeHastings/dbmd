@@ -255,6 +255,23 @@ describe('the summary names what it counted, rather than calling all of it files
     expect(err).toContain('1 error across 1 directory.')
   })
 
+  test('a `_model.md` that is a directory is counted as one, two lines under the sentence saying so', async () => {
+    // The two lines have to agree. A warning that opens "`_model.md` is a
+    // directory rather than a file" over a summary saying "across 1 file" is a
+    // smaller copy of the defect this whole change removes.
+    const parent = await mkdtemp(join(tmpdir(), 'dbmd-check-'))
+    temporaries.push(parent)
+    const directory = join(parent, 'db-model')
+    await mkdir(join(directory, '_model.md'), { recursive: true })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(0)
+    expect(err).toContain('`_model.md` is a directory rather than a file')
+    expect(err).toContain('1 warning across 1 directory.')
+    expect(err).not.toContain('across 1 file')
+  })
+
   test('a `_model.md` nobody wrote is still counted as the file it has to become', async () => {
     // The one place the noun stays "file" over something that is not on disk.
     // `model-file-missing` is about a path a file has to be written at, and

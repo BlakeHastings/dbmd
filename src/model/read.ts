@@ -135,12 +135,17 @@ export async function readModel(dir: string): Promise<ReadResult> {
     // `_model.md` exists and is a directory. The warning above would be false
     // twice here: the name is taken, and its fix cannot be followed, because
     // writing a file over a directory fails with `EISDIR`. So the fix is the
-    // opposite one and it is named the same way, and the location stays a file
-    // because the path is where a file has to end up.
+    // opposite one and it is named the same way.
+    //
+    // A directory location, where `model-file-missing` takes a file one. The
+    // difference is what is at the path: there, nothing, so the location is
+    // where the fix goes; here, a directory, which is what the message is about
+    // and what `dbmd check` would otherwise count as a file two lines under a
+    // sentence calling it a directory. ADR 0086.
     push(diagnostics, {
       code: 'model-file-not-a-file',
       severity: 'warning',
-      at: inFile(MODEL_FILE),
+      at: inDirectory(MODEL_FILE),
       message:
         `\`${MODEL_FILE}\` is a directory rather than a file, so the model has no name and ` +
         `no engine; move it aside, then write \`${MODEL_FILE}\` with \`kind: model\`, a ` +
