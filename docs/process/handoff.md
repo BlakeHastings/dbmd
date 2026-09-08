@@ -78,6 +78,15 @@ saw" standing after the list has emptied; and a conflict entry whose "just now"
 ages, in a list that renders the path twice. Dispatch them when that branch
 lands.
 
+**Five is the ceiling on this machine, and memory is what sets it.** Measured
+with five agents running: CPU at 36 per cent, 40 node processes, and **6.7 GB
+free of 31.9 GB**. Each agent runs `npm ci`, a build and the full suite, so the
+next one costs a gigabyte or two rather than a core. A sixth was not dispatched
+for that reason and the read-only sweep it would have run, the seventeen
+`import/` diagnostic codes, is the obvious next enumeration when a slot frees.
+**Check before dispatching rather than counting agents**: the number that
+matters is free memory, not how many are out.
+
 **What to do if you are picking this up cold.** Read the pull request bodies
 before the briefs: every one of these was measured, and the measurements are in
 the bodies rather than here. Then `gh pr list --state open`, because this table
