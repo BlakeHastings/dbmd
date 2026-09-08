@@ -1658,3 +1658,49 @@ The general shape is one this project keeps meeting. A mechanical check answers
 a question adjacent to the one you care about. It is worth having when the
 adjacent question is cheap and the real one is not, and it is dangerous exactly
 when its answer gets quoted as though it were the real one.
+
+## Four studios of mine were still listening, hours later, and nothing said so
+
+`working-an-issue.md` tells an agent to stop the server it started, by its own
+process, before its worktree is removed. This file already records twenty two
+left running in one session by the person who reviews everyone else against that
+rule. Checking the loopback listeners tonight found four more, all mine, started
+at 01:32, 01:32, 02:37 and 03:04 and still bound at 07:00.
+
+**Nobody notices, because a studio that is still listening looks exactly like
+nothing at all.** It takes no window, prints nothing, and the only symptom is a
+port and a little memory on a machine whose ceiling is memory. So the rule has
+been repeated for a day and broken for a day, which is what a rule with no
+detection behind it does.
+
+`scripts/stray-studios.mjs` is the detection. It prints every studio that is
+listening, its port as a URL, its model directory, and which one is the owner's:
+
+```
+2 studio(s) listening.
+
+OWNER'S  http://127.0.0.1:49192/  pid 34404
+          examples/shop, the tracked one
+  stray  http://127.0.0.1:64841/  pid 25924
+          .
+```
+
+**It stops nothing, deliberately.** Killing a studio is a decision about
+somebody else's window and it stays with a person. That is also why the owner's
+is named rather than filtered out: the useful output is "one of these is theirs
+and the rest are yours", and a tool that quietly hid theirs would be one step
+from a tool that stopped it.
+
+**Its first version reported eight studios and one of them was itself.** It
+matched any command line containing the word "studio", which caught five
+`npm run studio:dev` shell wrappers around one server, that server a second time
+through a `cmd.exe` carrying its script name as an argument, and the PowerShell
+query doing the asking. The fix was not a better pattern. **A studio is a thing
+listening on a port**, so asking the ports rather than the process table answers
+the real question and every wrapper falls away for free. That is the same move as
+asking each worktree directory whether it is its own git top level, one section
+up: when a reading is full of things that are not the thing, the filter is
+usually the wrong question rather than a loose one.
+
+Proven by starting a studio on an OS-assigned port, watching it appear as a
+stray, stopping it by pid, and watching the count go back to one.
