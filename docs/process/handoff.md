@@ -469,8 +469,9 @@ skill contradicted itself within an hour of #227, saying in one place that a
 failed write's record is lost and in another that it is reported, both from the
 same author in the same commit. And `scripts/check-commands.mjs` resolves every
 `dbmd` command name written anywhere in the repository and no flag, so
-`dbmd check --deep` passes in the README, in the published recipe and in the
-skill, all three measured. The recipe is the sharp one: that line would ship to a
+a flag no command declares passes in the README, in the published recipe and in
+the skill, all three measured. It is deliberately not quoted, because these
+files are scanned by that same guard once it learns about flags. The recipe is the sharp one: that line would ship to a
 stranger and exit 2 in their CI.
 
 **Three of the four not-dispatched items are one small branch when a slot

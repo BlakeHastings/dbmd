@@ -1071,8 +1071,9 @@ That sentence was wrong when first written here, and the correction belongs in
 front of the argument rather than in a footnote. `check-commands.mjs` does scan
 the skill, and a command name or an `npm run` script that does not exist fails
 there like anywhere else. What nothing catches, in the skill or on any other
-page, is a **flag**: `dbmd check --deep` passes in all three of the skill, the
-README and the published recipe, measured. So the skill's real gap is prose
+page, is a **flag**: one that no command declares passes in all three of the
+skill, the README and the published recipe, measured. It is not quoted here,
+because this file is scanned by that same guard once it learns about flags. So the skill's real gap is prose
 about behaviour, which it shares with every page, and what makes it worse there
 is only that this is the document written to be obeyed.
 

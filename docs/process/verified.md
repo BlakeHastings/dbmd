@@ -6119,9 +6119,12 @@ corrected by whoever fixed the thing and the other was nobody's job.
   matching the page word for word.
 
 - **The version guard has a control behind it, and it was made to fire.** A
-  worktree with one `dbmd@0.1.0` changed to `dbmd@9.9.9` in the published recipe
-  made `scripts/check-commands.mjs` exit 1 and name the file, the line, the
-  version pinned and the version in `package.json`. On the unmutated tree it
+  worktree with one pinned version in the published recipe changed to a number
+  this package is not made `scripts/check-commands.mjs` exit 1 and name the
+  file, the line, the version pinned and the version in `package.json`. **The
+  mutated version is deliberately not written here**: this file is scanned too,
+  so quoting it would make the guard fire on the sentence describing the guard,
+  which it did once before this paragraph was reworded. On the unmutated tree it
   exits 0 and says what it covered: 186 files scanned, 5 pinned versions naming
   0.1.0, and all 7 commands documented in the README. A guard that says what it
   checked is a guard somebody can tell has stopped checking.
@@ -6280,17 +6283,17 @@ corrected by whoever fixed the thing and the other was nobody's job.
   **The gap is narrower than "the skill has no machinery", which is what an
   earlier version of this entry said.** That was wrong and the correction was
   measured rather than reasoned. `scripts/check-commands.mjs` does scan the
-  skill: a worktree with `dbmd check` changed to `dbmd chekc` there made it exit
-  1 and name twelve lines, and an `npm run` script that does not exist made it
-  exit 1 too.
+  skill: a worktree with a command name misspelled there made it exit 1 and name
+  twelve lines, and an `npm run` script that does not exist made it exit 1 too.
+  The misspelling is not quoted here for the reason above.
 
   **What it does not catch is a flag, and that is general rather than a property
-  of the skill.** `dbmd check --deep` passes in the skill, in `README.md` and in
-  `docs/ci.md`, all three measured on a worktree. The guard's own summary is
+  of the skill.** A flag no command declares passes in the skill, in `README.md`
+  and in `docs/ci.md`, all three measured on a worktree. The guard's own summary is
   honest about it, saying every `dbmd`, `npm run` and `scripts/` **reference**
   resolves, and a flag is not a reference. The sharpest case is the published
-  recipe, because `npx --yes dbmd@0.1.0 check db-model --deep` would ship to a
-  stranger and exit 2 in their CI.
+  recipe, because a line carrying one would ship to a stranger and exit 2 in
+  their CI.
 
   So the skill's real gap is prose about behaviour, which nothing checks
   anywhere, and it shares that with every page. What makes it worse there is that
@@ -6413,3 +6416,20 @@ corrected by whoever fixed the thing and the other was nobody's job.
   Not fixed here. Reconstructing one copy needs the differences between the three
   reconciled rather than discarded, and it wants a reviewable diff of its own
   rather than being buried in a documentation branch.
+
+- **The guard fired on the paragraph describing the guard, and it was right to.**
+  Two entries above were written by quoting the deliberately-wrong references
+  used to make `scripts/check-commands.mjs` fire: a misspelled command name and a
+  pinned version this package is not. This file is one of the 188 the guard
+  scans, so quoting them put two real broken references into the repository, and
+  the branch went red on exactly the check the paragraphs were praising.
+
+  Both are now described rather than quoted. **The lesson is not to add an
+  exemption**: ADR 0036's `<!-- hypothetical: ... -->` marker exists for a
+  reference that will become real, which is a different thing from one that must
+  never be real. A sentence that has to name a wrong reference to make its point
+  usually does not, and reads better without it.
+
+  It also matters for what comes next: the same guard is being taught to resolve
+  flags, so a passage quoting a flag no command declares would break that branch
+  the day it lands. Those are now described too.
