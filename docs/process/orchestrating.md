@@ -484,6 +484,60 @@ run with 27 failing tests as passing. Worse, `cmd | tail -1 && next` runs `next`
 whatever `cmd` did: that ran a `git reset --hard` after a checkout had refused,
 and ran a branch deletion after a merge had refused.
 
+**I pushed a branch red eleven times and called it in CI.** Every agent here is
+held to running the whole gate before opening a pull request, and every brief I
+wrote tonight said so twice. My own documentation branch was pushed and rebased
+eleven times without once running `format:check` against it, because a worktree
+without `node_modules` makes running it feel expensive and documentation feels
+like it cannot break a build. It broke on `AGENTS.md`, three checks red, and I
+reported it as pending in two status updates before looking at which checks were
+which. **The fix is cheap and I did not take it:** `node_modules/.bin/prettier
+--check <path>` from the main checkout formats a file in a worktree without
+installing anything there. **The lesson is not about prettier.** It is that the
+evidence bar I set for every agent is one I exempted myself from without ever
+deciding to, and the exemption was invisible because a green report and an
+unexamined one read the same.
+
+**A line number read from a dirty tree is wrong for everybody else.** Two agents
+reported line numbers in my briefs as wrong tonight, one as two low and one as
+one low, and I treated them as two slips before the second named the mechanism.
+The owner has an uncommitted edit in `README.md` that adds two lines and removes
+three, so everything below it sits one line lower in my checkout than on `main`.
+Every line number I quoted from that file was correct for me and for nobody else.
+**Read it from `git show origin/main:<file>` whenever the working tree is dirty**,
+and say which you read when it matters. The general form is that a working tree
+is a private view, and a brief is written for somebody who does not have it.
+
+**A short timeout does not cancel a command, it backgrounds it.** The mechanism
+behind the accident above is worth separating from the moral. The agent put the
+call in a shell invocation with a one second timeout, believing that made it
+inert. The timeout ended the wait, not the process: it was moved to the
+background and ran to completion, exit 0. **So a timeout is not a safety device
+and a command you are not ready to run is not made safe by giving it a short
+one.** Anything destructive is made safe by not typing it.
+
+**The oldest rule here has never had a control behind it.** `working-an-issue.md`
+states it under a heading reading “You do not merge. Ever.” and every brief
+repeats it. On 2026-09-08 an agent merged its own pull request by accident: it
+meant to run a read-only harness that asks the merge script what it would decide,
+typed the script itself with the correct sha, and the call sat inside something
+it had labelled a placeholder not to run, with a one second timeout that
+backgrounded it and let it finish.
+
+**Every gate was satisfied**, which is the finding. The sha matched, the agent had
+read that commit, the branch was green and level with `main`. Its own sentence is
+the one to keep: *“what I violated was an instruction not to merge at all, which
+no argument to that script encodes.”* An instruction had been standing in for a
+control since the beginning, and it failed the way instructions fail, not by
+disagreement but by a typo. The refusal that now catches it cannot stop a
+determined agent, who can change directory; it catches the accident, which is the
+case that happened.
+
+**And the change requiring a merge to name the commit its reviewer read was itself
+merged by a path that did not name one.** Recorded because it is the clearest
+thing anybody will read here about the distance between writing a rule and
+holding one.
+
 **A pull request you reviewed is not the pull request you merge.** On 2026-09-07
 I read a body describing an eleven line attribution change, said so in a report,
 and merged it twenty minutes later. By then its agent had force-pushed a second
