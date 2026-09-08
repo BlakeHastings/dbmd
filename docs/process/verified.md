@@ -3149,3 +3149,34 @@ corrected by whoever fixed the thing and the other was nobody's job.
   the diagram says `"a{b}"`. And the colon name looked like a table missing from
   the diagram, because the file the shell had created was the alternate data
   stream above rather than anything dbmd had seen.
+
+- **The studio page sweep is accounted for end to end: fifteen suspects, plus two
+  smaller notes, and every one is placed.** Not "mostly fixed", which is what a
+  sweep decays into when nobody writes the list down at the end.
+
+  | | |
+  | --- | --- |
+  | landed in #237 | the group placement paragraph naming a stale suggestion; the rename case clash that could not fire for the rename that needs it; a last-member warning describing a group file that is not there; the same warning missing after a join; "Fix the file and reload" |
+  | landed in #238 | "clearing whatever the system is refusing is enough", which was not; a healthy file told it did not parse, with advice to delete it; a stopped rename under-reporting what it wrote, with an undo that exited 1 |
+  | in #240 | Fit saying nothing fitted while everything was on screen; the placement mode outliving its explanation; the conflicts list announced by the wording fixed above it; an edge blaming a parse failure for a locked file; "Could not read the model" overwritten one statement later |
+  | dispatched last | "The page is re-reading the model" when it is not; "The diagnostics below say what the reader saw" after they have gone; a conflict entry whose "just now" ages and whose path is printed twice |
+  | **held on purpose** | the sentence saying a group move writes table files and not the group file, which is on screen for 13 milliseconds |
+
+  **The held one is held because it is taste, not truth.** Every clause of it is
+  true, and fixing it means deciding how long a status line holds, which is a
+  judgement about the interface rather than about a false sentence. It is the
+  only place the interface says out loud that a group has no coordinates, which
+  is why it is recorded rather than dropped.
+
+- **Both import losses are confirmed live on `main`.** Two tables differing only
+  in case: exit 1, one file written, and `ls` agrees with the report. A primary
+  key at a column the export does not list: the warning fires and no `pk:` is
+  written. A composite key with one column exported and one not: the warning
+  fires **and** the half that is there still gets `pk: true`, which is the case
+  neither the brief nor the report listed and which I drove because a partial
+  key is the shape a real database most easily produces.
+
+  All three counterfactuals hold on `main` too: two names differing by more than
+  case both import with their keys, a key naming a real column still writes
+  `pk: true`, and two schemas holding one table name still print the older
+  collision message unchanged.
