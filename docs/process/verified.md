@@ -1298,3 +1298,39 @@ else.
   up one in the panel put it above `paused_until` in `tables/subscriptions.md`
   and on the canvas box in the same beat, and the status named the file it wrote.
   The index in that file, `subscriptions_due_idx`, stayed where it was.
+
+## 2026-09-07, night: the last two, and what is now covered
+
+- **A note's body is edited in the panel and reaches the file byte for byte.**
+  The panel for a note carries one textarea holding its 764 characters. Typing at
+  the end wrote `notes/the-copies-are-deliberate.md`, said so by name, and the
+  canvas showed the new text. The file's tail afterwards was
+  `"r-history page.\n\n\nORCHESTRATOR WAS HERE."`: the two blank lines are the two
+  newlines that were typed and the third is the file's own, so the promise the
+  panel makes about carrying what is typed, LF endings and all, held.
+- **Resizing a note writes its size, corrected for zoom.** The grip is the only
+  element on the page with `cursor: nwse-resize`. Dragging it 90 by 60 took the
+  box from 340 by 233 on screen to 421 by 286, and `layout:` went from
+  `w: 380, h: 260` to `w: 470, h: 320`. Those agree once the 90% zoom is taken
+  out, which is the arithmetic that would be wrong if the writer used screen
+  pixels.
+
+**Every interactive surface has now been driven.** Creating a table, a note and a
+group; renaming with and without referrers; deleting a table; removing a
+referenced column; reordering a column; moving a table between groups; editing a
+note; resizing one; the watcher; a file that becomes unreadable; two writers on
+one model; and the keyboard from the first Tab into the panel and back out.
+
+**One defect came out of all of it, and it turned into two.** The status line
+after a create, which was also true of a rename and worse there. Everything else
+held, including every case where the tool has to say what it is about to break
+rather than break it quietly.
+
+**The instrument was wrong far more often than the product.** Six times: an
+arm-then-place button read as dead, an arm-then-confirm button read as dead, a
+stopping condition that fired on diagnostics already present, an Escape pressed
+in the one field that answers Escape itself, a synthetic click that does not
+select where the keyboard does, and a resize checked against the wrong file while
+the status line was naming the right one. Each was cheap because it was caught
+before anything was filed. That ratio is the argument for reading the source
+before believing the page, which `orchestrating.md` now carries as a rule.
