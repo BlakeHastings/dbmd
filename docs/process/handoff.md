@@ -207,7 +207,9 @@ bd create --ignore-schema-skew -p 2 -t task \
 bd create --ignore-schema-skew -p 3 -t task \
   "An annotated edge comes back as a position because SVG has no string className"
 
-# Found on 2026-09-07 by driving the keyboard, and not filed anywhere but here.
+# Found on 2026-09-07 by driving the keyboard. ANSWERED BEFORE IT WAS FILED:
+# ADR 0073 built the second Enter and the Escape back out, and index.html now
+# says both clauses. File and close it in one motion; do not dispatch it.
 bd create --ignore-schema-skew -p 3 -t task \
   "Enter says it opens the panel and does not say how to reach it"
 ```
