@@ -300,6 +300,9 @@ const canvas = new Canvas(canvasHost, {
       selected === null ? '' : `Selected ${selected.kind} ${selected.name}.`
     inspector.show(selected)
   },
+  // The canvas asks and the panel answers, so neither has to know where the
+  // other one is. ADR 0073.
+  onEnterPanel: () => inspector.takeFocus(),
   onViewport: (viewport) => {
     zoomLevel.textContent = `${Math.round(viewport.scale * 100)}%`
   },
@@ -675,9 +678,20 @@ function wireToolbar(): void {
       showArmed()
       return
     }
-    // Not while typing in the panel: Escape there is the field's own, and
-    // closing the inspector out from under a half-typed value is a lost edit.
-    if (inspectorHost.contains(document.activeElement)) return
+    // From inside the panel, Escape is the way back to the object it is about,
+    // which is the other half of the second `Enter` that got somebody in there
+    // (ADR 0073). It is deliberately not "close the panel": closing the
+    // inspector out from under a half-typed value is a lost edit, and this
+    // press is somebody leaving rather than somebody cancelling, so the panel
+    // stays open and the selection stands.
+    //
+    // A field that answers Escape itself stops the press here, so the two
+    // rename and create inputs keep theirs. Anything else in the panel has no
+    // answer of its own, and doing nothing was the answer until now.
+    if (inspectorHost.contains(document.activeElement)) {
+      canvas.takeFocus()
+      return
+    }
     canvas.select(null)
   })
 }
