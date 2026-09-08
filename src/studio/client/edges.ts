@@ -39,10 +39,12 @@
  *
  * Nothing here touches the DOM. Where a row sits inside a box is a measurement
  * (`canvas.ts` takes it), and this file takes it as a number, so the arithmetic
- * can still be tested without a browser.
+ * can still be tested without a browser. `edgeTitle` is here for the same
+ * reason: the sentence an edge says about itself is a function of the edge, and
+ * `canvas.ts` only has to put it in the `<title>`.
  */
 
-import type { Table } from '../../model/types.js'
+import type { ReferentialAction, Table } from '../../model/types.js'
 import type { Point, Rect } from './geometry.js'
 
 export interface Endpoint {
@@ -53,6 +55,19 @@ export interface Endpoint {
 export interface EdgeSpec {
   readonly from: Endpoint
   readonly to: Endpoint
+  /**
+   * What the engine does to the referring row when the row it points at goes,
+   * and when that row's key changes. Absent means the file did not say, which
+   * is not the same fact as `no action` (ADR 0046).
+   *
+   * Beside `from` and `to` rather than inside `to`, which is the shape ADR 0049
+   * chose for the same two values in `dbmd refs --json` and for the same reason:
+   * an action is a fact about this constraint, and under `to` it would read as a
+   * property of the column it points at that every ref into that column shared.
+   */
+  readonly onDelete?: ReferentialAction
+  /** See `onDelete`. */
+  readonly onUpdate?: ReferentialAction
 }
 
 /**
@@ -176,6 +191,13 @@ export function edgeSpecsOf(tables: readonly Table[]): EdgeSpec[] {
       specs.push({
         from: { table: table.name, column: column.name },
         to: { table: column.ref.table, column: column.ref.column },
+        // Copied rather than omitted where the file said nothing, so that
+        // `edgeTitle` below can tell "the file did not say" from "the file said
+        // `no action`". Spread this way because `exactOptionalPropertyTypes`
+        // makes an explicit `undefined` a different thing from an absent key,
+        // which is the distinction being preserved.
+        ...(column.ref.onDelete === undefined ? {} : { onDelete: column.ref.onDelete }),
+        ...(column.ref.onUpdate === undefined ? {} : { onUpdate: column.ref.onUpdate }),
       })
     }
   }
@@ -221,6 +243,82 @@ export function routeEdges(
     })
   }
   return routed
+}
+
+/**
+ * What the edge is about, what a delete and an update do to the row it leaves,
+ * and why an end of it is not on a row.
+ *
+ * This is the string `canvas.ts` puts in the path's `<title>`, and it is here
+ * rather than there for the reason `columns.ts` gives about a column row: the
+ * shape of the drawing is the stylesheet's and is proven by looking at the page,
+ * but the words are a function of an edge and a test can hold them without a
+ * browser. It is also the file that owns `RoutedEdge` and the two `why` values
+ * the last sentence puts into English.
+ *
+ * ### The actions say what the file says, and nothing where the file said nothing
+ *
+ * The clauses are quoted with their keyword and in the file's spelling, so
+ * somebody who wants to change what they were shown can search the model for it.
+ * That is ADR 0049's rule for `dbmd refs`, and this is the same two facts in a
+ * different rendering, so it is the same rule.
+ *
+ * **A common action is not hidden, because dbmd has no default to hide it
+ * against.** `examples/shop` writes `on delete: restrict` on ten of its eleven
+ * refs and `cascade` on the other, and suppressing the ten is tempting for
+ * exactly that reason. It is refused. Absent and `no action` are different facts
+ * (ADR 0046), so a title that dropped a written `restrict` would make silence
+ * mean either "the file did not say" or "the file said the usual thing", and the
+ * reader could not tell which edge they were on. Nor is there a value to call
+ * the default: SQL's is `no action`, this model's habit is `restrict`, and
+ * picking either would be dbmd ruling on engine behaviour, which `read.ts`
+ * already refuses to do a few lines away from where it reads these keys.
+ *
+ * The concern the suppression was for is real and this is not where it is
+ * answered. A wall of identical text is a property of a *list*, and a tooltip is
+ * one edge at a time; what makes a `cascade` stand out among ten `restrict`s on
+ * the canvas is a mark on the drawing, which is an open question about taste and
+ * is deliberately not decided here.
+ *
+ * ### `on update` is in, and that is what keeps the rule honest
+ *
+ * The question asked was about deletes, and `dbmd refs` exists because it is
+ * asked immediately before one (ADR 0042). But a title that quoted one clause of
+ * a constraint and silently dropped the other would put the reader back where
+ * they started: an edge showing nothing about updates could be a ref that wrote
+ * no `on update:` or one that wrote `on update: cascade`. That is the same
+ * conflation the paragraph above refuses, so the rule is one sentence for both
+ * clauses. It costs nothing on `examples/shop`, where no ref writes `on update:`
+ * at all.
+ *
+ * ### The unanchored sentence stays last, and its reason is still the end's own
+ *
+ * The reason is the end's own, not a single sentence covering both, because the
+ * two causes are different facts and a reader acts differently on each: a column
+ * that is not there is a `ref` to correct, and a table that did not parse is a
+ * file to fix, after which the column is very probably where it always was.
+ * Saying the first about the second sends somebody looking for a column the
+ * model still holds.
+ *
+ * It comes after the clauses because the clauses are about the reference and
+ * this is about the drawing, and because it is the sentence that stops being
+ * true first: an end finds its row again as soon as the file is fixed.
+ */
+export function edgeTitle(edge: RoutedEdge): string {
+  const said = [
+    `${edge.from.table}.${edge.from.column} references ${edge.to.table}.${edge.to.column}`,
+    ...(edge.onDelete === undefined ? [] : [`on delete: ${edge.onDelete}`]),
+    ...(edge.onUpdate === undefined ? [] : [`on update: ${edge.onUpdate}`]),
+  ].join(', ')
+  if (edge.unanchored.length === 0) return said
+  const because = edge.unanchored
+    .map((end) =>
+      end.why === 'no-such-column'
+        ? `there is no ${end.table}.${end.column}`
+        : `${end.table} did not parse, so its columns are not drawn`,
+    )
+    .join(' and ')
+  return `${said}. Drawn at the table's name because ${because}.`
 }
 
 function between(
