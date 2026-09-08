@@ -3112,3 +3112,40 @@ corrected by whoever fixed the thing and the other was nobody's job.
   Every refusal carries its own code, so a caller can branch on all eleven, and
   none of them reaches the generic one. This is the surface a local server is
   most likely to be careless on and it is not.
+
+- **Every table name a filesystem accepts is drawn correctly, and the ones it
+  does not are refused at import with a message that says what to do.** ADR 0023
+  says the character set the diagram allows is deliberately narrower than what
+  was measured to work, and that "a rendered blank box is reported" is the only
+  evidence that design can produce. So it was driven instead of waited for.
+
+  Eight names that a real database can hold, each written as a table and then
+  exported: a space, a hyphen, an accent, a curly brace pair, Cyrillic, Han, an
+  emoji and an eighty-character name. **All eight reach the diagram with the name
+  intact**, quoted, and `dbmd check` reports no problem for any of them.
+
+  Two of the ten tried never became files, and both are Windows rather than
+  dbmd. A double quote is refused outright. **A colon is worse than refused: NTFS
+  reads `a:b.md` as an alternate data stream on a file called `a`, so the write
+  succeeds, a zero-length `a` appears, and the reader cannot see it.** Which is
+  the realistic path, and it is handled at the boundary that matters:
+
+  ```
+  error $.tables[0].name [import/unsafe-name] the table `a:b` has no file it can be
+  written to, because no filesystem accepts that name and a checkout could not hold
+  it; rename it in the database or leave it out of the query
+
+  dbmd: 1 error, so db-model is missing a table.
+  Empty it and import again once the export is one this can be written from.
+  ```
+
+  Exit 1, and the one table that could be written was not left behind: `ls`
+  showed `orders.md` alone. So the diagram's narrow set is never reached by a
+  name the import would refuse.
+
+  **Two apparent findings in that pass were my own instruments**, which makes
+  four for the session. A table named `a{b}` looked like it was drawn as `"a"`,
+  because the pattern I was extracting entity names with stopped at the brace;
+  the diagram says `"a{b}"`. And the colon name looked like a table missing from
+  the diagram, because the file the shell had created was the alternate data
+  stream above rather than anything dbmd had seen.
