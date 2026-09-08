@@ -6212,3 +6212,34 @@ corrected by whoever fixed the thing and the other was nobody's job.
   members. That is the sharper form, it is in ADR 0086, and the record also says
   where its own author went wrong first, which is worth more than a rejected-
   alternatives list written from outside.
+
+- **The whole "reported in Node's voice" class was swept rather than sampled, and
+  one case is left.** `failure()` in `src/cli/main.ts` reports `"code": "failed"`
+  and the raw error for anything a command did not catch, and three instances of
+  that were found by hand tonight. So fourteen failure modes across all seven
+  commands were driven with `--json` and their `error.code` read: a plain file
+  where a directory belongs, a missing directory, a directory where a file
+  belongs, a file that is not JSON, an unknown engine, and the rest.
+
+  Thirteen report properly, each with its own stable code: `no-such-table`,
+  `model-has-errors`, `not-a-directory`, `file-unreadable`, `input-not-json`,
+  `no-model-directory`, `usage`, and `dbmd check`'s own diagnostic list.
+
+  **The one that leaks is `dbmd init` with a plain file as the parent of its
+  target.** `dbmd init plain.md/sub` answers `ENOTDIR: not a directory, mkdir
+  '<absolute path with backslashes>'` under the generic code. Three things are
+  wrong with it and none is that the sentence is false: the path is absolute and
+  backslashed, which ADR 0006 rule 4 forbids and `slashed()` exists to prevent;
+  it names `plain.md` when the developer typed `plain.md/sub`; and its code is
+  the generic one. `dbmd check plain.md` handles the same situation properly one
+  command away, with a relative path, the system's own words and its own code.
+
+  It escapes both of `init`'s refusals because the platforms disagree about what
+  the nested form even raises: #226 measured Linux answering `ENOTDIR` and
+  Windows 11 on Node 24 answering `ENOENT`, so on Windows `vacancy()` reads the
+  path as free and the failure happens later, inside the writer.
+
+  Dispatched with the busy-port branch, which makes that branch the one that
+  closes the class. The script that swept it is worth keeping rather than
+  describing: it lives in the scratchpad as `failedsweep.mjs` and is eleven lines
+  of cases plus a runner.

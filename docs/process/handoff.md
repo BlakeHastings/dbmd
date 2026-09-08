@@ -448,11 +448,22 @@ bd create --ignore-schema-skew -p 3 -t task   "The README shows thirteen command
 # Found 2026-09-08 and not dispatched. Lower than the rest.
 bd create --ignore-schema-skew -p 3 -t task   "studio prints a busy port in Node's voice, with the advice it already knows"
 
-# Found 2026-09-08 by driving docs/ci.md claim by claim. Not dispatched. The
-# page is not wrong, it says to commit the file first and calls the shape
-# untested, so this is a sharp edge in a recipe that is about to ship.
+# Found 2026-09-08 by driving docs/ci.md claim by claim. The page is not wrong,
+# it says to commit the file first and calls the shape untested, so this is a
+# sharp edge in a recipe that is about to ship.
 bd create --ignore-schema-skew -p 3 -t task   "The CI recipe's git diff --exit-code shape is silent on an untracked README"
+
+# Found 2026-09-08 by enumerating the class rather than hunting it. The last
+# command that still reports a failure in Node's voice, with an absolute
+# backslashed path that ADR 0006 rule 4 forbids.
+bd create --ignore-schema-skew -p 2 -t task   "init leaks a raw ENOTDIR when the parent of its target is a plain file"
 ```
+
+**The last three above are one branch**, `cli/a-busy-port-and-a-gate-that-cannot-fail`,
+dispatched on 2026-09-08. With it and the import branch landed, no command
+reports a failure through the last-resort handler any more. That was checked by
+driving fourteen failure modes across all seven commands with `--json` and
+reading `error.code`, not by counting the ones that had been fixed.
 
 **Three of the four not-dispatched items are one small branch when a slot
 frees**: the studio's busy port, the CI recipe's untracked-README hazard, and

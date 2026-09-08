@@ -1017,3 +1017,40 @@ distrust first, because it is the one that costs an agent a day.
 here about agents describing what a page appeared to do. It reads as advice about
 somebody else's report, and its sharpest case is your own instrument, which you
 trust more because you wrote it ten minutes ago.
+
+## After the third instance, stop hunting and enumerate the class
+
+Three commands were caught reporting a failure in Node's voice tonight, one at a
+time, each by driving a different surface and noticing the same shape. Export's
+write, import's write, the studio's listen. Each cost twenty minutes of driving
+and each was found by luck rather than by looking.
+
+**The fourth was found in four minutes by a script, and the same script proved
+there is no fifth.** The generic report has a signature: `"code": "failed"` in
+the JSON envelope, which is what the last-resort handler writes and what no
+command that reports properly ever writes. So the class is enumerable. Fourteen
+failure modes across all seven commands, each run with `--json`, each
+`error.code` read and printed beside its case. Thirteen came back with their own
+code. One did not.
+
+The rule that comes out of it is about when to switch, not about what to write:
+
+**One instance is a defect. Two is a pattern. Three means you are still hunting
+when you could be enumerating.** By the third, you know the signature, and the
+signature is the thing a script can look for. Writing it is cheaper than finding
+the fourth by hand, and unlike finding the fourth by hand it also tells you when
+you are done.
+
+**The enumeration is worth more than the instance it finds**, because it converts
+"we fixed three of these" into "there is one left and here it is". A brief can
+say that. A pull request can close the class rather than adding to a pile, and
+the agent holding it knows what finishing means.
+
+Two things make it work here and both are properties of this codebase rather
+than of the method. Every command has a `--json` form with the same envelope, so
+one field answers the question for all of them. And the generic code is
+genuinely generic: nothing writes `failed` on purpose, so a hit is never a false
+positive.
+
+**Keep the script.** It is the difference between a claim that the class was
+swept and a thing the next person can re-run after adding a command.
