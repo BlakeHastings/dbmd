@@ -37,6 +37,7 @@ const worktrees = `${root.replace(/[/\\]\.git$/, '')}/.claude/worktrees`
 
 const argv = process.argv.slice(2)
 const liveAt = argv.indexOf('--live')
+const incomingAt = argv.indexOf('--incoming')
 const dashdash = argv.indexOf('--')
 const live =
   liveAt < 0
@@ -56,6 +57,58 @@ function git(args, cwd) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+}
+
+// --incoming: what a rebase is about to bring into this branch's own files.
+//
+// Twice in one session I told an agent "none of the incoming commits touches
+// your files" without running anything, and the second time an agent checked
+// and I was wrong. It is one command and I was answering from memory of what I
+// had merged, which is the same failure as quoting a count from arithmetic.
+//
+// A clean apply is not the answer to this question either. Two commits can edit
+// one file in different places, merge without a conflict, and leave a test
+// asserting against a page that has moved. What the agent needs to be told is
+// which incoming commits touch its files, so it can re-verify those rather than
+// trusting git's silence.
+if (incomingAt >= 0) {
+  const branch = argv[incomingAt + 1]
+  if (branch === undefined) throw new Error('--incoming needs a branch or sha')
+
+  const lines = (args) =>
+    git(args)
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l !== '')
+
+  const base = git(['merge-base', branch, 'origin/main']).trim()
+  const mine = new Set(lines(['diff', '--name-only', `${base}..${branch}`]))
+  const commits = lines(['rev-list', `${base}..origin/main`])
+
+  console.log(
+    `${branch} touches ${mine.size} file(s). ${commits.length} commit(s) are ahead of it on origin/main.\n`,
+  )
+
+  let overlapping = 0
+  for (const sha of commits.reverse()) {
+    const touched = lines(['show', '--name-only', '--format=', sha]).filter((f) => mine.has(f))
+    const subject = git(['show', '--format=%s', '--no-patch', sha]).trim()
+    if (touched.length === 0) {
+      console.log(`       ${sha.slice(0, 7)}  ${subject}`)
+      continue
+    }
+    overlapping++
+    console.log(`TOUCH  ${sha.slice(0, 7)}  ${subject}`)
+    for (const file of touched) console.log(`         ${file}`)
+  }
+
+  console.log(
+    overlapping === 0
+      ? '\nNone of them touches a file this branch touches.'
+      : `\n${overlapping} of them touch a file this branch touches. A clean apply is not evidence` +
+          '\nthat the claims in those files still hold. Re-run what asserts against them.',
+  )
+  process.exit(0)
 }
 
 /** A directory that is its own git top level, or undefined for a leftover. */

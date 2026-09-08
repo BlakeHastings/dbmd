@@ -1547,3 +1547,47 @@ That ordering is backwards and it is the argument for `test/docs/skill.test.ts`
 and for whatever eventually checks `--help`. It is also the reason the fix for
 both was to correct the sentence rather than the behaviour: the behaviour has a
 decision record, an argued cost, and a test. Only the prose had drifted.
+
+## "None of those commits touches your files", said twice, wrong once
+
+Sending a branch back to be rebased, I told the agent which incoming commits it
+was about to absorb and added that none of them touched its files. I had not run
+anything. I was answering from memory of what I had merged.
+
+The agent checked, and one of the four had changed the very file its whole branch
+is about. It said so, and then did the thing that actually matters: it re-ran its
+six block assertions against the post-merge page rather than treating git's
+silence as an answer.
+
+**A clean apply is not evidence.** Two commits can edit one file in different
+places, merge without a conflict, and leave a test asserting against a page that
+has moved underneath it. Git's job is to reconcile text. Nobody's job, until
+somebody makes it theirs, is to ask whether the claims in that text still hold.
+
+`scripts/held.mjs --incoming <branch>` answers it. It takes the merge base,
+collects the files the branch touches, walks every commit ahead of it on
+`origin/main`, and marks the ones that overlap:
+
+```
+$ node scripts/held.mjs --incoming syn/proof-of-overlap
+syn/proof-of-overlap touches 1 file(s). 5 commit(s) are ahead of it on origin/main.
+
+TOUCH  c9d2224  The skill said a warning fires that now stands down ... (#246)
+         .claude/skills/dbmd/SKILL.md
+       1b09898  the stand-down rule, driven in four models (#248)
+       ...
+2 of them touch a file this branch touches. A clean apply is not evidence
+that the claims in those files still hold. Re-run what asserts against them.
+```
+
+That output is from a branch built on purpose to reproduce the case I got wrong,
+cut from the commit the real branch was cut from, so the check is proven to catch
+it rather than assumed to.
+
+**This is the same failure as the decision-record numbers and the held files, for
+the third time, and the shape is now unmistakable.** Every one of them is a claim
+about the repository, made to an agent, in writing, from memory, when one command
+would have answered it. The agent has no way to doubt it and every reason to act
+on it. So the rule is not "be careful": it is that **a sentence in a brief that
+states a fact about the repository is a sentence that should have a command
+behind it**, and three of those commands now live in `scripts/`.
