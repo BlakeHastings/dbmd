@@ -311,13 +311,22 @@ bd close dbmd-v6c --ignore-schema-skew --reason "merged as #186"
 bd create --ignore-schema-skew -p 3 -t task \
   "An edge is the one thing on the canvas a keyboard cannot reach"
 
-# Still open, checked just now: four test files read fenced blocks out of four
-# pages and none of them imports a shared parser. ADR 0056's third revisit entry
-# said the third page was the moment to lift it out. A fifth is being written as
-# this is filed. It is a refactor with no decision in it, and the four do not
-# read the same thing, so whoever takes it should read all four first.
+# Still open, and the shape of it changed while this was being written. ADR
+# 0056's third revisit entry says a third page carrying output blocks is the
+# moment to lift the parser out. Five pages carry them now. But the agent who
+# wrote the fifth reader, having just done it beside the other four, reports
+# that only about twelve lines are truly common, that everything above that loop
+# is legitimately different in all five, and that a lift sold on making the next
+# one cheap would be oversold.
+#
+# What is worth doing instead is narrower and is a real defect rather than
+# untidiness. `dbmd-run` is now a tag two pages spell identically and two test
+# files read with two copies of one function, `sessionIn`. A divergence there
+# means a block that passes on one page and would have failed on the other, and
+# nothing would ever say so. Lift that one, and the twelve-line fence loop can
+# wait. The reasoning is in #251's body.
 bd create --ignore-schema-skew -p 4 -t task \
-  "Four test files read fenced blocks and none of them shares a parser"
+  "Two pages share the dbmd-run tag and two tests read it with two functions"
 
 # The owner's, not an agent's. ADR 0002's first revisit entry fired on
 # 2026-08-24 and the decision was never taken: the backlog stayed in beads

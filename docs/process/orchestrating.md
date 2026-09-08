@@ -1470,3 +1470,39 @@ Three things to take from it, in order of how much they cost:
   operate on is not the file you named. This is the seventh false step from
   tooling in this session and the fourth from a shell rather than from the
   product.
+
+## An edit by line range swallowed a section I had written an hour earlier
+
+A script to shorten one section of the handoff. It found the paragraph to keep
+until, found the heading of the next section, and replaced everything between. It
+printed `replaced 310 lines with 70`, and `git diff --stat` said 55 insertions
+and 295 deletions, which is exactly the shape of what I meant to do.
+
+**Two whole sections were inside that range**, and only one of them was the one I
+was removing. The other was thirty lines I had written an hour before, on a
+different subject, which had been added between the anchor and the heading and
+which I was no longer thinking about.
+
+**Nothing about the diff looked wrong.** A large deletion was the point. The
+number was in the range I expected. The guards passed, because a missing section
+is not a broken link or a repeated block or a command that does not exist. There
+is no mechanical check for "you deleted something you meant to keep", and there
+is not going to be one.
+
+**The check that works is the heading list, before and after, side by side.**
+
+```bash
+git show HEAD:docs/process/handoff.md | grep -n '^## '
+grep -n '^## ' docs/process/handoff.md
+```
+
+Two commands, and the missing line is obvious in a way that 295 deletions is not.
+It caught this in seconds, and putting the section back was one more small script
+reading it out of `HEAD`.
+
+**The general rule is to prefer an anchor pair to a line range**, naming both
+ends by the text you actually mean, so that anything inserted between them is at
+least a visible decision rather than an invisible one. Where a range is the only
+practical shape, the heading list is the receipt. This is the same failure as
+quoting a count from arithmetic: the number looked right, so nobody read what it
+was a count of.
