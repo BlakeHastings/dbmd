@@ -23,13 +23,24 @@ measured just now.
 | backlog | 123 closed, 3 open |
 | the gate | 55 to 63 seconds across five runs |
 
-**All three open items are the owner's and all three have what they need.** The
-visuals epic's two questions each have a picture rendered on the live diagram and
-sent to them: four options for how an edge could say what a delete does, one of
-which was ruled out afterwards because a dash already means an unanchored end,
-and two options for making a box carry more weight, both of which argue for doing
-nothing. The third is one recoverable layout from the morning of 2026-09-07 they
-have not said whether to restore.
+**Three items are open and only two are the owner's.** An earlier version of this
+paragraph said all three were. It was wrong within an hour of being written,
+which is the failure this file keeps a section about, arriving in the file that
+keeps it.
+
+- **`dbmd-v6c` is finished.** It is the reading half of the feedback loop and it
+  merged as #186. It is open because nothing can write to the tracker, and
+  closing it is the first line on the owed list below. **Do not dispatch it.**
+- **`dbmd-fnl`, the visuals epic**, is taste and both of its questions now have a
+  picture rendered on the live diagram and sent to the owner: four options for how
+  an edge could say what a delete does, one of which was ruled out afterwards
+  because a dash already means an unanchored end, and two options for making a box
+  carry more weight, both of which argue for doing nothing.
+- **`dbmd-6bf`, the recovered layout**, is a decision and now has a picture too:
+  the four surviving coordinates drawn on the canvas against what is committed.
+  **Its coordinates live in the item's `design` field and its `description` is
+  empty**, so a reader checking one field concludes the item promises numbers it
+  does not carry. It carries them.
 
 **The backlog stopped being where work comes from at about midday.** Everything
 in it an agent could do was done. What followed came from driving the product and
