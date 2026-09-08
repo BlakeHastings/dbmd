@@ -179,6 +179,23 @@ describe('the directory decides the kind', () => {
     expect(model.tables[0]?.name).toBe('orders')
   })
 
+  test('`_model.md` with no kind is told its name says so, not its directory', async () => {
+    // The counterfactual above is true in every word: `tables/orders.md` is in
+    // a directory of tables and that is what says it is a table. This file is
+    // at the model root, where there is no directory of models to say
+    // anything, so the same sentence would have been false here. It is the
+    // case `docs/format.md` ships as its worked example, under prose calling
+    // it the thing everybody gets wrong first.
+    const { model, diagnostics } = await withModel({
+      '_model.md': '---\nname: shop\nengine: postgres\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      '_model.md error kind-missing: no `kind:` key; the file name says this is the model file',
+    ])
+    expect(model.name).toBe('shop')
+  })
+
   test('a directory that is not a kind is ignored, loudly', async () => {
     const { diagnostics } = await withModel({
       'sketches/idea.md': '---\nkind: table\n---\n',

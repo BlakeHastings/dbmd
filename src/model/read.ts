@@ -685,13 +685,19 @@ function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
  * comes back `complete: false` and the writer leaves the file alone.
  */
 function checkKind(ctx: Ctx, fields: FieldSet, expected: ObjectKind | 'model'): boolean {
+  // What decides. `_model.md` is not in a directory of models, so the answer
+  // there is its name, and the sentence is otherwise the one a table gets.
+  const decides =
+    expected === 'model'
+      ? 'the file name says this is the model file'
+      : `the directory says this is a ${expected}`
   const field = fields.take('kind')
   if (field === undefined) {
     push(ctx.out, {
       code: 'kind-missing',
       severity: 'error',
       at: inFile(ctx.path),
-      message: `no \`kind:\` key; the directory says this is a ${expected}`,
+      message: `no \`kind:\` key; ${decides}`,
     })
     return true
   }
