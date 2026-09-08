@@ -17,9 +17,9 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 230 |
-| decision records | 88 |
-| tests | 1358 passing, 1 skipped, across 46 files |
+| merged pull requests | 235 |
+| decision records | 89 |
+| tests | 1389 passing, 1 skipped, across 47 files |
 | backlog | 123 closed, 3 open, and it still cannot be written to |
 | the gate | 58 to 60 seconds idle, 81 to 89 with five agents running. Both measured |
 
@@ -57,16 +57,21 @@ two on 2026-09-07: import, which closed when re-import landed, and publishing.
 the calm version of this file was wrong about its largest claim within an hour
 and that is the failure this document keeps a section about.
 
-**Five agents are out and none has a tracker item**, because `bd` still cannot
-run. Each brief is the whole issue and each pull request body carries it.
+**Three agents are out and none has a tracker item**, because `bd` still cannot
+run. Each brief is the whole issue and each pull request body carries it. Of the
+seven dispatched today, four have landed: #235, #236, #237 and the last-resort
+test.
 
 | branch | what it is |
 | --- | --- |
-| `model/six-sentences-and-the-states-that-make-them-false` | the six held diagnostic messages, four of them reproduced by hand first |
-| `guard/a-page-that-holds-its-own-body-twice` | #235, approved, rebasing. The check that would have caught the tripled log |
-| `studio/three-sentences-that-cost-somebody-something` | the three studio findings that cost a person something |
-| `studio/five-things-the-panel-says-about-a-group-that-is-not-there` | the five inspector panel findings |
+| `studio/three-sentences-that-cost-somebody-something` | #238, the three studio findings that cost a person something |
 | `studio/a-fit-that-fitted-and-said-it-had-not` | the five canvas and status line findings |
+| `import/two-tables-that-became-one` | two tables differing only in case become one, and a primary key dropped in silence |
+
+**Landed today**: #235 the duplication guard, #236 the six diagnostic messages,
+#237 the five inspector findings, and the test that keeps the last-resort error
+code unreachable. **The model diagnostic sweep is closed**: 35 codes driven, 9
+suspect, 9 fixed across #231 and #236.
 
 **#234 is mine and is held**, carrying the studio sweep's full record.
 
