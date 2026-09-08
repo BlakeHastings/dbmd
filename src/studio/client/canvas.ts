@@ -67,7 +67,14 @@
 
 import type { Column, Group, Layout, Note, ObjectKind, Table } from '../../model/types.js'
 import { columnTitle, refLabel } from './columns.js'
-import { edgeSpecsOf, routeEdges, type EdgeSpec, type RoutedEdge, type TableBox } from './edges.js'
+import {
+  edgeSpecsOf,
+  edgeTitle,
+  routeEdges,
+  type EdgeSpec,
+  type RoutedEdge,
+  type TableBox,
+} from './edges.js'
 import {
   boundsOf,
   clampScale,
@@ -1229,9 +1236,10 @@ export class Canvas {
    * What each edge says about itself, which changes only when the model does.
    *
    * Separate from `drawEdges` because that one runs on every animation frame of
-   * a drag and this one writes text. Whether an end found its row depends on
-   * which columns exist, not on where the boxes are, so the two have different
-   * reasons to run and it is the cheaper one that has to run often.
+   * a drag and this one writes text. What the sentence says comes from the
+   * model: which columns exist, and what the `ref` says a delete and an update
+   * do. None of it is a function of where the boxes are, so the two have
+   * different reasons to run and it is the cheaper one that has to run often.
    */
   private describeEdges(): void {
     this.edges.forEach((edge, index) => {
@@ -1635,29 +1643,6 @@ function measure(box: Box): void {
   const header = element.querySelector<HTMLElement>(':scope > header')
   box.header =
     header === null ? box.size.h / 2 : border + header.offsetTop + header.offsetHeight / 2
-}
-
-/**
- * What the edge is about, and why an end of it is not on a row.
- *
- * The reason is the end's own, not a single sentence covering both, because the
- * two causes are different facts and a reader acts differently on each: a column
- * that is not there is a `ref` to correct, and a table that did not parse is a
- * file to fix, after which the column is very probably where it always was.
- * Saying the first about the second sends somebody looking for a column the
- * model still holds.
- */
-function edgeTitle(edge: RoutedEdge): string {
-  const said = `${edge.from.table}.${edge.from.column} references ${edge.to.table}.${edge.to.column}`
-  if (edge.unanchored.length === 0) return said
-  const because = edge.unanchored
-    .map((end) =>
-      end.why === 'no-such-column'
-        ? `there is no ${end.table}.${end.column}`
-        : `${end.table} did not parse, so its columns are not drawn`,
-    )
-    .join(' and ')
-  return `${said}. Drawn at the table's name because ${because}.`
 }
 
 function placeElement(element: HTMLElement, position: Point): void {

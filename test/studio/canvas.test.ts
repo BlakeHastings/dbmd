@@ -23,6 +23,7 @@ import { columnTitle, refLabel } from '../../src/studio/client/columns.js'
 import { placeTables } from '../../src/studio/client/place.js'
 import {
   edgeSpecsOf,
+  edgeTitle,
   routeEdges,
   type EdgeSpec,
   type RoutedEdge,
@@ -269,6 +270,44 @@ describe('edges', () => {
     ])
   })
 
+  it('carries the referential actions beside the two ends, and only where the file wrote them', () => {
+    const specs = edgeSpecsOf([
+      table('order_items', [
+        {
+          name: 'order_id',
+          type: 'uuid',
+          ref: { table: 'orders', column: 'id', onDelete: 'cascade' },
+        },
+        {
+          name: 'product_id',
+          type: 'uuid',
+          ref: { table: 'products', column: 'id', onDelete: 'no action', onUpdate: 'cascade' },
+        },
+        { name: 'bin_id', type: 'uuid', ref: { table: 'bins', column: 'id' } },
+      ]),
+    ])
+    expect(specs).toEqual([
+      {
+        from: { table: 'order_items', column: 'order_id' },
+        to: { table: 'orders', column: 'id' },
+        onDelete: 'cascade',
+      },
+      {
+        from: { table: 'order_items', column: 'product_id' },
+        to: { table: 'products', column: 'id' },
+        onDelete: 'no action',
+        onUpdate: 'cascade',
+      },
+      {
+        from: { table: 'order_items', column: 'bin_id' },
+        to: { table: 'bins', column: 'id' },
+      },
+    ])
+    // The key is absent rather than present and undefined, which is the whole
+    // of ADR 0046's distinction surviving the trip onto the canvas.
+    expect(Object.hasOwn(specs[2] ?? {}, 'onDelete')).toBe(false)
+  })
+
   it('leaves and arrives at the rows of the two columns, not the middles of the boxes', () => {
     const edge = only(routeEdges([ordersToCustomers], canvas))
     expect(starts(edge.d).y).toBe(rowY(orders, 'customer_id'))
@@ -464,6 +503,128 @@ describe('edges', () => {
     const edge = only(routeEdges([ordersToCustomers], canvas))
     expect(starts(edge.d).x).toBeGreaterThan(orders.x + orders.w)
     expect(ends(edge.d).x).toBeLessThan(customers.x)
+  })
+})
+
+/**
+ * The sentence an edge says about itself, which is the only thing on the canvas
+ * that says what a delete does.
+ *
+ * The inspector has held `on delete` since ADR 0046 and the drawing has not, so
+ * the one way to learn a delete rule from the canvas was to click through to a
+ * panel. These cases pin the rule the title follows rather than the words it
+ * happens to use today: **it says what the file says, in the file's spelling,
+ * and nothing where the file said nothing.** ADR 0071.
+ */
+describe('what an edge says about itself', () => {
+  const parent: TableBox = {
+    x: 600,
+    y: 0,
+    w: 220,
+    h: 60,
+    header: 14,
+    rows: new Map([['id', 30]]),
+    drawsRows: true,
+  }
+  const child: TableBox = {
+    x: 0,
+    y: 0,
+    w: 220,
+    h: 80,
+    header: 14,
+    rows: new Map([
+      ['id', 30],
+      ['order_id', 50],
+    ]),
+    drawsRows: true,
+  }
+  /** A table whose file did not parse, so its box shows a complaint and no rows. */
+  const unparsed: TableBox = { ...child, rows: new Map(), drawsRows: false }
+
+  const boxes = new Map<string, TableBox>([
+    ['order_items', child],
+    ['orders', parent],
+  ])
+
+  function titleOf(spec: EdgeSpec, canvas: ReadonlyMap<string, TableBox> = boxes): string {
+    const routed = routeEdges([spec], canvas)
+    const edge = routed[0]
+    if (edge === undefined || routed.length !== 1) {
+      throw new Error(`one edge was expected, got ${routed.length}`)
+    }
+    return edgeTitle(edge)
+  }
+
+  const orderItemsToOrders: EdgeSpec = {
+    from: { table: 'order_items', column: 'order_id' },
+    to: { table: 'orders', column: 'id' },
+  }
+  const atAMissingColumn: EdgeSpec = {
+    ...orderItemsToOrders,
+    to: { table: 'orders', column: 'nope' },
+  }
+
+  it('says nothing about a delete when the file said nothing about one', () => {
+    // Not `on delete: no action`, and not `unsaid`. A model whose refs carry no
+    // actions is the ordinary case, and a title that announced the absence on
+    // every edge would be dbmd inventing a fact about somebody's database.
+    expect(titleOf(orderItemsToOrders)).toBe('order_items.order_id references orders.id')
+  })
+
+  it('quotes the rule the file wrote, keyword and all, so it can be searched for', () => {
+    expect(titleOf({ ...orderItemsToOrders, onDelete: 'cascade' })).toBe(
+      'order_items.order_id references orders.id, on delete: cascade',
+    )
+  })
+
+  it('says a common rule too, so that silence means one thing rather than two', () => {
+    // Ten of the eleven refs in `examples/shop` say `restrict`, which is the
+    // argument for hiding it and is refused: hidden, an edge saying nothing
+    // would be either a ref that wrote `restrict` or a ref that wrote nothing,
+    // and the reader could not tell which one they were hovering.
+    expect(titleOf({ ...orderItemsToOrders, onDelete: 'restrict' })).toBe(
+      'order_items.order_id references orders.id, on delete: restrict',
+    )
+  })
+
+  it('says `no action` when the file says it, because absent is a different fact', () => {
+    expect(titleOf({ ...orderItemsToOrders, onDelete: 'no action' })).toBe(
+      'order_items.order_id references orders.id, on delete: no action',
+    )
+  })
+
+  it('says both clauses when the file writes both, in the order the file writes them', () => {
+    expect(titleOf({ ...orderItemsToOrders, onDelete: 'set null', onUpdate: 'cascade' })).toBe(
+      'order_items.order_id references orders.id, on delete: set null, on update: cascade',
+    )
+  })
+
+  it('says an update rule on its own, rather than dropping half of the constraint', () => {
+    expect(titleOf({ ...orderItemsToOrders, onUpdate: 'restrict' })).toBe(
+      'order_items.order_id references orders.id, on update: restrict',
+    )
+  })
+
+  it('leaves the reason an end is off its row last, and gives each end its own', () => {
+    const broken = new Map<string, TableBox>([
+      ['order_items', unparsed],
+      ['orders', parent],
+    ])
+    expect(titleOf(atAMissingColumn, broken)).toBe(
+      "order_items.order_id references orders.nope. Drawn at the table's name because " +
+        'order_items did not parse, so its columns are not drawn and there is no orders.nope.',
+    )
+  })
+
+  it("keeps the clauses with the reference and the drawing's own excuse after them", () => {
+    expect(titleOf(atAMissingColumn)).toBe(
+      "order_items.order_id references orders.nope. Drawn at the table's name because " +
+        'there is no orders.nope.',
+    )
+    expect(titleOf({ ...atAMissingColumn, onDelete: 'cascade' })).toBe(
+      'order_items.order_id references orders.nope, on delete: cascade. ' +
+        "Drawn at the table's name because there is no orders.nope.",
+    )
   })
 })
 
