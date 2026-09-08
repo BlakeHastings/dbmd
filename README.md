@@ -246,7 +246,7 @@ directory, the other way in besides `dbmd init`. `--file <path>` says which file
 to read, defaulting to standard input so a pipe works; `--dir <path>` says where
 to write, defaulting to `db-model` like every other command; `--engine <id>`
 overrides the engine the file says it is; `--confirm` makes the changes a run
-over a directory that already holds a model lists.
+over a directory that is not empty lists.
 
 ```dbmd-run
 $ dbmd import --file test/import/fixtures/postgres-raw.json --dir shop-model
