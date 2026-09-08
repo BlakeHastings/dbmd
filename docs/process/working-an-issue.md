@@ -155,6 +155,16 @@ That last one is the same rule wearing a different hat: a release goes to a
 public registry and cannot be taken back, so the person who owns the consequence
 pushes the tag. ADR 0051.
 
+**Until 2026-09-08 that last line was the only one of the five that nothing
+enforced.** The merge guard denied every merge and every push to `main`, and
+allowed `git tag v0.1.0`, `git push origin v0.1.0`, `git push origin --tags` and
+`npm publish`: it refused the thing that can be reverted and permitted the thing
+that cannot. It now refuses a tag push, a publish, and a release cut through
+`gh release` or `gh api`. Creating a local tag is still allowed, because it
+changes nothing outside your checkout and `git tag -d` removes it, and the
+refusal you meet one command later says so.
+[ADR 0098](../architecture/decisions/0098-a-publish-is-refused-where-a-merge-is-only-sent-back.md).
+
 Push your branch, open the PR, report back, and stop. The orchestrator reviews
 and merges. This holds even when your checks are green, even when the change is
 trivial, and even when you are confident.

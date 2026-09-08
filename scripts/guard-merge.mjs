@@ -106,6 +106,54 @@
 // A gap lets a merge through; a false positive gets the guard switched off, and
 // the second is the likelier failure. Weigh them that way when you edit this.
 
+// ---------------------------------------------------------------------------
+// APPENDED IN THIS CHECKOUT, 2026-09-08. THE SECTION ABOVE IS NOT EDITED.
+//
+// The header above arrives with the `orchestrated-delivery` skill and is the
+// asset's, so it is appended to rather than corrected, the way this repository
+// appends to a superseded decision record. Everything in this block is about
+// this checkout and belongs to ADR 0098.
+//
+// WHAT WAS ADDED, AND WHY IT IS NOT THE SAME KIND OF RULE AS THE ONES ABOVE
+// The rules above refuse a merge, which can be reverted. Below them now sit
+// rules that refuse a tag push, `npm publish`, and a release cut through `gh`,
+// none of which can. `npm unpublish` is refused outright after 72 hours, and in
+// this repository a `v*` tag is what starts the publish, so the tag push is the
+// irreversible act wearing a push's clothes. Measured on 2026-09-08, before
+// those rules existed: of 25 command lines driven through this file, the 13
+// denied were every merge and every push to `main`, and the four that were
+// allowed were `git tag v0.1.0`, `git push origin v0.1.0`,
+// `git push origin --tags` and `npm publish`. The guard refused the reversible
+// thing and permitted the permanent one. ADR 0098 is that record.
+//
+// `git tag` itself is still allowed, on purpose. It writes a ref inside this
+// checkout, `git tag -d` removes it, and telling a creating `git tag` from a
+// listing one needs a table of git's flags this file declines to keep anywhere
+// else: `git tag --points-at HEAD` is a read whose argument looks exactly like a
+// name to create. The push is where the consequence is, and the push is what is
+// refused. ADR 0098 argues both sides of that.
+//
+// TWO THINGS IN THE SECTION ABOVE THAT ARE NO LONGER TRUE, REPORTED NOT FIXED
+// NOT COVERED lists `\gh pr merge` and `/usr/bin/gh pr merge` as allowed through.
+// Both are denied today, and were before this change: `commandName` splits on
+// both separators and drops the leading `\`. Those two lines are the asset's to
+// correct, and editing them here would be reverted by the next install.
+//
+// The same section names `git push --mirror` as open. It is open against the
+// *branch* rule, which is what that paragraph is about, and it is closed against
+// the tag rule below, because `--mirror` writes `refs/tags/*` and one of those
+// tags publishes.
+//
+// THE WRAPPER WORDS ARE NOT A GAP LEFT HERE. THEY ARE A DECISION MADE ABOVE
+// `command gh pr merge` and `env gh pr merge` still get through, and so does
+// `env npm publish`. That is the exclusion NOT COVERED states in its own words,
+// with a threat model: this guard is for an agent that forgot, not one that is
+// hiding, and the set of programs that launch another program has no edge. It
+// still holds under the tag and publish rules, and the forgetting-shaped
+// spelling of a publish is `npm publish`, which is now refused. Widening it was
+// measured and refused in ADR 0098; `test/guards/broken-on-purpose.test.ts` pins
+// the exclusion as a passing assertion so it stays visible.
+
 // The one thing to edit. `check-setup.mjs` reads this line by name.
 const DEFAULT_BRANCH = 'main'
 
@@ -456,12 +504,17 @@ const outerSegmentsOf = (line) =>
 
 // END command reader
 
+// `.cmd` and `.bat` are here for the same reason `.exe` is, and they are not
+// hypothetical on this machine: npm, pnpm and yarn are all shipped as `.cmd`
+// shims on Windows, so `npm.cmd publish` is what a path completion produces.
+// This only ever widens a rule, because every rule below asks whether a name
+// matches and none of them asks whether it does not.
 const commandName = (token) =>
   token
     .split(/[\\/]/)
     .pop()
     .toLowerCase()
-    .replace(/\.exe$/, '')
+    .replace(/\.(exe|cmd|bat)$/, '')
 
 // This hook is wired to every shell-capable tool the harness offers, and each
 // of those shells can invoke the other one, so `pwsh -Command "gh pr merge 42"`
@@ -501,6 +554,20 @@ const USE_WRAPPER =
   '  node scripts/merge-pr.mjs <pr-number>\n\n' +
   'It refuses unless every required check is green, and always squash merges.\n' +
   'See docs/process/working-an-issue.md.'
+
+// Why a release is refused where a merge is only sent back to its wrapper. The
+// argument is `.github/workflows/release.yml`'s own and it is better than any
+// restatement: a merge can be reverted and a publish cannot, so the person who
+// owns the consequence pushes the tag. ADR 0051, ADR 0098.
+const OWNER_RELEASES =
+  'A merge can be reverted. This cannot: `npm unpublish` is refused outright\n' +
+  'after 72 hours, so the wrong bytes on the registry are permanent in the way a\n' +
+  'bad merge is not. That is the whole reason this is refused and a merge is only\n' +
+  'sent back to `node scripts/merge-pr.mjs`.\n\n' +
+  'Releases here are one act by one person. The owner pushes a `v*` tag,\n' +
+  '`.github/workflows/release.yml` publishes, and `NPM_TOKEN` is a repository\n' +
+  'secret nothing on a pull request can read. Report that the release is ready\n' +
+  'and stop. See docs/process/working-an-issue.md and ADR 0051.'
 
 // `gh` takes its global flags before the subcommand and no positional argument
 // there, so skipping the flags lands on the subcommand path. Returns null when
@@ -596,6 +663,114 @@ function pushesToDefaultBranch(args) {
 // real push to the default branch.
 const isDryRun = (args) => args.includes('--dry-run') || args.includes('-n')
 
+// ---------------------------------------------------------------------------
+// The half that cannot be taken back. ADR 0098.
+// ---------------------------------------------------------------------------
+
+// Does this push put a tag on the remote? A tag matching `v*` starts
+// `.github/workflows/release.yml`, which publishes to npm, so this is the
+// command that makes a permanent thing happen and it reads as an ordinary push.
+//
+// Three readings, and only the first two are certain from the line alone.
+//
+// `--tags` and `--follow-tags` say it outright. So does `--mirror`, which writes
+// `refs/tags/*` along with everything else; the section above names `--all` and
+// `--mirror` as open against the *branch* rule and that stays true, because
+// neither says on the command line which branches it carries. Which tags it
+// carries is not the question here: it carries all of them, and one of those
+// publishes.
+//
+// A refspec naming `refs/tags/` says it outright too, on either side of the
+// colon, and so does git's `git push <remote> tag <name>` form.
+//
+// The third is a guess and is named as one. `git push origin v0.1.0` is a tag
+// push or a branch push depending on what `v0.1.0` is in the repository, and
+// this guard reads only the command line. A destination shaped like `v` and a
+// digit is the shape this project's releases take and the shape the workflow
+// triggers on, so it is refused. The cost is that a branch called `v2-spike`
+// cannot be pushed under that name, which is the safe direction and the one a
+// refusal message can explain.
+//
+// A tag whose name is neither of those, `rehearsal-1` say, reads as a branch and
+// is allowed. That is deliberate rather than an edge left ragged: a tag matching
+// neither `v*` nor `refs/tags/` cannot start `release.yml`, so the consequence
+// this rule exists for is absent, and refusing every bare refspec would refuse
+// every ordinary branch push.
+//
+// A delete is allowed for the same reason and one more. It cannot publish, and
+// `.github/workflows/rehearse-release-ancestry.yml` documents
+// `git push origin :refs/tags/rehearsal-1` as the cleanup of a procedure this
+// repository runs on purpose. A guard that refuses the tidying half of a written
+// procedure is one people learn to work around, which the header weighs as the
+// likelier failure.
+const TAG_PUSH_FLAGS = new Set(['--tags', '--follow-tags', '--mirror'])
+const RELEASE_TAG = /^v\d/
+
+function pushesTag(args) {
+  if (args.includes('--delete') || args.includes('-d')) return false
+  if (args.some((token) => TAG_PUSH_FLAGS.has(token))) return true
+  const positional = args.filter((token) => !token.startsWith('-'))
+  // `git push origin tag v0.1.0`, git's own shorthand for `refs/tags/v0.1.0`.
+  if (positional[1] === 'tag' && positional[2] !== undefined) return true
+  return positional.slice(1).some((refspec) => {
+    // An empty source side deletes the destination and writes nothing.
+    if (refspec.replace(/^\+/, '').startsWith(':')) return false
+    return refspec.includes('refs/tags/') || RELEASE_TAG.test(pushDestination(refspec))
+  })
+}
+
+// `npm publish` and the three other runners that spell it the same way. Yarn
+// Berry says `yarn npm publish`, which is why one `npm` is stepped over.
+//
+// Flags are skipped but their values are not, for the reason `pushesTag` gives:
+// stopping early allows and inventing a command name denies, and this file takes
+// the allowing direction everywhere it cannot be sure. `npm --loglevel info
+// publish` therefore reads as a command called `info` and is not caught, which
+// is the same shape as the flag-value gap the push rule already carries.
+const PUBLISH_RUNNERS = new Set(['npm', 'pnpm', 'yarn', 'bun'])
+
+function publishesPackage(tokens) {
+  if (!PUBLISH_RUNNERS.has(commandName(tokens[0]))) return false
+  let at = 1
+  while (at < tokens.length && tokens[at].startsWith('-')) at += 1
+  if (tokens[at] === 'npm') at += 1
+  if (tokens[at] !== 'publish') return false
+  // A dry run lists what would ship and uploads nothing, so the rule about a
+  // permanent consequence has nothing to act on. It is not a rehearsal either:
+  // ADR 0051 measured it exiting 0 on a package a real publish refuses. Allowed
+  // for what it is, which is a listing, and the refusal below says so.
+  return !tokens.includes('--dry-run')
+}
+
+// A release created through `gh` writes a tag ref on the remote, and GitHub
+// fires the same `push` event for it that a pushed tag fires. So this is the
+// merge rule's shape repeated: the command and the API call that does the same
+// thing both have to be refused, or the refusal is a speed bump.
+//
+// `gh api` is read for whether it writes, because `repos/o/r/releases/latest` is
+// an ordinary lookup and refusing a read is the false positive this guard has
+// already been burned by once. gh sends GET unless it is told otherwise or it is
+// handed fields, and both of those are on the command line.
+const isReleaseEndpoint = (endpoint) => /\/(releases|git\/refs)(\/|$)/.test(endpoint)
+
+const API_FIELD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input'])
+
+function apiWrites(args) {
+  for (let at = 0; at < args.length; at += 1) {
+    const token = args[at]
+    const verb =
+      token === '--method' || token === '-X'
+        ? args[at + 1]
+        : /^(--method|-X)=/.test(token)
+          ? token.slice(token.indexOf('=') + 1)
+          : null
+    if (verb !== null && verb !== undefined) return !/^(get|head)$/i.test(verb)
+  }
+  return args.some(
+    (token) => API_FIELD_FLAGS.has(token) || /^(-f|-F|--field|--raw-field|--input)=/.test(token),
+  )
+}
+
 function judge(line, depth) {
   for (const tokens of segmentsOf(line)) {
     if (isLivenessProbe(tokens)) {
@@ -616,6 +791,38 @@ function judge(line, depth) {
     if (gh !== null && gh[0] === 'api' && isMergeEndpoint(apiEndpoint(gh.slice(1)) ?? '')) {
       deny(`Blocked: merging through \`gh api\` is still merging.\n\n${USE_WRAPPER}`)
     }
+    if (gh !== null && gh[0] === 'release' && (gh[1] === 'create' || gh[1] === 'edit')) {
+      deny(
+        'Blocked: `gh release` writes a tag ref on the remote, and GitHub fires the\n' +
+          'same push event for that as for a pushed tag. So this publishes.\n\n' +
+          `${OWNER_RELEASES}`,
+      )
+    }
+    if (
+      gh !== null &&
+      gh[0] === 'api' &&
+      isReleaseEndpoint(apiEndpoint(gh.slice(1)) ?? '') &&
+      apiWrites(gh.slice(1))
+    ) {
+      deny(
+        'Blocked: writing a release or a tag ref through `gh api` is still cutting a\n' +
+          'release. Reading one is not, and `gh api` without a writing method or a\n' +
+          '`-f` field is a read, so a lookup gets through.\n\n' +
+          `${OWNER_RELEASES}`,
+      )
+    }
+
+    if (publishesPackage(tokens)) {
+      deny(
+        'Blocked: `npm publish` puts this package on a public registry and nothing\n' +
+          'takes that back.\n\n' +
+          '`npm publish --dry-run` is allowed: it lists what would ship and uploads\n' +
+          'nothing. It is not a rehearsal either. ADR 0051 measured it exiting 0 on\n' +
+          'this package while `private: true` was still set, which a real publish\n' +
+          'refuses, so a green dry run is a listing and not a verdict.\n\n' +
+          `${OWNER_RELEASES}`,
+      )
+    }
 
     const git = gitArguments(tokens)
     if (
@@ -629,6 +836,21 @@ function judge(line, depth) {
           `Push your feature branch instead:  git push -u origin HEAD\n\n` +
           '`git push --dry-run` is allowed: it contacts the remote and changes\n' +
           `nothing. So is \`-n\`.\n\n${USE_WRAPPER}`,
+      )
+    }
+    if (git !== null && git[0] === 'push' && !isDryRun(git) && pushesTag(git.slice(1))) {
+      deny(
+        'Blocked: pushing a tag is what publishes this package. A `v*` tag on the\n' +
+          'remote starts `.github/workflows/release.yml`, and that uploads to npm.\n\n' +
+          `${OWNER_RELEASES}\n\n` +
+          'Creating the tag locally was allowed and stays allowed: it changes nothing\n' +
+          'outside this checkout, and `git tag -d <name>` removes one. The push is the\n' +
+          'step with the consequence, so the push is the step that is refused.\n\n' +
+          '`git push --dry-run` is allowed here too. A destination shaped like a\n' +
+          'version, `v` and a digit, is read as a tag even where it is a branch,\n' +
+          'because the command line cannot tell the two apart and only one of the two\n' +
+          'readings can be undone. Deleting a remote tag is allowed, because a delete\n' +
+          'writes nothing and cannot publish.',
       )
     }
 

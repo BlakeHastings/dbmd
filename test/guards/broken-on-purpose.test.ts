@@ -2169,6 +2169,173 @@ describe('the merge guard, asked to judge', () => {
     )
     expect(heredoc).toEqual({ denied: false, reason: '' })
   })
+
+  // -------------------------------------------------------------------------
+  // The half that cannot be taken back. ADR 0098.
+  //
+  // Every case above is about a merge, which can be reverted. Driven on
+  // 2026-09-08 before these rules existed, this guard denied 13 of 25 command
+  // lines and the four it let through were `git tag v0.1.0`,
+  // `git push origin v0.1.0`, `git push origin --tags` and `npm publish`: it
+  // refused the reversible thing and permitted the permanent one. These tests
+  // are the mutation ADR 0034 asks for, and they read the words, because a
+  // refusal that does not say why a publish is different from a merge is a
+  // refusal somebody argues with.
+  // -------------------------------------------------------------------------
+
+  test('a tag push is refused, and the refusal says why this is not a merge', async () => {
+    const { denied, reason } = await judge('git push origin v0.1.0')
+
+    expect(denied).toBe(true)
+    expect(reason).toContain('pushing a tag is what publishes this package')
+    // The consequence, in the workflow's own terms. This is the whole argument
+    // for the rule existing beside a merge rule that only sends people to a
+    // wrapper, so it is the clause worth pinning.
+    expect(reason).toContain('A merge can be reverted. This cannot')
+    expect(reason).toContain('refused outright\nafter 72 hours')
+    expect(reason).toContain('The owner pushes a `v*` tag')
+  })
+
+  test('every spelling of a tag push that names a tag is refused', async () => {
+    for (const line of [
+      'git push origin v0.1.0',
+      'git push origin --tags',
+      'git push --tags',
+      'git push --follow-tags origin HEAD',
+      'git push --mirror origin',
+      'git push origin refs/tags/v0.1.0',
+      'git push origin HEAD:refs/tags/v0.1.0',
+      'git push origin tag v0.1.0',
+      'git push origin +v0.1.0',
+      'pwsh -Command "git push origin v0.1.0"',
+    ]) {
+      expect((await judge(line)).denied, line).toBe(true)
+    }
+  })
+
+  test('a local tag is allowed, and the refusal one command later says so', async () => {
+    // The deliberate half of the decision. Creating a tag writes a ref inside
+    // this checkout, `git tag -d` removes it, and nothing outside sees it. A
+    // guard that refuses it refuses something that does nothing, which is the
+    // rule people learn to route around. ADR 0098 argues both sides.
+    expect(await judge('git tag v0.1.0')).toEqual({ denied: false, reason: '' })
+    expect(await judge('git tag -a v0.1.0 -m "0.1.0"')).toEqual({ denied: false, reason: '' })
+    expect(await judge('git tag -d v0.1.0')).toEqual({ denied: false, reason: '' })
+    // `git tag --points-at HEAD` is the case that decides it: a read whose
+    // argument is shaped exactly like a name to create. Telling those apart
+    // needs a table of git's flags this guard declines to keep anywhere else.
+    expect(await judge('git tag --points-at HEAD')).toEqual({ denied: false, reason: '' })
+
+    const { reason } = await judge('git push origin v0.1.0')
+    expect(reason).toContain('Creating the tag locally was allowed and stays allowed')
+    expect(reason).toContain('git tag -d <name>')
+  })
+
+  test('a tag push dry run is allowed, for the reason the branch rule already gives', async () => {
+    expect(await judge('git push --dry-run origin v0.1.0')).toEqual({ denied: false, reason: '' })
+    expect(await judge('git push -n --tags origin')).toEqual({ denied: false, reason: '' })
+  })
+
+  test('deleting a tag is allowed, because the written procedure ends that way', async () => {
+    // `.github/workflows/rehearse-release-ancestry.yml` documents exactly these
+    // two lines as the cleanup after a rehearsal tag. A guard that refuses the
+    // tidying half of a procedure this repository runs on purpose is one people
+    // learn to work around, and a delete writes nothing and cannot publish.
+    expect(await judge('git push origin :refs/tags/rehearsal-1')).toEqual({
+      denied: false,
+      reason: '',
+    })
+    expect(await judge('git push --delete origin v0.1.0')).toEqual({ denied: false, reason: '' })
+    expect(await judge('git push -d origin v0.1.0')).toEqual({ denied: false, reason: '' })
+
+    // And the push that starts the rehearsal, whose tag matches neither `v*` nor
+    // `refs/tags/` and therefore cannot start `release.yml`. It reads as a
+    // branch push here, which is named in the guard rather than left ragged.
+    expect(await judge('git push origin rehearsal-1')).toEqual({ denied: false, reason: '' })
+  })
+
+  test('npm publish is refused however the runner is spelled', async () => {
+    for (const line of [
+      'npm publish',
+      'npm publish --access public',
+      'npm.cmd publish',
+      '/usr/local/bin/npm publish',
+      'NODE_AUTH_TOKEN=x npm publish',
+      'pnpm publish',
+      'yarn publish',
+      'yarn npm publish',
+      'bun publish',
+      'bash -c "npm publish"',
+    ]) {
+      expect((await judge(line)).denied, line).toBe(true)
+    }
+
+    const { reason } = await judge('npm publish')
+    expect(reason).toContain('puts this package on a public registry and nothing\ntakes that back')
+  })
+
+  test('a publish dry run is allowed, and the refusal says it is not a rehearsal', async () => {
+    expect(await judge('npm publish --dry-run')).toEqual({ denied: false, reason: '' })
+
+    // ADR 0051 measured `--dry-run` exiting 0 on this package while
+    // `private: true` was still set. Allowing it and calling it a rehearsal
+    // would be worse than refusing it, so the refusal says which it is.
+    const { reason } = await judge('npm publish')
+    expect(reason).toContain('It is not a rehearsal either')
+  })
+
+  test('a release cut through gh is refused, and reading one is not', async () => {
+    expect((await judge('gh release create v0.1.0')).denied).toBe(true)
+    expect((await judge('gh --repo o/r release create v0.1.0')).denied).toBe(true)
+    expect((await judge('gh release edit v0.1.0 --tag v0.1.1')).denied).toBe(true)
+    expect((await judge('gh api --method POST repos/o/r/releases -f tag_name=v0.1.0')).denied).toBe(
+      true,
+    )
+    // gh sends POST when it is handed fields, with no `--method` anywhere on the
+    // line, so a rule that read only the method would allow this one.
+    expect((await judge('gh api repos/o/r/git/refs -f ref=refs/tags/v0.1.0 -f sha=a')).denied).toBe(
+      true,
+    )
+
+    const { reason } = await judge('gh release create v0.1.0')
+    expect(reason).toContain('writes a tag ref on the remote')
+
+    // The other half, and the one this guard has been burned by: refusing a
+    // lookup is how a guard gets switched off.
+    expect(await judge('gh release list')).toEqual({ denied: false, reason: '' })
+    expect(await judge('gh api repos/o/r/releases/latest')).toEqual({ denied: false, reason: '' })
+    expect(await judge('gh issue comment 42 --body "do not run npm publish here"')).toEqual({
+      denied: false,
+      reason: '',
+    })
+  })
+
+  test('a wrapper command still gets through, which is a decision and not a gap', async () => {
+    // This assertion passes on purpose and is the unusual one in this file.
+    //
+    // `guard-merge.mjs`'s own NOT COVERED section names `sudo`, `env`,
+    // `command`, `nohup` and `xargs` as allowed through, with a threat model: it
+    // is built for an agent that forgot, not one that is hiding, and the set of
+    // programs that launch another program has no edge. ADR 0098 re-weighed that
+    // against a consequence that cannot be undone and kept it, because the
+    // forgetting-shaped spelling of a publish is `npm publish` and that is now
+    // refused, while nobody types `sudo npm publish` by accident.
+    //
+    // A decision recorded only in a comment is one somebody deletes. This is
+    // that decision as a test, so widening the guard turns it red and whoever
+    // does it has to come back and say why.
+    for (const line of [
+      'command gh pr merge 42',
+      'env gh pr merge 42',
+      'sudo gh pr merge 42',
+      'xargs gh pr merge',
+      'command npm publish',
+      'env npm publish',
+      'nice -n 10 npm publish',
+    ]) {
+      expect((await judge(line)).denied, line).toBe(false)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

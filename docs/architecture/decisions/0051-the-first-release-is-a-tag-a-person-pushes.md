@@ -146,3 +146,33 @@ disagree eventually.
 - **There is a second maintainer.** One person's token is a single point of
   failure for releases, and npm's own answer to that is an organisation rather
   than a shared secret.
+
+## Amendment, 2026-09-08: the rule is now the next layer, and ADR 0098 is it
+
+Appended rather than edited. Nothing above changes: the first version is still
+`0.1.0`, publishing still happens when a person pushes a tag, the token is still
+the owner's, and the release job still refuses a mismatched version and a tag off
+`main`.
+
+**The last entry in the list above has fired.** It said the thing stopping the
+loop from releasing was that only the owner can push a tag and only the owner
+holds the token, "rather than a rule in `scripts/guard-merge.mjs`", and that if
+that ever stopped being enough the rule was the next layer.
+
+It stopped being enough in the direction that entry did not anticipate. Nobody
+asked for the loop to be able to release. What was measured on 2026-09-08 is that
+nothing stopped it: the merge guard was driven with 25 command lines, denied 13
+of them, and allowed `git tag v0.1.0`, `git push origin v0.1.0`,
+`git push origin --tags` and `npm publish`. The sentence in the Decision above,
+that the loop "cannot reach the registry even by accident", rested on the owner's
+hands and on an instruction written in three places. The token half of it is
+still true and is still the strongest part of this design. The tag half was an
+instruction.
+
+[ADR 0098](0098-a-publish-is-refused-where-a-merge-is-only-sent-back.md) is the
+rule. It refuses a tag push, `npm publish`, a release cut through `gh release`,
+and the same release written through `gh api`, and its refusals carry this
+record's own argument about why 72 hours of `npm unpublish` is not a safety net.
+It also records why `git tag` itself stays allowed, and why the wrapper-word
+exclusion in the guard's header was re-weighed against a permanent consequence
+and kept.
