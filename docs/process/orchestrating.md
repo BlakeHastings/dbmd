@@ -159,6 +159,18 @@ The second argument is the head sha you read when you reviewed, which is
 characters are enough. The section below headed "A pull request you reviewed is
 not the pull request you merge" is why it exists.
 
+**Run it from the main checkout.** It refuses from a linked git worktree,
+including an agent's and including your own throwaway rebase ones, because that
+is where a merge happens by accident: an agent did exactly that on 2026-09-08,
+meaning to run a read-only harness. Running it in the main checkout does not
+break the read-only rule below, because it only calls the GitHub API and writes
+no file there. **Watching a refusal fire from an agent's worktree still works**,
+which is the reason there is no way to turn this off: the worktree refusal is
+raised last, so a red check, a stale green and an unnamed commit all refuse from
+a worktree exactly as they did before, and the only thing a worktree cannot
+reach is the merge.
+[ADR 0078](../architecture/decisions/0078-a-merge-runs-in-the-main-checkout-or-not-at-all.md).
+
 Post the three-lens review record on the beads item before merging, with
 `bd comment <id> --file review.md`. The pull request body carries the same three
 headings, and the item is where it stays findable once the branch is gone.

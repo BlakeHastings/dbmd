@@ -1319,15 +1319,28 @@ interface OpenPull {
   readonly baseRefName: string
 }
 
+interface CheckoutFacts {
+  readonly linked: boolean
+  readonly here: string
+  readonly main: string
+}
+
 const mergePr = await guardModule<{
   decideMerge: (input: {
     pr: PullRequestFacts
     behind: number | null
     reviewed?: string | null
+    checkout?: CheckoutFacts | null
     required?: readonly string[]
     refuseWhenBehind?: boolean
     waitedSeconds?: number
   }) => MergeDecision
+  readCheckout: (input: {
+    gitDir?: string | null
+    gitCommonDir?: string | null
+    topLevel?: string | null
+    cwd?: string | null
+  }) => CheckoutFacts | null
   stalenessNotice: (input: {
     pr: { number: number; baseRefName: string }
     others: readonly OpenPull[] | null
@@ -1356,16 +1369,31 @@ describe('merge-pr.mjs, broken on purpose', () => {
     }
   }
 
+  /** The main checkout, which is the only place a merge is allowed to run. */
+  const MAIN_CHECKOUT: CheckoutFacts = {
+    linked: false,
+    here: 'C:/Users/someone/source/repos/proj-db-md',
+    main: 'C:/Users/someone/source/repos/proj-db-md',
+  }
+
+  /** An agent's worktree, which is where the accident of 2026-09-08 happened. */
+  const AGENT_WORKTREE: CheckoutFacts = {
+    linked: true,
+    here: 'C:/Users/someone/source/repos/proj-db-md/.claude/worktrees/agent-a9ba51',
+    main: 'C:/Users/someone/source/repos/proj-db-md',
+  }
+
   /**
-   * A decision taken by a reviewer who read the head, which is the ordinary case.
+   * A decision taken by a reviewer who read the head, in the main checkout,
+   * which is the ordinary case.
    *
-   * The reviewed sha defaults here for the same reason the pull request above
-   * defaults: every case below is meant to differ from the control in one fact,
-   * and a case that had to restate the sha would be stating two. The cases that
-   * are about the sha pass their own.
+   * The reviewed sha and the checkout default here for the same reason the pull
+   * request above defaults: every case below is meant to differ from the control
+   * in one fact, and a case that had to restate them would be stating three. The
+   * cases that are about the sha or about the directory pass their own.
    */
   function decide(input: Parameters<typeof mergePr.decideMerge>[0]): MergeDecision {
-    return mergePr.decideMerge({ reviewed: HEAD, ...input })
+    return mergePr.decideMerge({ reviewed: HEAD, checkout: MAIN_CHECKOUT, ...input })
   }
 
   test('the pull request this script exists to let through is let through', () => {
@@ -1630,6 +1658,239 @@ describe('merge-pr.mjs, broken on purpose', () => {
     expect(decision.merge).toBe(false)
     expect(decision.why).toContain('check: FAILURE')
     expect(decision.why).not.toContain('which commit you read')
+  })
+
+  // The refusal about the directory. Everything above is about the pull request
+  // or about the person; this one is about whether the person is allowed to
+  // merge anything at all. On 2026-09-08 an agent merged its own pull request
+  // from its worktree, meaning to run a read-only harness. Every assertion above
+  // would have passed on that merge, which is why none of them caught it.
+
+  test('a merge from an agent worktree is refused, with both directories named', () => {
+    const decision = decide({ pr: pullRequest(), behind: 0, checkout: AGENT_WORKTREE })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('this is a linked git worktree rather than the main checkout')
+    // Both, adjacent: the reader has to be able to see where they are and where
+    // to go, and the second one is the whole of "what to do instead".
+    expect(decision.why).toContain(`running in     ${AGENT_WORKTREE.here}`)
+    expect(decision.why).toContain(`main checkout  ${AGENT_WORKTREE.main}`)
+  })
+
+  test('the refusal says nothing else objected, which is the reason it exists', () => {
+    // The sentence that stops this being read as a fault in the branch. The
+    // branch is fine. It was fine on the night of the accident too.
+    const decision = decide({ pr: pullRequest(), behind: 0, checkout: AGENT_WORKTREE })
+
+    expect(decision.why).toContain('Nothing above objected')
+    expect(decision.why).toContain('Every gate was satisfied')
+  })
+
+  test('the refusal answers both callers, because either one can be reading it', () => {
+    const decision = decide({ pr: pullRequest(), behind: 0, checkout: AGENT_WORKTREE })
+
+    // The agent is told the rule it is about to break and what to do instead.
+    expect(decision.why).toContain('"You do not\n  merge. Ever."')
+    expect(decision.why).toContain('push the branch,\n  open the pull request, report, and stop')
+    // The orchestrator is told the refusal is not a wall, and why running the
+    // same command in the main checkout does not break the read-only rule.
+    expect(decision.why).toContain('run the same command from the main checkout')
+    expect(decision.why).toContain('writes no file')
+  })
+
+  test('the refusal says there is no way to turn it off, and why none is needed', () => {
+    // The escape hatch that is deliberately absent. A hatch reachable from a
+    // brief ends up in briefs, and the only legitimate use of this script from
+    // a worktree is watching a refusal fire, which the ordering below keeps.
+    const decision = decide({ pr: pullRequest(), behind: 0, checkout: AGENT_WORKTREE })
+
+    expect(decision.why).toContain('There is no flag that turns this off')
+    expect(decision.why).toContain('Every refusal above still fires from a worktree')
+  })
+
+  test('a checkout nothing could identify is refused rather than assumed to be the main one', () => {
+    // git absent, or a cwd outside any checkout. The same direction as the
+    // missing head sha above: a control that passes by being unable to run is
+    // the disease ADR 0034 is about.
+    const decision = decide({ pr: pullRequest(), behind: 0, checkout: null })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('could tell whether this is the main checkout or a git worktree')
+    // Two causes, and the reader is told both rather than one guess (ADR 0060).
+    expect(decision.why).toContain('git is not on PATH')
+    expect(decision.why).toContain('did not run from inside a checkout')
+    expect(decision.why).toContain('Refusing here is the safe direction')
+  })
+
+  test('a run from the main checkout is not refused for the directory it is in', () => {
+    // The control for the four above, and the whole scope of the refusal: it is
+    // about which directory the command ran in and about nothing else.
+    const decision = decide({ pr: pullRequest(), behind: 0, checkout: MAIN_CHECKOUT })
+
+    expect(decision.merge).toBe(true)
+    expect(decision.why).toBe(null)
+  })
+
+  test('a worktree run still reports a red check, so a refusal can be watched from one', () => {
+    // Deliberate ordering, and the reason there is no escape hatch. The
+    // orchestrator runs this from an agent's worktree against a live pull
+    // request to watch a control refuse without merging anything. A worktree
+    // refusal raised first would make every other refusal unreachable from
+    // there and turn one demonstration into none.
+    const decision = decide({
+      pr: pullRequest({ statusCheckRollup: [{ name: 'check', conclusion: 'FAILURE' }] }),
+      behind: 0,
+      checkout: AGENT_WORKTREE,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('check: FAILURE')
+    expect(decision.why).not.toContain('linked git worktree')
+  })
+
+  test('a worktree run still reports a stale green and an unnamed commit', () => {
+    // The same ordering, against the other two refusals somebody would want to
+    // watch. Staleness first.
+    const stale = decide({ pr: pullRequest(), behind: 3, checkout: AGENT_WORKTREE })
+
+    expect(stale.why).toContain('that green is stale')
+    expect(stale.why).not.toContain('linked git worktree')
+
+    const unnamed = decide({
+      pr: pullRequest(),
+      behind: 0,
+      reviewed: null,
+      checkout: AGENT_WORKTREE,
+    })
+
+    expect(unnamed.why).toContain('you have not said which commit you read')
+    expect(unnamed.why).not.toContain('linked git worktree')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Which checkout the merge is running in, which is the fact the refusal above
+// is made of. It is read from git rather than from a path pattern, so these
+// cases are the answers `git rev-parse` actually gives, measured on this
+// machine on 2026-09-08 rather than assumed.
+// ---------------------------------------------------------------------------
+
+describe('the checkout a merge is running in, broken on purpose', () => {
+  /**
+   * The fixture paths, written without a drive letter on purpose.
+   *
+   * `readCheckout` resolves what git said against the working directory, which
+   * is the platform's own `path.resolve`, and this suite runs on Windows and on
+   * two Linux runners. A first version of these cases used the real measured
+   * `C:/Users/...` answers and went green here and red in CI: on Linux `C:/x`
+   * is a *relative* path, so it was joined onto the runner's directory and two
+   * answers that are one directory on the machine this script runs on became
+   * two. The lesson is the one this whole file is about, arriving from the
+   * other side: a fixture that encodes the platform tests the platform.
+   *
+   * So these are rooted paths, which resolve to one directory on both, and the
+   * assertions are about `linked`, which is the load-bearing answer and is
+   * exact everywhere. The one case that is genuinely about Windows says so and
+   * asserts what the platform it is running on actually does.
+   */
+  const MAIN = '/repos/proj-db-md'
+  const WORKTREE = `${MAIN}/.claude/worktrees/agent-a9ba51`
+
+  test('the main checkout, asked from its root, is not a worktree', () => {
+    // Measured: git answers `.git` for both, relative to the root.
+    const checkout = mergePr.readCheckout({
+      gitDir: '.git',
+      gitCommonDir: '.git',
+      topLevel: MAIN,
+      cwd: MAIN,
+    })
+
+    expect(checkout).not.toBe(null)
+    expect(checkout?.linked).toBe(false)
+  })
+
+  test('the main checkout, asked one directory down, is still not a worktree', () => {
+    // The case a string comparison gets wrong, and the reason both answers are
+    // resolved against the cwd first. Measured from `scripts/`: `--git-dir` is
+    // absolute and `--git-common-dir` is the relative `../.git`. Compared as
+    // typed they differ, and every subdirectory of the main checkout would be
+    // refused as a worktree, which is a refusal aimed at the only caller
+    // allowed to merge.
+    const checkout = mergePr.readCheckout({
+      gitDir: `${MAIN}/.git`,
+      gitCommonDir: '../.git',
+      topLevel: MAIN,
+      cwd: `${MAIN}/scripts`,
+    })
+
+    expect(checkout?.linked).toBe(false)
+  })
+
+  test('a linked worktree is one, because its git directory lives inside the shared one', () => {
+    // Measured inside an agent worktree: the two answers are different absolute
+    // paths, and the second is the repository's own git directory.
+    const checkout = mergePr.readCheckout({
+      gitDir: `${MAIN}/.git/worktrees/agent-a9ba51`,
+      gitCommonDir: `${MAIN}/.git`,
+      topLevel: WORKTREE,
+      cwd: WORKTREE,
+    })
+
+    expect(checkout?.linked).toBe(true)
+    // Straight through, unresolved, because it is what the caller will read in
+    // the refusal and compare against their own prompt.
+    expect(checkout?.here).toBe(WORKTREE)
+    // What the refusal tells the caller to go and do instead, so it has to be
+    // the checkout and not the git directory inside it. Asserted by shape
+    // rather than as a literal: on Windows the resolved answer carries the
+    // drive letter of whatever directory the suite ran in.
+    expect(checkout?.main.endsWith('/repos/proj-db-md')).toBe(true)
+  })
+
+  test('a worktree outside the repository is one too, because the test is not a path pattern', () => {
+    // The orchestrator's throwaway rebase worktrees live in a scratch directory
+    // rather than under `.claude/worktrees/`. A refusal written as a path match
+    // would let a merge run from one of those, and would be turned off by a
+    // rename nobody connected to it.
+    const checkout = mergePr.readCheckout({
+      gitDir: `${MAIN}/.git/worktrees/rb128`,
+      gitCommonDir: `${MAIN}/.git`,
+      topLevel: '/scratch/rb128',
+      cwd: '/scratch/rb128',
+    })
+
+    expect(checkout?.linked).toBe(true)
+  })
+
+  test('the same directory spelled two ways does not make the main checkout look linked', () => {
+    // A false refusal is the expensive direction here, because the caller it
+    // refuses is the only one allowed to merge. Windows is the platform this
+    // script runs on and `C:/x`, `c:\x` and `C:\X` are one directory there, so
+    // the comparison is case-insensitive and on forward slashes. On POSIX a
+    // backslash is an ordinary character in a name, so the second half of that
+    // is meaningless there and only the case half is asserted.
+    const spelledTwoWays =
+      process.platform === 'win32'
+        ? { gitDir: 'C:/repos/proj-db-md/.git', gitCommonDir: 'c:\\repos\\proj-db-md\\.git' }
+        : { gitDir: `${MAIN}/.git`, gitCommonDir: '/REPOS/PROJ-DB-MD/.git' }
+
+    const checkout = mergePr.readCheckout({ ...spelledTwoWays, topLevel: MAIN, cwd: MAIN })
+
+    expect(checkout?.linked).toBe(false)
+  })
+
+  test('an answer git did not give reads as unknown rather than as the main checkout', () => {
+    // Each of the four is required, because a missing one is a question that
+    // was not answered rather than a no.
+    expect(mergePr.readCheckout({ gitCommonDir: '.git', topLevel: MAIN, cwd: MAIN })).toBe(null)
+    expect(mergePr.readCheckout({ gitDir: '.git', topLevel: MAIN, cwd: MAIN })).toBe(null)
+    expect(mergePr.readCheckout({ gitDir: '.git', gitCommonDir: '.git', cwd: MAIN })).toBe(null)
+    expect(mergePr.readCheckout({ gitDir: '.git', gitCommonDir: '.git', topLevel: MAIN })).toBe(
+      null,
+    )
+    expect(
+      mergePr.readCheckout({ gitDir: '  ', gitCommonDir: '.git', topLevel: MAIN, cwd: MAIN }),
+    ).toBe(null)
   })
 })
 
