@@ -1627,3 +1627,34 @@ exact moment that is most expensive.
 The guard caught it both times, which is the fourth constraint doing its job:
 whatever prevention you have, add detection, because detection runs on the
 result and the result is the one thing a mistake cannot avoid producing.
+
+## A path list does not show a coupling, and the agent read the test instead
+
+`held.mjs --incoming` compares two sets of file paths: the ones a branch touches
+and the ones each incoming commit touches. When they do not intersect it says so,
+and I built it after telling an agent twice that they did not.
+
+An agent rebasing over it found the case it cannot see. The incoming commit added
+`test/docs/skill.test.ts`, which touches no file its branch touched. But that test
+**runs `dbmd refs` and asserts what the command narrates**, and its branch was
+editing `src/cli/refs.ts`. The two commits have a real dependency, and no
+intersection of path names contains it.
+
+**The agent found it by reading what the new test does rather than what it is
+named**, and then established the specific fact that made it safe: its own edit
+to `refs.ts` is inside the help text, which no run of that block reads. That is
+the difference between "the paths do not overlap" and "these two changes cannot
+affect each other", and only the second one is an answer.
+
+**Do not try to automate this one.** A tool that resolved which strings a test
+asserts against, through the command that produces them, to the source that
+writes them, would be a static analyser for this repository specifically, and it
+would be wrong in both directions on the day somebody wrote a test cleverly. What
+the path check buys is the cheap half, which is knowing when to look. **Say so
+when handing it to somebody**: the overlap list is where to start reading, not a
+verdict, and a branch with no overlap has not been cleared, it has been narrowed.
+
+The general shape is one this project keeps meeting. A mechanical check answers
+a question adjacent to the one you care about. It is worth having when the
+adjacent question is cheap and the real one is not, and it is dangerous exactly
+when its answer gets quoted as though it were the real one.

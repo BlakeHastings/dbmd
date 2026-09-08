@@ -71,6 +71,15 @@ function git(args, cwd) {
 // asserting against a page that has moved. What the agent needs to be told is
 // which incoming commits touch its files, so it can re-verify those rather than
 // trusting git's silence.
+//
+// **An empty answer here is not a clearance.** This compares path names, and a
+// coupling does not have to be one. An agent rebasing over a commit that added
+// `test/docs/skill.test.ts` found that the new test runs `dbmd refs` and asserts
+// what it narrates, while its own branch was editing `src/cli/refs.ts`. No
+// intersection of paths contains that. It read what the test does, established
+// that its own edit was inside the help text no run of that block reads, and
+// only then called it safe. So the overlap list is where to start reading, and a
+// branch with nothing on it has been narrowed rather than cleared.
 if (incomingAt >= 0) {
   const branch = argv[incomingAt + 1]
   if (branch === undefined) throw new Error('--incoming needs a branch or sha')
@@ -104,7 +113,8 @@ if (incomingAt >= 0) {
 
   console.log(
     overlapping === 0
-      ? '\nNone of them touches a file this branch touches.'
+      ? '\nNone of them touches a file this branch touches. That is where to start reading\n' +
+        'rather than a clearance: a coupling does not have to be a shared path.'
       : `\n${overlapping} of them touch a file this branch touches. A clean apply is not evidence` +
           '\nthat the claims in those files still hold. Re-run what asserts against them.',
   )
