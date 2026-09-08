@@ -2087,3 +2087,40 @@ engine-specific API. Grepped for `scrollIntoViewIfNeeded`, `checkVisibility`,
 only modern CSS in `index.html` is `inset:`. So the result above is what the code
 predicts rather than a surprise, which is the least interesting kind of good news
 and the kind worth having in writing.
+
+## 2026-09-08: the third engine
+
+Firefox was the second. WebKit is the third and last one a person can be using,
+and it is the one most likely to differ, because the drawing is SVG and the ends
+of the lines are an SVG `<marker>`.
+
+WebKit 26.5, driven against a copy of `examples/shop`:
+
+```
+title              kettleback-shop · dbmd studio
+boxes              8
+edges              11, all 11 carrying an id
+tooltips saying    11 of 11
+what a delete does
+zoom               90%
+body background    rgb(246, 246, 244)
+console errors     none
+page errors        none
+```
+
+**The SVG half specifically**, since that is the reason to bother: the arrowhead
+resolves through `marker-end: url(#dbmd-arrowhead)`, the computed stroke is
+`rgb(138, 143, 152)` at `1.5px` exactly as in the other two, `getTotalLength()`
+answers 378 on the first edge, and all eleven have a bounding box with extent. So
+the geometry, the marker and the stylesheet all land the same way.
+
+**The keyboard and a write, both again.** `Tab` reaches `table-addresses`,
+`ArrowRight` moves on, `Enter` twice lands on the panel heading, and a drag took
+`tables/orders.md` from `layout: { x: 480, y: 340 }` to `{ x: 480, y: 418 }` with
+the status naming the file.
+
+**All three engines now, and none of them was the one it was built in.** Chromium
+is where every measurement in this file was taken until tonight. Firefox and
+WebKit were each installed for the purpose and each behaved identically, which is
+what a client using no engine-specific interface predicts and is now measured
+rather than predicted.
