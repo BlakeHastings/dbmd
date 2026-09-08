@@ -194,6 +194,26 @@ export function unreadableNotice(what: string): string {
 }
 
 /**
+ * What the page says once a create has landed, which is the one success
+ * sentence it cannot leave to the status line.
+ *
+ * A create is the only edit that does not go through `ObjectWriter`, and the
+ * page clears its standing sentence there and nowhere else, so `Creating
+ * tables/x.md.` used to stand for as long as the tab did: measured unchanged at
+ * three seconds and at fifteen, over a file that was correct and complete on
+ * disk the whole time.
+ *
+ * Letting the ordinary `Wrote ... at ...` line render instead was the other
+ * answer and is the wrong one. That line ends in `Undo is git checkout`, which
+ * is true of the drag it was written for and false of a file that did not exist
+ * a second ago: it is untracked, and `git checkout` will not take it away. ADR
+ * 0074.
+ */
+export function createdNotice(path: string): string {
+  return `Created ${path}. Undo is deleting the file rather than git checkout, because it is new.`
+}
+
+/**
  * The line above the list of refused writes, which has to be true of all of
  * them.
  *

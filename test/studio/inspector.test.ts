@@ -18,7 +18,12 @@ import {
   withRefsRetargeted,
   type RenamePlan,
 } from '../../src/studio/client/model.js'
-import { conflictSummary, staleNotice, unreadableNotice } from '../../src/studio/client/write.js'
+import {
+  conflictSummary,
+  createdNotice,
+  staleNotice,
+  unreadableNotice,
+} from '../../src/studio/client/write.js'
 import type { WireConflict } from '../../src/studio/wire.js'
 
 /**
@@ -508,6 +513,39 @@ describe('what the page says when it could not read the file', () => {
     // because there is something to make it on top of. Here there is not, and
     // the advice that ignored that is what looped.
     expect(unreadableNotice('The edit to table `orders`')).toContain('once the file can be read')
+  })
+})
+
+/**
+ * The sentence a create leaves behind, which used to be no sentence at all.
+ *
+ * A create is the only edit that does not go through `ObjectWriter`, which is
+ * the only place the page clears its standing sentence, so `Creating
+ * tables/x.md.` stood for as long as the tab did over a file that had already
+ * landed. Measured unchanged at three seconds and at fifteen.
+ *
+ * **This is the weaker half of the evidence and is here for the wording only.**
+ * That the sentence is now reached at all was proved by driving the studio in
+ * Chromium, which is where ADR 0015 puts the DOM and the event handling, and no
+ * assertion in this file could have caught the defect it fixes. ADR 0074.
+ */
+describe('what the page says once a create has landed', () => {
+  it('names the file, in the past tense the standing sentence was waiting for', () => {
+    expect(createdNotice('tables/cupping_notes.md')).toContain('Created tables/cupping_notes.md')
+    expect(createdNotice('notes/roast-log.md')).toContain('Created notes/roast-log.md')
+  })
+
+  it('does not offer git checkout, which does not undo a file that is not tracked', () => {
+    // The reason this is a sentence of its own rather than a `standing = null`
+    // that lets the ordinary `Wrote ... at ...` line render: that line ends in
+    // `Undo is git checkout`, and a file created a second ago is untracked.
+    const notice = createdNotice('tables/cupping_notes.md')
+    expect(notice).toContain('deleting the file')
+    expect(notice).not.toMatch(/Undo is git checkout\.?$/)
+  })
+
+  it('does not say it is still doing it', () => {
+    expect(createdNotice('groups/roasting.md')).not.toContain('Creating')
   })
 })
 

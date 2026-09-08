@@ -61,6 +61,7 @@ import {
   RenameStopped,
   RequestFailed,
   conflictSummary,
+  createdNotice,
   staleNotice,
   unreadableNotice,
 } from './write.js'
@@ -150,6 +151,18 @@ function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
   standing = { text, tone }
   statusText.textContent = text
   statusText.dataset['tone'] = tone
+}
+
+/**
+ * Say that the file is there now, which is the answer to `Creating ...`.
+ *
+ * Held rather than written, for the reason `remove` holds its own: a create is
+ * not the kind of act the next status render can reconstruct. The sentence is
+ * `createdNotice`, beside the other notices, so it is provable without a
+ * browser. ADR 0074.
+ */
+function sayCreated(path: string): void {
+  say(createdNotice(path))
 }
 
 /**
@@ -524,6 +537,7 @@ async function create(name: string, at: Point): Promise<void> {
   }
   await reload()
   canvas.select({ kind: 'table', name })
+  sayCreated(`tables/${name}.md`)
 }
 
 /**
@@ -552,6 +566,7 @@ async function createNote(name: string, at: Point, color: string | null): Promis
   }
   await reload()
   canvas.select({ kind: 'note', name })
+  sayCreated(`notes/${name}.md`)
 }
 
 /**
@@ -651,6 +666,13 @@ async function rename(from: string, to: string): Promise<void> {
   // table patched: what the reader found is what the rest of the page must see.
   await reload()
   canvas.select({ kind: 'table', name: to })
+  // Same defect as a create, found the same way: a rename of a table nothing
+  // references touches no file through `ObjectWriter`, so nothing cleared
+  // `Renaming a to b.` and the page said it was still running. Undo is two
+  // things here because a rename is two things. ADR 0074.
+  say(
+    `Renamed ${from} to ${to}. tables/${to}.md is new and tables/${from}.md is gone, so undoing it is a delete and a git checkout.`,
+  )
 }
 
 function wireToolbar(): void {
