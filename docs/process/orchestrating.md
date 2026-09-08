@@ -1704,3 +1704,40 @@ usually the wrong question rather than a loose one.
 
 Proven by starting a studio on an OS-assigned port, watching it appear as a
 stray, stopping it by pid, and watching the count go back to one.
+
+## Two wrong answers to "is this agent finished", and the one that works
+
+`held.mjs` reported a three-way collision on one file whose three holders were
+three merged pull requests. An agent found it, said so, and added the sentence
+that turned out to be the useful part: **a collision line is a prompt to go and
+look rather than an answer**, which both of us had been treating it as and
+happening to be right about.
+
+**The first wrong answer was ancestry.** A finished branch's tip ought not to be
+reachable from `main`, except that every merge here is a squash, so it never is.
+`origin/main...HEAD` keeps showing a landed branch's whole diff forever.
+
+**The second wrong answer was content.** Compare each file on the branch against
+`main`, and drop the ones that are identical, because what landed is on `main` by
+definition. That is true on the day the branch lands and false the day after: a
+later branch touching the same file makes the merged one's version differ again.
+It failed on `test/guards/broken-on-purpose.test.ts`, which two branches had
+touched, and it failed silently, reporting a collision that read exactly like the
+real ones.
+
+**The answer that works is not in the worktree at all.** A branch is finished
+when nobody is asking for it to land, and the place that is recorded is the open
+pull request list. One `gh` call, and twenty two finished worktrees drop out of a
+reading that had been carrying them all night.
+
+**What that costs is worth naming.** The tool now needs the network for its best
+answer, and it says so in its own output when it could not get one. An agent that
+has committed but not yet pushed has no open pull request either, so `--live`
+still overrides, and it is still the one fact the tool cannot derive and the
+orchestrator always has.
+
+The general shape, for the third time in this file: **a question about the
+present cannot be answered from a shape left behind by the past.** Which
+directory is a worktree, which studio is listening, which branch is still wanted.
+Every one of them was got wrong first by inspecting an artifact and got right by
+asking the thing that currently holds the state.

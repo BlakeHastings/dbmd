@@ -130,9 +130,50 @@ function isWorktree(dir) {
   }
 }
 
+/**
+ * The head branch of every open pull request, or `undefined` where `gh` could
+ * not be asked.
+ *
+ * **This is the only reliable way to tell a finished worktree from a working
+ * one, and it took two wrong answers to get here.** Every merge in this
+ * repository is a squash, so a landed branch's tip is not an ancestor of `main`
+ * and `origin/main...HEAD` keeps showing its whole diff. Comparing each file
+ * against `main` does not save it either: a later branch touching the same file
+ * makes the merged one's version differ again, which is exactly what happened
+ * on `test/guards/broken-on-purpose.test.ts`. What actually distinguishes them
+ * is whether anybody is still asking for the branch to land.
+ */
+function openBranches() {
+  try {
+    return new Set(
+      JSON.parse(
+        execFileSync('gh', ['pr', 'list', '--state', 'open', '--json', 'headRefName'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      ).map((pr) => pr.headRefName),
+    )
+  } catch {
+    return undefined
+  }
+}
+
+/** The branch a worktree is on, or `undefined` when it is detached. */
+function branchOf(dir) {
+  try {
+    const name = git(['rev-parse', '--abbrev-ref', 'HEAD'], dir).trim()
+    return name === 'HEAD' ? undefined : name
+  } catch {
+    return undefined
+  }
+}
+
+const open = openBranches()
+
 const byFile = new Map()
 const read = []
 const skipped = { notAWorktree: 0, notLive: 0 }
+let finished = 0
 
 for (const name of existsSync(worktrees) ? readdirSync(worktrees) : []) {
   const id = name.replace(/^agent-/, '')
@@ -162,12 +203,31 @@ for (const name of existsSync(worktrees) ? readdirSync(worktrees) : []) {
   // committed its work looks exactly like one that has not started. Both were
   // true here at once, and the difference matters to a brief: a file already
   // committed on somebody's branch is a conflict just the same.
+  //
+  // **A merged branch is not a holder, and nothing in the worktree can tell.**
+  // An agent found this reported as a three-way COLLISION on one file whose
+  // three holders were three merged pull requests. So a worktree's committed
+  // rows count only when somebody is still asking for that branch to land, or
+  // when you named it live. Everything else is finished and contributes only
+  // what it has open right now, which is nothing.
+  const branch = branchOf(dir)
+  const stillWanted =
+    (live !== undefined && live.has(id)) ||
+    open === undefined ||
+    (branch !== undefined && open.has(branch))
+
+  if (!stillWanted) {
+    finished++
+    continue
+  }
+
   try {
     for (const path of git(['diff', '--name-only', 'origin/main...HEAD'], dir).split('\n')) {
-      if (path.trim() === '') continue
-      const already = byFile.get(path.trim())
+      const file = path.trim()
+      if (file === '') continue
+      const already = byFile.get(file)
       if (already?.some((h) => h.agent === id)) continue
-      hold(path.trim(), 'committed')
+      hold(file, 'committed')
     }
   } catch {
     // A detached worktree with no merge base is not an agent branch. Say
@@ -190,10 +250,21 @@ if (asked.length > 0) {
   process.exit(anyHeld ? 1 : 0)
 }
 
-const scope = live === undefined ? 'every registered worktree, live or finished' : 'the live agents you named'
+const scope =
+  live === undefined
+    ? 'every worktree whose branch still has an open pull request'
+    : 'the live agents you named'
 console.log(`${byFile.size} file(s) held across ${read.length} worktree(s), reading ${scope}.`)
 if (skipped.notAWorktree > 0) {
   console.log(`${skipped.notAWorktree} leftover director(ies) skipped: not their own git top level.`)
+}
+if (finished > 0) {
+  console.log(
+    `${finished} worktree(s) whose branch has no open pull request counted as finished.`,
+  )
+}
+if (open === undefined) {
+  console.log('`gh` could not be asked which branches are open, so every worktree was counted.')
 }
 console.log('')
 
