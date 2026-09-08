@@ -79,6 +79,22 @@ is one, and it is #241: a two-line README fix, proven against a real run, and
 `git pull` refuse until they stash the edit they have in that file. That is
 theirs to accept and it is not waiting on review.
 
+**The cost of accepting it has been measured rather than guessed, and it is three
+commands.** The two edits are in different parts of the file: the owner's is the
+opening paragraphs about what this is and who wrote it, and #241's is one command
+block at about line 470. Simulated end to end in a throwaway worktree, by
+applying the owner's uncommitted diff to a clean `main`, stashing, merging the
+fix and popping:
+
+```bash
+git stash && git pull && git stash pop
+```
+
+**It came back clean**, with both edits present, no conflict markers, and the
+working tree holding exactly the one modified file it held before. So the answer
+to "will this be annoying" is no, and the reason to keep holding it is not risk.
+It is that moving somebody's working tree is theirs to say yes to.
+
 **Three sweeps are closed and accounted for**, each with its list written down
 rather than left as a feeling: 35 model diagnostics with 9 fixed, 17 import
 diagnostics with 12 reachable and 3 that cannot be reached from a pasted file,
