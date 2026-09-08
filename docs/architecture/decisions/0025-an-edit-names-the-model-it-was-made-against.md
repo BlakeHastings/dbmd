@@ -226,3 +226,44 @@ and that nothing is left pointing at a table that is not there.
   would have to answer what revision that edit was made against. ADR 0004 says
   there is no such state, so this is a trigger for that record rather than this
   one.
+
+## The third revisit entry fired on both halves, and the answer stayed per file
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. The decision stands: every edit still names the model revision
+it was made against, the heartbeat is still `/api/model`, and a refusal still says
+which file changed under it.
+
+**"Something other than a table gets a panel, or a group drag moves several tables
+at once."** Both halves have happened, and this entry is the only place either was
+predicted to matter to the revision token.
+
+- Notes and groups each have a panel (dbmd-34), which fired ADR 0013's and
+  ADR 0016's first entries in the same motion.
+- A group drag moves several tables at once. Measured in this worktree on
+  2026-09-07, against a copy of `examples/shop` in a temporary directory: one
+  drag of the `warehouse` header wrote `tables/shipments.md` and
+  `tables/stock_movements.md`, and the status named both in one sentence.
+
+**The gesture spans files and the token did not follow it.** This entry says both
+cases "make a gesture that spans files, and the rename's 'one revision for the
+whole thing' is the shape that wants". The shape that was built is the other one,
+and it was built deliberately. `write.ts` keeps one back-pressure queue per
+object, so a group drag is several requests rather than one, and each carries the
+revision that object's edit was made against, taking the older of the two when a
+patch coalesces. A rename still holds one revision across its three steps, for the
+reason ADR 0016 gives, which is that a rename computes other people's files from
+the model it read.
+
+**The difference is what each gesture is made of.** A rename's steps are derived
+from one another, so a revision that moved between them would mean the plan the
+panel showed is no longer the plan. A group drag's members are independent: each
+member's new position is arithmetic on that member's own old one. So one member
+whose file changed under the drag is one refusal, per file, which is the shape
+ADR 0019 already refuses in. That last sentence is read off the code rather than
+driven: what was driven is that two members write and the status names both.
+
+**The other three entries have not fired.** Nobody has measured a model where the
+two second heartbeat costs anything. No refusal has been reported as annoying
+rather than rare. And no pending edit survives a page reload, because there is
+still no such state to survive one (ADR 0004).

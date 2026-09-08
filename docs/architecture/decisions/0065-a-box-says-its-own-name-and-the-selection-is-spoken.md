@@ -177,3 +177,60 @@ and it is answered by the quieter of the two.
 - **A fourth kind of object joins the canvas.** The label is `${kind} ${name}`
   for three kinds that each own their file names. A kind that does not would
   need the same thought the `id` rule in 0064 needed.
+
+## The first revisit entry fired, and the model chosen was not the one it named
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. Everything decided here stands: a box is still an `article`
+carrying `aria-label="${kind} ${name}"`, a group still needs its role to carry a
+name at all, and `#selection` still speaks the chosen object.
+
+**"The canvas becomes operable by keyboard."** It became so in ADR 0067, and
+ADR 0073 then made the panel reachable from it. The entry names three things as
+the different model: focus order, a selected descendant and
+`aria-activedescendant`. Two of the three arrived. The third did not, and the
+difference is worth having written down.
+
+Measured on a running studio in this worktree on 2026-09-07, against a copy of
+`examples/shop` in a temporary directory:
+
+| | count |
+| --- | --- |
+| elements on the page carrying `aria-activedescendant` | **0** |
+| canvas objects carrying `tabindex="0"` | **1** of 11 |
+| canvas objects carrying `aria-label` | 11 of 11 |
+
+**So it is a roving tabindex and not an active descendant.** Focus is real DOM
+focus on the object itself, one object at a time, and ADR 0067's reason for that
+is in that record: the arrows move a person and `Enter` commits them, so focus and
+selection are two states that are true at the same moment and each needs a ring
+of its own. An `aria-activedescendant` model puts focus on the container and would
+have made that distinction something only a screen reader could hear.
+
+**The labels this record put on the boxes did become part of it rather than the
+whole of it, exactly as the entry says.** All eleven objects still carry their
+name, and it is now what a reader hears on every arrow press rather than only
+after a click. What was added around them is ADR 0067's and not this record's:
+`#canvas` gained `role="group"`, the name `Canvas`, and a description naming the
+keys, which a reader offers on the way in rather than on every object inside.
+Driven the same day, from `Tab` into the canvas: one press reaches
+`table addresses`, `ArrowDown` reaches `table order_items`, `Home` and `End` reach
+the first and the last, `Enter` opens the panel, a second `Enter` lands on its
+heading and `Escape` comes back to the object.
+
+**"A fourth kind of object joins the canvas" has half fired.** An edge is now
+named on the element, through the same `nameForPointing` this record's siblings
+use, and ADR 0072 is that decision. It is exactly the case this entry anticipated,
+a thing on the canvas that does not own a file name, and it was decided with the
+thought this entry asks for: an edge's name is not unique by construction, so the
+caller counts and a name that occurs twice gets no id. What an edge did **not**
+gain is a label. Measured the same day: **0 of the 11 edges carry an
+`aria-label`** and 0 carry a `tabindex`, so an edge is still described by its
+`<title>` and is still not something a person can land on. Whether it should be
+is open in ADR 0071 and ADR 0072 rather than here, and it is on the owed backlog
+list in `docs/process/handoff.md`.
+
+**The other two entries have not fired.** Nobody has run an actual screen reader
+over this, which is the question only listening settles and no session here can.
+The feedback overlay still reads `data-element` and not `aria-label`, which
+ADR 0064 measured and ADR 0072 depended on.

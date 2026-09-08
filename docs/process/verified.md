@@ -1380,3 +1380,106 @@ list above it.
 **An unchanged re-import is one line and exit 0**, as the help claims, so it is
 safe in CI: *"already says what this postgres import says: 1 table, nothing to
 change."* `dbmd check` on the result reports no problems.
+
+## 2026-09-07: every revisit condition in every decision record, read once
+
+**Nothing had ever read one.** `check:adr` refuses two records claiming a number
+and nothing else in the tree looks at a record's contents, so a **Revisit when**
+entry is written about a future and then nobody goes back. This is the first
+sweep, and its point is to make the lists countable: a list nobody sweeps is one
+that quietly stops being read.
+
+**What was read.** 73 records, `0001` to `0074` with no `0053`, and **263
+bulleted conditions** between them. Every bullet was read and judged.
+
+| | conditions |
+| --- | --- |
+| already recorded as fired, by an appended section written before today | 13 |
+| **found fired and now recorded, in this sweep** | **15** |
+| read and ruled out | 235 |
+
+The 13 that were already handled are the reason this was not a blank sheet.
+Records 0001, 0005, 0013, 0024, 0028, 0029, 0034, 0036, 0039 and 0056 each
+already carried a section saying which of their entries had fired, and 0043
+carries two sections examining an entry and concluding it had not. That habit is
+what this sweep extends rather than invents.
+
+**The 15, and where each is written up.** Each is in the record it belongs to,
+appended below the original rather than edited into it, per the directory's own
+README.
+
+| record | entry | what happened |
+| --- | --- | --- |
+| 0002 | the owner asks for the GitHub repository | fired 2026-08-24; the backlog stayed in beads by drift rather than by decision, which is the thing the entry asked to avoid |
+| 0010 | deleting becomes something a caller needs | fired; `Edits.removeObject` is the only place that deletes and `writeModel` still never does, which is where the entry said it belonged |
+| 0015 | something other than a table becomes draggable | fired twice: a note is dragged and resized, and a group drag writes several files |
+| 0016 | a rule the page needs is not one the validator has | fired; a second and a third appeared, and all three now have a reader `empty-value` behind them since ADR 0027 |
+| 0016 | the watcher lands | fired; the harder sentence is built and was driven |
+| 0016 | something other than a table gets a panel | fired; notes and groups each have one, through the same `fields.ts` |
+| 0018 | the inspector rewrites a box's rows in place | fired; a column reorder moves a row with no size change, and the explicit trigger was already there |
+| 0018 | groups arrive | fired; ADR 0035 answers where the measurement lives, on the same code path |
+| 0021 | notes and groups arrive | fired; the mode names a kind, one layer above where the entry looked, and a group is deliberately outside it |
+| 0025 | something other than a table gets a panel, or a group drag moves several tables | fired on both halves; the answer stayed one revision per file rather than one per gesture |
+| 0034 | `check:guards` grows a second slow mutation | fired; the arithmetic is redone below |
+| 0056 | a third page starts carrying output blocks | fired; four pages and four readers, and the parser was copied rather than lifted |
+| 0065 | the canvas becomes operable by keyboard | fired; a roving tabindex rather than the `aria-activedescendant` the entry named |
+| 0065 | a fourth kind of object joins the canvas | half fired; an edge took an id and no label |
+| 0071 | the canvas becomes operable by keyboard | had already fired when the record was written, twenty pull requests earlier |
+
+### What was driven rather than reasoned
+
+A studio on `--port 0` against a copy of `examples/shop` in a temporary
+directory, in a worktree, with Playwright. Nothing tracked was touched.
+
+- **A table changing on disk under an open panel with a caret in it.** Body
+  textarea holding 1581 characters, caret at 392, focus in the field. A different
+  file gained a column, then the open file's own did. Length, caret, focus and
+  panel heading were identical after each, and the status read *"The model changed
+  on disk. This page is still showing what you were working on, and will catch up
+  when you are between edits."* The canvas did not redraw either, which is that
+  sentence being honest rather than a second defect.
+- **A ref-carrying column reordered so a row moves and the box does not.**
+  `orders.subscription_id` moved three places down. Box height 239px before and
+  after, so no `ResizeObserver` entry could fire, and **exactly 1 of the 11 edges
+  moved**, the one whose row moved. The other ten paths were byte-identical.
+- **A group drag.** One drag of the `warehouse` header wrote
+  `tables/shipments.md` and `tables/stock_movements.md`, the status named both in
+  one sentence, and `groups/warehouse.md` gained no `layout:` key.
+- **The keyboard, and what is not on it.** `Tab` reaches a canvas object in one
+  press; the arrows, `Home` and `End` walk the eleven; `Enter` opens the panel, a
+  second `Enter` lands on its `h2` and `Escape` comes back. **0 elements on the
+  page carry `aria-activedescendant`**, 1 of 11 objects carries `tabindex="0"`,
+  and **0 of the 11 edges carry either a `tabindex` or an `aria-label`**.
+- **Panels for the other two kinds.** The note panel carries `color`, `body` and
+  `layout` and one textarea; the group panel carries `label`, `color`, `members`
+  and `body` and one textarea.
+
+No page errors in any of it.
+
+### The gate's arithmetic, redone because ADR 0034 asked
+
+One run of each, in a worktree on this machine, on 2026-09-07. The left column is
+what ADR 0034 wrote down when it was measured earlier the same day.
+
+| | ADR 0034 | now |
+| --- | --- | --- |
+| `npm test` | 9.4s | 15.1s |
+| `npm run check:pack` | 7.9s | 9.3s |
+| `npm run check:guards` | 8.1s, one mutation | 18.5s, two rounds |
+| `npm run check` | 26.5s, and ~34.6s predicted | 54.9s |
+
+`check:guards` is now the largest single item in the gate, at about a third of
+it. Nothing is proposed on the strength of that: the two things ADR 0034's
+decision rests on, that `npm test` stays outside it and that the gate is paid
+once per push, are both unchanged.
+
+### One thing the sweep found that was not a revisit condition
+
+**A brief's premise, and the correction is the useful part.** This sweep was
+briefed as "no condition has ever been examined after it was written". That is
+wrong in a way worth keeping: eleven records already carried an appended section
+doing exactly this, and 0028's carries the general note that a revisit entry "is
+the part of a record most likely to rot, because it is written about a future that
+then happens", with the advice to grep them after any decision the records
+anticipated. The habit existed. What did not exist was a sweep of all of them at
+once, which is what makes the ones nobody happened to be looking at findable.

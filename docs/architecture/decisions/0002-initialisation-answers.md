@@ -72,3 +72,35 @@ Ids are assigned explicitly, `dbmd-10`, not by hash. `bd` will generate
   file into a commit called `bd init: initialize beads issue tracking`. Both
   were squashed away before anything depended on them. If beads is ever
   re-initialised in this repository, check `git log` afterwards.
+
+## The first revisit entry fired on 2026-08-24, and the backlog did not move
+
+Appended rather than edited, as part of a sweep of every record's **Revisit
+when** list on 2026-09-07. Everything decided here stands: the write boundary is
+still owned, the conventions are still ours, and the backlog is still beads with
+`.beads/issues.jsonl` committed as a copy.
+
+**The owner asked for the GitHub repository, and it was created and pushed the
+same day.** ADR 0001's appended correction records the hour it happened. So the
+first entry above has fired.
+
+**What that entry asks for did not happen.** It says the backlog does not have to
+move with the remote, and that moving it is a decision to make deliberately
+rather than by drift. The backlog stayed in beads, and it stayed because nobody
+asked the question, which is the drift the sentence names rather than the
+deliberate answer it asks for. Recording that is the point of this section: the
+outcome may well be right and it was not chosen.
+
+Two facts a later reader needs, neither of which is an answer:
+
+- **`references/backlog-port.md` is not in this repository.** It is in the
+  orchestrated-delivery skill the loop runs from, under that skill's own
+  `references/`. Somebody following the pointer from a clone finds nothing.
+- **The queue has been read-only since 2026-09-07.** `bd.exe` is unsigned,
+  Windows Application Control moved into enforcement, and the binary is refused.
+  `docs/process/handoff.md` carries the writes that are owed and the whole story.
+  That is a new fact bearing on where the backlog lives rather than an answer
+  about it, and the deliberate decision this entry asks for is on that owed list.
+
+**The other two entries have not fired.** Nobody else works this repository, so
+the committed JSONL has never had two writers. `bd init` has not been run again.

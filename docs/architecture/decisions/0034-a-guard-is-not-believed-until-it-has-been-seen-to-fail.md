@@ -187,3 +187,54 @@ unproved inside each `main()`. The original decision above stands unchanged; the
 timings, the split between `npm test` and `npm run check`, and the rule that
 every assertion reads the words are all still what this record says they are.
 
+
+## The first revisit entry fired, and the arithmetic is redone rather than assumed
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. The decision stands unchanged: the cheap guards are tests, the
+expensive one is a script, `npm test` is untouched, every assertion reads the
+words, and nothing is mutated in place.
+
+**"`check:guards` grows a second slow mutation."** It has.
+`scripts/check-pack-guard.mjs` runs two rounds, each its own scratch copy and its
+own pack. The second arrived with ADR 0064 and breaks the release entry point by
+appending `import './feedback.js'` to `src/studio/client/main.ts`, which is a
+one-line edit that type-checks, builds, packs, installs and serves a page that
+works.
+
+**The answer this entry suggests was considered and refused, with a reason.** It
+says "the right answer may be one scratch copy packed twice rather than two
+copies". It is not, and the guard's own header says why: the first round negates
+`dist/studio/client/**` in `files`, so a copy carrying that mutation has no client
+bundle for the overlay assertion to read, and the assertion would pass trivially.
+That is the shape of a guard that has stopped guarding, which is the disease this
+whole record is about. The two independent mutations do share a copy, which is the
+half of the suggestion that was taken.
+
+**The arithmetic, re-measured rather than carried forward.** One run of each, in a
+worktree on the same machine, on 2026-09-07:
+
+| | as written above | measured now |
+| --- | --- | --- |
+| `npm test` | 9.4s | 15.1s |
+| `npm run check:pack` | 7.9s | 9.3s |
+| `npm run check:guards` | 8.1s, one mutation | 18.5s, two rounds |
+| `npm run check` | 26.5s before this record, ~34.6s predicted after | 54.9s |
+
+**What that changes and what it does not.** `check:guards` is now the single
+largest item in the gate, at about a third of it, where this record priced it as a
+30% increase on a 26.5s run. The two things the decision actually rests on are
+unchanged: `npm test` is still outside it and still under sixteen seconds, and the
+gate is still paid once per push and twice per pull request. So nothing is
+proposed here. This entry asked for the arithmetic to be redone rather than
+assumed, and this is it, with the numbers dated so the next person redoes them
+rather than quoting these.
+
+**Two of the other four entries have already been answered above.**
+`merge-pr.mjs` became reachable without the network and ADR 0058 is that split;
+the amendment above records it. A guard has not been added to `scripts/` without a
+mutation here: `check-commands.mjs` and `check-scene-classes.mjs` both arrived
+after this record and both have a `broken on purpose` block in
+`test/guards/broken-on-purpose.test.ts`. **The remaining two have not fired.** No
+assertion has gone red for a rewording, and this suite has not gone red for
+anything nobody broke on purpose.

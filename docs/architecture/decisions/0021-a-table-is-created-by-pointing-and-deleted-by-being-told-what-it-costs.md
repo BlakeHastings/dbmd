@@ -127,3 +127,35 @@ short to carry and the only place a developer will read it in time.
   the page held the whole table a moment before, and it would be the first
   undoable action in a tool that has deliberately had none. That is a decision
   about ADR 0004 rather than about this record.
+
+## The first revisit entry fired, and the mode names a kind for two of the three
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. The decision stands: a table is still created by pointing, and
+a delete still says what it costs before it happens.
+
+**"Notes and groups arrive (dbmd-34)."** They arrived, and this entry predicted
+that the mode would become "what am I placing" rather than a boolean. That is
+half of what happened, and the other half is more interesting.
+
+**The boolean stayed on the canvas and the kind went to the page.** `canvas.ts`
+still has `armed`, `arm(on)` and `placing`, which are about whether the next press
+on the drawing is a coordinate rather than a gesture, and that question has no
+kind in it. `main.ts` holds `arming`, which is `'table'`, `'note'` or null, and
+the two toolbar buttons carry their `aria-pressed` off it. So the mode does name a
+kind, one layer up from where this entry expected to find it, and the canvas kept
+the one fact it needs.
+
+**The third kind is deliberately not in the mode at all.** A group has no
+coordinates (ADR 0005), so `Add group` goes straight to a form and never arms, and
+`main.ts` says so at the branch that disarms. `verified.md` records it being
+driven: creating a group ends on a sentence about `group-empty` rather than on a
+placement. So this record's answer, that placement is a mode, held for two of the
+three kinds and the third one showed why the mode had to be about placing rather
+than about creating.
+
+**The other three entries have not fired.** `dbmd import` still writes every table
+without a `layout:` and nobody has asked for an import to arrive readable. The
+studio is still one session, so no second window has raced a delete. Nobody has
+asked for an undo of a delete inside the studio, and ADR 0074's own revisit list
+now carries the same question from the create side.
