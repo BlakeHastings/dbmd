@@ -826,9 +826,18 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
     'null',
     '`null` is now `nullable` and means the same thing: write `nullable: false`',
   )
+  // The remedy is writable YAML only when there is a name to put in it. Without
+  // one the fallback wrote `columns: [this column]`, in a code span, which is a
+  // line no file will parse; a nameless column is only ever reached beside the
+  // `field-missing` above, so the sentence sends the reader there instead. The
+  // named half is unchanged, because there the line can be copied.
+  const uniqueRemedy =
+    name === undefined
+      ? 'write it as an `indexes:` entry with `unique: true`, whose `columns:` names this column once it has a `name:`'
+      : `write it as an \`indexes:\` entry with \`columns: [${name}]\` and \`unique: true\``
   fields.reject(
     'unique',
-    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an \`indexes:\` entry with \`columns: [${name ?? 'this column'}]\` and \`unique: true\``,
+    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; ${uniqueRemedy}`,
   )
   const defaultField = fields.take('default')
   const columnDefault =
