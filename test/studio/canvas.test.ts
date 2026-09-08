@@ -22,6 +22,7 @@ import {
 import { columnTitle, refLabel } from '../../src/studio/client/columns.js'
 import { placeTables } from '../../src/studio/client/place.js'
 import {
+  edgeName,
   edgeSpecsOf,
   edgeTitle,
   routeEdges,
@@ -625,6 +626,111 @@ describe('what an edge says about itself', () => {
       'order_items.order_id references orders.nope, on delete: cascade. ' +
         "Drawn at the table's name because there is no orders.nope.",
     )
+  })
+})
+
+/**
+ * The handle an edge is pointed at by, which is the half of ADR 0064 the
+ * drawing never got.
+ *
+ * A box has carried `id="table-addresses"` since 0064, so a design note about
+ * one comes back naming it. An edge is an SVG `path`, and the feedback
+ * overlay's selector rule reaches its class branch only for an element whose
+ * `className` is a string; on an SVG element it is an `SVGAnimatedString`, so
+ * every edge fell through to a count of children and came back as a fact about
+ * where the boxes happened to be. ADR 0072.
+ *
+ * What is pinned here is the rule rather than the punctuation: **the name is
+ * the two columns the edge joins and nothing about where it is drawn**, so it
+ * is the same string before and after a drag and a different one only when the
+ * model is.
+ */
+describe('what an edge is called', () => {
+  const orderItemsToOrders: EdgeSpec = {
+    from: { table: 'order_items', column: 'order_id' },
+    to: { table: 'orders', column: 'id' },
+  }
+
+  it('names both ends, so the handle says what the arrow was pointing at', () => {
+    expect(edgeName(orderItemsToOrders)).toBe('order_items.order_id->orders.id')
+  })
+
+  it('says nothing about a referential action, so an added clause is not a rename', () => {
+    // `edgeTitle` grows a clause for `on delete:` because it is a sentence
+    // somebody hears. This is a handle, and a handle that changed when a rule
+    // was added would stop naming the same edge across an edit that did not
+    // move it.
+    expect(edgeName({ ...orderItemsToOrders, onDelete: 'cascade', onUpdate: 'restrict' })).toBe(
+      edgeName(orderItemsToOrders),
+    )
+  })
+
+  it('holds no whitespace, because an `id` attribute may not contain any', () => {
+    // Every edge would have carried one, which is why `->` is the separator
+    // and not the word the title uses.
+    expect(edgeName(orderItemsToOrders)).not.toMatch(/\s/)
+  })
+
+  it('tells two self-references on one table apart by their columns', () => {
+    // Both ends name `addresses`, so the table alone says nothing. The pair of
+    // columns is the whole of the difference, and it is in the name.
+    const supersedes: EdgeSpec = {
+      from: { table: 'addresses', column: 'superseded_by' },
+      to: { table: 'addresses', column: 'id' },
+    }
+    const merged: EdgeSpec = {
+      from: { table: 'addresses', column: 'merged_into' },
+      to: { table: 'addresses', column: 'id' },
+    }
+    expect(edgeName(supersedes)).toBe('addresses.superseded_by->addresses.id')
+    expect(edgeName(merged)).not.toBe(edgeName(supersedes))
+  })
+
+  it('tells the two legs of a mutual reference apart, which one bowed line cannot', () => {
+    // These are the pair `routeEdges` groups and bows, and the two legs are
+    // drawn as two curves between the same two rows. Read from the drawing they
+    // are two paths in one place; read from the model they are two constraints.
+    const there: EdgeSpec = {
+      from: { table: 'orders', column: 'customer_id' },
+      to: { table: 'customers', column: 'id' },
+    }
+    const back: EdgeSpec = {
+      from: { table: 'customers', column: 'id' },
+      to: { table: 'orders', column: 'customer_id' },
+    }
+    expect(edgeName(there)).not.toBe(edgeName(back))
+  })
+
+  it('separates two refs from one table into the same table, which the boxes cannot', () => {
+    // `orders.customer_id` and `orders.shipping_address_id` are the pair ADR
+    // 0018 exists for: box to box they are one line. Rows separated them on
+    // screen; this separates them in the name.
+    const names = edgeSpecsOf([
+      table('orders', [
+        { name: 'customer_id', type: 'uuid', ref: { table: 'customers', column: 'id' } },
+        { name: 'shipping_address_id', type: 'uuid', ref: { table: 'customers', column: 'id' } },
+      ]),
+    ]).map(edgeName)
+    expect(names).toStrictEqual([
+      'orders.customer_id->customers.id',
+      'orders.shipping_address_id->customers.id',
+    ])
+  })
+
+  it('collides for two columns of one table that share a name, which is the id rule', () => {
+    // Not a defect in the name and not something this file can fix: two columns
+    // of one name is `duplicate-column` in `validate.ts`, which reports it and
+    // carries on, so the model really can hold two edges with one name. It is
+    // the reason `rebuildEdges` counts the names before it writes any id, and
+    // this test is what would fail if the counting were dropped as pointless.
+    const names = edgeSpecsOf([
+      table('audit', [
+        { name: 'actor_id', type: 'uuid', ref: { table: 'users', column: 'id' } },
+        { name: 'actor_id', type: 'uuid', ref: { table: 'users', column: 'id' } },
+      ]),
+    ]).map(edgeName)
+    expect(names).toHaveLength(2)
+    expect(new Set(names).size).toBe(1)
   })
 })
 

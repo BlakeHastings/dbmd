@@ -68,6 +68,7 @@
 import type { Column, Group, Layout, Note, ObjectKind, Table } from '../../model/types.js'
 import { columnTitle, refLabel } from './columns.js'
 import {
+  edgeName,
   edgeSpecsOf,
   edgeTitle,
   routeEdges,
@@ -1189,15 +1190,30 @@ export class Canvas {
    * Rebuilt rather than patched because a column edit can add or remove an edge
    * as readily as move one, and the path elements are index-aligned with
    * `this.edges`.
+   *
+   * Each path is named here for the same reason a box is (ADR 0064), and the
+   * counting is what the boxes do not need. A table's name is one per file, so
+   * `nameForPointing` can settle uniqueness from the kind alone. An edge's is
+   * the two columns it joins, and `validate.ts` reports a table with two columns
+   * of one name rather than refusing it, so two edges can want one id. An id
+   * that matches two elements is worse than no id: the overlay's rule takes the
+   * first match, so a design note about the second edge would come back naming
+   * the first. The count is over this render's own edges, which is the same
+   * scope the ids live in.
    */
   private rebuildEdges(): void {
     this.specs = edgeSpecsOf(this.tables)
     this.edges = routeEdges(this.specs, this.boxRects())
-    this.edgePaths = this.edges.map(() => {
+    const names = this.edges.map(edgeName)
+    const howMany = new Map<string, number>()
+    for (const name of names) howMany.set(name, (howMany.get(name) ?? 0) + 1)
+    this.edgePaths = this.edges.map((_edge, index) => {
       const path = document.createElementNS(SVG, 'path')
       path.setAttribute('class', 'edge')
       path.setAttribute('marker-end', 'url(#dbmd-arrowhead)')
       path.append(document.createElementNS(SVG, 'title'))
+      const name = names[index] ?? ''
+      nameForPointing(path, 'edge', name, howMany.get(name) === 1)
       return path
     })
     this.edgeLayer.replaceChildren(...this.edgePaths)
@@ -1308,13 +1324,34 @@ export class Canvas {
  * the difference between "the shipments box is too tall" and "one of the eight
  * boxes is too tall". ADR 0064.
  *
- * The id is prefixed by kind and only set for the kinds below, whose names are
- * one per file and so unique in the document. A column's is not: every table
- * has a column called `id`, and two elements sharing one would hand the overlay
- * a selector that matches the wrong element. So a column gets the label and no
- * id, and its path resolves through its table's, which is `#table-shipments >
- * ul > li`. The prefix is what keeps a note and a table of the same name apart,
- * and what keeps either away from `#canvas` and `#inspector`.
+ * The id is prefixed by kind and only set where the name is known to be one of
+ * its own in the document. For `table`, `note` and `group` that follows from the
+ * format, whose names are one per file. A column's does not: every table has a
+ * column called `id`, and two elements sharing one would hand the overlay a
+ * selector that matches the wrong element. So a column gets the label and no id,
+ * and its path resolves through its table's, which is `#table-shipments > ul >
+ * li`. The prefix is what keeps a note and a table of the same name apart, and
+ * what keeps either away from `#canvas` and `#inspector`, which is where the
+ * inspector's hundred-odd controls sit.
+ *
+ * **An edge is the fourth kind and the one this was extended for.** Every edge
+ * is an SVG `path`, and the overlay's class branch is guarded by `typeof
+ * el.className === "string"`: an SVG element's `className` is an
+ * `SVGAnimatedString`, so no edge has ever reached it. With no id either, an
+ * edge fell all the way to the position branch and came back as a count of
+ * children from the nearest ancestor the rule could name, which is a fact about
+ * this render and about nothing else. Measured on 2026-09-08 against
+ * `examples/shop`, by running that rule against every edge on the page: all
+ * eleven came back as `div.scene > svg:nth-child(2) > g:nth-child(2) >
+ * path:nth-child(N)`, N from 1 to 11 and nothing else to tell them apart. After
+ * this, `#edge-orders.customer_id-\>customers.id` and its ten neighbours, each
+ * still resolving to exactly one element. `edges.ts` supplies the name, and
+ * because that name is two column names rather than one file name, the caller
+ * counts before it is written; `rebuildEdges` is where.
+ *
+ * `id` is the one branch an SVG element can reach, which is also why the label
+ * cannot be left to do the work: `data-element` is read for the *name* the
+ * overlay prints and never for the selector it builds.
  *
  * A name comes from a file name and so from `isFileName` (ADR 0026), which
  * permits spaces and brackets: `Ledger [Entry]` is a real imported table. Such
@@ -1323,18 +1360,32 @@ export class Canvas {
  * quote before pasting still names the object, and refusing the id for those
  * names would hand back the shared `.box` path instead, which names nothing.
  */
-function nameForPointing(element: HTMLElement, kind: PointableKind, name: string): void {
+function nameForPointing(
+  element: HTMLElement | SVGElement,
+  kind: PointableKind,
+  name: string,
+  oneOfItsName: boolean = UNIQUE_BY_NAME.has(kind),
+): void {
   element.dataset['element'] = `${kind} ${name}`
   // An empty name is a warning rather than an error (ADR 0027), and two objects
   // with one would share an id. A missing id is what the overlay already copes
   // with, and it is what every element on this page has today.
-  if (name !== '' && UNIQUE_BY_NAME.has(kind)) element.id = `${kind}-${name}`
+  if (name !== '' && oneOfItsName) element.id = `${kind}-${name}`
 }
 
 /** What `nameForPointing` will call something. */
-type PointableKind = 'table' | 'note' | 'group' | 'column'
+type PointableKind = 'table' | 'note' | 'group' | 'column' | 'edge'
 
-/** The kinds whose names are one per file, and so unique in the document. */
+/**
+ * The kinds whose names are one per file, and so unique in the document.
+ *
+ * `edge` is not one of them and cannot be: an edge is named by the two columns
+ * it joins, and two columns of one table may share a name (`validate.ts` calls
+ * that `duplicate-column` and carries on). So an edge's caller counts the names
+ * it is about to write and passes the answer, which is the same rule this set
+ * states, asked of the set rather than of the format. `column` is not one
+ * either, and for the plainer reason that every table has an `id`.
+ */
 const UNIQUE_BY_NAME = new Set<PointableKind>(['table', 'note', 'group'])
 
 /**

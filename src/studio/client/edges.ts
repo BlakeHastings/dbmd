@@ -246,6 +246,41 @@ export function routeEdges(
 }
 
 /**
+ * What to call one edge, in a handle short enough to be an id.
+ *
+ * The two columns it joins, and nothing about where it is drawn. That is the
+ * whole point: an annotation on an edge is read back after the layout has
+ * moved, and a name made of the model is the only kind that still resolves.
+ *
+ * **The `from` end alone would identify it**, because a column carries at most
+ * one `ref` and so raises at most one edge. The `to` end is here anyway,
+ * because this string is read by a person: the id lands in a design note as
+ * `#edge-orders.customer_id-\>customers.id`, and half of that sentence is the
+ * half saying what the arrow was pointing at. It is also what keeps a
+ * self-reference legible, where both halves name the same table and the two
+ * columns are the whole of the difference.
+ *
+ * **`->` and not a space.** An `id` attribute may not contain ASCII whitespace,
+ * and every edge would have carried one. `.` and `>` are both legal in an id
+ * and both come back out of `CSS.escape`, which is what the feedback overlay
+ * runs on an id before it writes a selector.
+ *
+ * The words are deliberately not `edgeTitle`'s. That one is a sentence somebody
+ * hears on hover and it grows a clause when the file says `on delete:`; this is
+ * a handle, and a handle that changed when a referential action was added would
+ * stop naming the same thing across an edit that did not move it.
+ *
+ * **It is not unique on its own** and this file cannot make it so: two columns
+ * of one table may share a name, which `validate.ts` reports as
+ * `duplicate-column` rather than refusing, and two such columns with refs
+ * produce two edges with one name. The caller is the one that can see the whole
+ * set, so the caller decides whether to put it in an id.
+ */
+export function edgeName(spec: EdgeSpec): string {
+  return `${spec.from.table}.${spec.from.column}->${spec.to.table}.${spec.to.column}`
+}
+
+/**
  * What the edge is about, what a delete and an update do to the row it leaves,
  * and why an end of it is not on a row.
  *
