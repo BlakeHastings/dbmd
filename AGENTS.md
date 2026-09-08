@@ -153,15 +153,28 @@ happened and why the answer is to drop the number rather than to correct it.
 the branch, and stop. The orchestrator reviews and merges. This holds when the
 checks are green and when the change is one line.
 `docs/process/working-an-issue.md` has the prohibited commands, and
-`scripts/guard-merge.mjs` refuses several of them.
+`scripts/guard-merge.mjs` refuses them before they run rather than after.
 
-**As of 2026-09-08 that sentence understates it, and the reason is worth knowing.**
-`guard-merge.mjs` denies `gh pr merge`, a merge through `gh api` and a `git push`
-whose own arguments name the default branch. It sees through the shell syntax
-that can stand in front of a command, seven keywords and a variable assignment,
-and into a `bash -c` or `pwsh -Command` payload. What it does not cover, on
-purpose and in its own header, is a program that launches another one: `sudo`,
-`env`, `command`, `nohup` and `xargs` in front of a merge are all allowed. And it
+**That list used to be written out here and it went stale in four hours.** It
+said the guard denies a merge, a merge through `gh api`, and a push whose
+arguments name the default branch, which was exact when it was typed and short by
+three the same afternoon: ADR 0098 added a tag push, a publish and a release cut
+through `gh`. **So this says the rule and not the spellings.** The guard refuses
+**a merge, a push to the default branch, a tag push and a publish**, in every
+spelling of each it can recognise, and the list of spellings lives in
+`scripts/guard-merge.mjs` and in `test/guards/broken-on-purpose.test.ts`, which
+is where it cannot drift from what runs.
+
+**What it does not cover is the part worth reading**, and it is stable in a way
+the denials are not. It sees through the shell syntax that can stand in front of
+a command, seven keywords and a variable assignment, and into a `bash -c` or
+`pwsh -Command` payload, because shell syntax is a closed set. It does **not**
+see through a program that launches another one: `sudo`, `env`, `command`,
+`nohup`, `xargs`, `npx` and `npm exec` in front of a forbidden command are all
+allowed, on purpose and with the reasoning in the guard's own header and in
+ADR 0098. Wrapper programs do not share an argument grammar, so stripping a
+leading word closes the flagless spelling and leaves the same wrapper open one
+flag later, which turns named holes into unnamed ones. And it
 deliberately permits `node scripts/merge-pr.mjs`, which is the route this
 repository tells everybody to use. So the layer that was meant to stop an agent
 merging allowed the only command an agent would reach for, and on 2026-09-08 an
