@@ -60,6 +60,7 @@ import {
   type WireModel,
   type WireModelResponse,
   type WireStatus,
+  type WireWriteErrorFile,
 } from '../wire.js'
 import type { Point } from './geometry.js'
 import { referrersTo, withRefsRetargeted } from './model.js'
@@ -211,6 +212,42 @@ export function unreadableNotice(what: string): string {
  */
 export function createdNotice(path: string): string {
   return `Created ${path}. Undo is deleting the file rather than git checkout, because it is new.`
+}
+
+/**
+ * What the status line says when the disk refused the write.
+ *
+ * The other refusals on this page are the studio's own and it writes them.
+ * This one is the operating system's, and the whole of the fix is what goes
+ * in front of its words rather than what replaces them.
+ *
+ * **It names no cause**, for the reason `unreadableNotice` names none, only
+ * more so: a failed rename is a read-only attribute, an ACL, a lock another
+ * program holds, antivirus, a full disk or a share that went away, and a
+ * sentence that picks one is wrong often enough to be worse than the raw error.
+ * What can be said without guessing is which file, that nothing has been lost,
+ * and why the system's message opens with a file the reader never created.
+ *
+ * **The file comes first because it is the only part the reader can act on.**
+ * The message as it stood led with `.orders.md.<uuid>.tmp`, which is
+ * `writeAtomically`'s temporary file, and put `tables/orders.md` at the far end
+ * of a long line after an arrow. Measured on 2026-09-08: two rendered lines, and
+ * the first thing on them was a file that no longer exists.
+ *
+ * **The temporary file is explained only when there is one.** `viaTemporary`
+ * comes from the server because only the writer knows whether it got that far,
+ * and a failure before it names the real file and nothing else. ADR 0083.
+ */
+export function writeFailureNotice(file: WireWriteErrorFile | null, message: string): string {
+  if (file === null) return `The last write failed. ${message}`
+  return (
+    `Could not write ${file.path}. The edit is still here and rides out with the next write, ` +
+    `so clearing whatever the system is refusing is enough and nothing is lost yet. ` +
+    (file.viaTemporary
+      ? `The write goes through a temporary file in the same folder, which is why the system names ` +
+        `that one first: ${message}`
+      : `What the system said: ${message}`)
+  )
 }
 
 /**

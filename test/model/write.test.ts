@@ -7,13 +7,20 @@
  * the atomic replace and the refusal to rewrite a file that did not change.
  */
 
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { renameSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { parse } from 'yaml'
 import { readModel } from '../../src/model/read.js'
-import { scalar, serialiseModelFile, serialiseObject, writeModel } from '../../src/model/write.js'
+import {
+  WriteFailed,
+  scalar,
+  serialiseModelFile,
+  serialiseObject,
+  writeModel,
+} from '../../src/model/write.js'
 import type { Group, Model, Note, Table } from '../../src/model/types.js'
 import { fixtureModel } from './helpers.js'
 import { canonicalModel, hiddenEntries, snapshot, untidyModel, withCopy } from './fixtures.js'
@@ -608,6 +615,82 @@ describe('the write is atomic', () => {
       // skips dotfiles the way the reader does, so "and no rubbish behind" has
       // to be asked for by name or it is not being asked at all.
       expect(await hiddenEntries(dir)).toEqual([])
+    })
+  })
+
+  test('a refused write names the model file, not the temporary one', async () => {
+    await withCopy(canonicalModel, async (dir) => {
+      const { model: read } = await readModel(dir)
+      const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
+
+      // The shape of a real one on Windows, and the reason this item exists:
+      // the file the developer was editing is at the far end of it, after an
+      // arrow, and the file it opens with is one they have never seen.
+      rename.instead = async (from, to) => {
+        throw new Error(`EPERM: operation not permitted, rename '${from}' -> '${to}'`)
+      }
+
+      const refusal = await writeModel(dir, changed).catch((error: unknown) => error)
+      expect(refusal).toBeInstanceOf(WriteFailed)
+      const failed = refusal as WriteFailed
+      expect(failed.path).toBe('tables/orders.md')
+      // The system's words, kept exactly. Nothing here diagnoses a rename: it
+      // fails from a read-only attribute, an ACL, a lock, antivirus, a full
+      // disk or a share that went away, and picking one would be a guess.
+      expect(failed.message).toContain('EPERM: operation not permitted')
+      expect(failed.temporary).not.toBeNull()
+      expect(basename(String(failed.temporary))).toMatch(/^\.orders\.md\..+\.tmp$/)
+      // Which is the file the message opens with, and the whole reason a caller
+      // is allowed to say so.
+      expect(failed.message).toContain(String(failed.temporary))
+    })
+  })
+
+  test('the file it names is the one that failed, not the first one tried', async () => {
+    await withCopy(canonicalModel, async (dir) => {
+      const { model: read } = await readModel(dir)
+      const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
+      const both = withTable(changed, 'addresses', (addresses) => ({
+        ...addresses,
+        group: 'billing',
+      }))
+
+      rename.instead = async (from, to) => {
+        // `node:fs` is not the mocked module, so this is the real rename and
+        // the file genuinely lands.
+        if (!to.endsWith('orders.md')) return renameSync(from, to)
+        throw new Error('EPERM: operation not permitted')
+      }
+
+      // Jobs are written in path order, so `tables/addresses.md` lands and
+      // `tables/orders.md` throws. This is the studio's ordinary case rather
+      // than a contrived one: a drag of one box flushes beside a pending edit
+      // to another, and the file the sentence has to name is the one that
+      // refused, not the one the person just moved.
+      const refusal = await writeModel(dir, both, {
+        only: new Set(['tables/addresses.md', 'tables/orders.md']),
+      }).catch((error: unknown) => error)
+      expect((refusal as WriteFailed).path).toBe('tables/orders.md')
+    })
+  })
+
+  test('a refusal before there is a temporary file says there is none', async () => {
+    await withCopy(canonicalModel, async (dir) => {
+      const { model: read } = await readModel(dir)
+      const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
+
+      // A directory where the file should be. The read that decides whether the
+      // file already says this refuses first, so the writer never reaches the
+      // rename and there is no temporary file to explain. A page that explained
+      // one anyway would be describing something that is not on the screen.
+      await rm(join(dir, 'tables', 'orders.md'))
+      await mkdir(join(dir, 'tables', 'orders.md'))
+
+      const refusal = await writeModel(dir, changed).catch((error: unknown) => error)
+      expect(refusal).toBeInstanceOf(WriteFailed)
+      expect((refusal as WriteFailed).path).toBe('tables/orders.md')
+      expect((refusal as WriteFailed).temporary).toBeNull()
+      expect((refusal as WriteFailed).message).toContain('EISDIR')
     })
   })
 
