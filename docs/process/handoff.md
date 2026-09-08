@@ -274,6 +274,12 @@ no publish step, no token, no secret reference and no registry URL.
 if the rehearsal's checkout or its copy of the shell drifts from the release's.
 Five deliberate breaks were driven against it and every one was refused by name.
 
+**GitHub has registered it**, which is the one thing about a new workflow that
+can fail silently. `gh workflow list --all` names `rehearse release ancestry` as
+active beside `release`, so the file parses and the trigger is recognised, and it
+did not run on the merge to `main` that added it, which is the trigger doing its
+job.
+
 **It is still a tag push, so it is still the owner's.** No agent here pushes one,
 including that one. What it buys is that the first execution of the unobserved
 step happens on a tag that cannot reach a registry.
