@@ -13,16 +13,36 @@ the section that says what is in flight is the one to distrust first.
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
 `gh pr list --state merged` said 158. I then did the same thing four more times
 in one night, telling four agents how far behind their branch was without running
-`git rev-list --count`, and being wrong three times. Every number below was
-measured just now.
+`git rev-list --count`, and being wrong three times.
 
-| | |
-| --- | --- |
-| merged pull requests | 242 |
-| decision records | 92 |
-| tests | 1420 passing, 1 skipped, across 47 files |
-| backlog | 123 closed, 3 open, and it still cannot be written to |
-| the gate | 58 to 60 seconds idle, 81 to 89 with five agents running. Both measured |
+**This section used to hold a table of counts, and it was corrected three times
+in one day.** It said 239 merged when there were 242, then 242 when there were
+254; 92 decision records when there were 94; 47 test files when there were 49.
+Each correction was made honestly, with the paragraph above it promising that
+every number had been measured just now, which was true when written and false
+within the hour. **Correcting it a fourth time is not the fix**, and the fix is
+the one this file already applies two sections down: carry the commands, not the
+answers.
+
+```bash
+gh pr list --state merged --limit 400 --json number --jq 'length'
+ls docs/architecture/decisions/ | grep -c '^[0-9]'
+find test -name '*.test.ts' | wc -l          # `npm run check` prints the rest
+```
+
+**Two things stay written down, because neither is a count that moves and both
+change what you do:**
+
+- **The gate is 58 to 60 seconds idle and 81 to 89 with five agents running.**
+  Both measured. That is what a rebase costs somebody, which is why the merge
+  order matters.
+- **The backlog cannot be written to.** `bd` is refused by Application Control on
+  this machine, which is a state rather than a number, and the section below on
+  the tracker is the whole of it.
+
+**And nobody has ever needed to know how many pull requests have merged.** That
+is the tell. A number in a handoff that no reader acts on is pure decay: it
+cannot help, it can only be wrong, and correcting it feels like maintenance.
 
 **Three items are open and only two are the owner's.** An earlier version of this
 paragraph said all three were. It was wrong within an hour of being written,
