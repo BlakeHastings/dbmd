@@ -2890,3 +2890,66 @@ corrected by whoever fixed the thing and the other was nobody's job.
   evidence and to re-derive the duplication, the loss and the direction from
   scratch. It did, by a sliding 25-line hash scan that found 3600 duplicate
   windows at two offsets, which is a better method than the one the repair used.
+
+- **Two more of the six held diagnostic findings were reproduced, and the
+  contrast is what makes them worth fixing.** Both are about `_model.md`, and
+  both messages are exactly right one directory down.
+
+  `kind-missing` on a `_model.md` with no `kind:` key answers ``no `kind:` key;
+  the directory says this is a model``. The model root says nothing about kinds:
+  the file's name is what makes it the model file. The same message on
+  `tables/orders.md` answers "the directory says this is a table", which is true
+  in every word, and both were run side by side to be sure the difference is the
+  file and not the phrasing.
+
+  `frontmatter-empty` on a file whose frontmatter holds a comment answers "the
+  frontmatter is empty, so the file declares nothing". The second clause is true
+  and the first is not. Both `src/diagnostics.ts` and `docs/format.md` describe
+  the state as delimiters with nothing between them, which is a state this file
+  is not in.
+
+  That makes three of the six reproduced by hand rather than taken from the
+  sweep's report: these two and `kind-mismatch`, whose three false clauses were
+  measured by reading the model's `name` and `engine` back out of the file the
+  message says was not loaded.
+
+- **The `unknown-key` contradiction was reproduced end to end on a group, which
+  is the sharper of its two halves.** A group carrying an unknown key answers
+  ``\`zebra\` means nothing on a group; known keys are color, kind, label,
+  layout``. Following that list and writing `layout` on the group answers "a
+  group has no coordinates: its box is the bounding box of its members plus
+  padding, computed at render time (ADR 0005). This `layout` is ignored".
+
+  So the message names a key, and using the key it names produces a warning
+  saying that key does nothing. **Both runs are two commands apart**, which is
+  what separates this from the table half, where the two contradicting lines
+  appear in a single run three lines from each other.
+
+  The mechanism is one function: `reportUnknown` builds its list of known keys
+  from every key passed to `take()`, and a group's `layout` is taken in order to
+  be refused. `reject()` exists for exactly that and its own comment says so.
+  Four of the six held findings are now reproduced by hand.
+
+- **The import paths driven on 2026-09-08 all read correctly, with one soft spot
+  that is not a defect.** An introspection carrying no tables imports, writes
+  `_model.md` alone, and `dbmd check` then says `0 tables, 0 notes, 0 groups, no
+  problems` and exits 0. A re-import of the same file says `db-model already says
+  what this postgres import says: 0 tables, nothing to change`. A file claiming
+  `dbmdIntrospection` 99 is refused with both remedies named, upgrade or re-run
+  the query this build prints, and closes with `future.json was not imported, and
+  f was left alone`.
+
+  **The soft spot is the closing line of a zero-table import**, which says "Every
+  table body says nobody has documented it yet. That line is the prompt." Over no
+  tables that is vacuously true and reads as though there is something to go and
+  replace. It is not filed as a defect, because no clause of it is false.
+
+  What is worth thinking about is what the command does not say. **A zero-table
+  import is more likely a mistake than an empty database**: the wrong database,
+  a search path that excludes everything, or a role that cannot see the catalog.
+  The tool already knows that shape of error, because the re-import delta says
+  "A table nobody dropped on this list usually means an import over fewer schemas
+  than the last one." The first import says nothing of the kind at the one moment
+  a reader most likely wants it. That is a sentence the command could gain, not a
+  sentence it gets wrong, so it is the owner's call rather than a defect to
+  dispatch.
