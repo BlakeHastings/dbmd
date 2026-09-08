@@ -1305,3 +1305,33 @@ line of code. Together they would have saved most of an evening.
 Worth keeping in proportion: the same passes that produced these six found
 around thirty real defects. The tooling was wrong six times and useful
 throughout, and the answer is better tooling rather than less of it.
+
+## "No checks reported" means conflicting, not broken
+
+A branch reported no CI run at all. Not pending, not failing: `gh pr checks` said
+no checks had ever been reported, and `gh run list --branch` for it was empty
+while branches opened two minutes either side had their runs.
+
+The obvious reading is that something is wrong with Actions, and the obvious next
+move is to go and look at the workflow, the triggers, the repository's Actions
+settings and the rate limits. All four were fine, and checking them cost more
+than the answer did.
+
+**The answer is one field.** `gh pr view <n> --json mergeable` said
+`CONFLICTING`. `check.yml` triggers on `pull_request`, and **GitHub does not run
+a `pull_request` workflow when it cannot compute the merge commit**, because
+that event's checkout is the merge result. So a conflicting branch reports
+nothing at all rather than reporting a failure.
+
+**This is worth knowing because the symptom points away from the cause.** A
+conflict normally announces itself when somebody tries to merge; here it
+announced itself as an absence of test results, which reads as infrastructure.
+The agent that owned the branch reported it honestly as an oddity and did not
+guess, which was right, and the diagnosis took one command once somebody thought
+to ask the pull request what it thought of itself.
+
+**And find the conflict without touching the branch.** Merge `origin/main` into a
+throwaway worktree with `--no-commit --no-ff`, read the `CONFLICT` lines, and
+`--abort`. That answers which files and costs nothing, and it leaves the rebase
+where it belongs, with the agent that owns the branch. Resolving somebody's
+conflict makes you the author of a change you are about to review.

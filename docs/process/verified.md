@@ -3197,3 +3197,68 @@ corrected by whoever fixed the thing and the other was nobody's job.
   It then re-drove all five findings for the third time, on a rebase that turned
   out to have changed nothing, and got identical numbers. That is what makes the
   first two drives worth anything.
+
+- **The SQL Server path was driven end to end, and it holds.** Almost everything
+  tonight was driven against PostgreSQL payloads, so the second engine had far
+  less attention than the first. From its own fixture: the import writes two
+  tables, `dbmd check` says `2 tables, 0 notes, 0 groups, no problems`, the
+  diagram carries both with their types intact (`nvarchar(32)`,
+  `datetimeoffset(7)`, `decimal(12,2)`, `nvarchar(max)`), and a re-import says
+  `db-model already says what this sqlserver import says: 2 tables, nothing to
+  change`.
+
+  `dbmd refs Order` answers with three refs from one table, each carrying its own
+  clauses: one `key required on delete: no action`, two `required on delete:
+  cascade`. The composite primary key comes through as `PK,FK` and `PK` on the
+  right columns.
+
+  **The loss that shape produces is documented in both places a reader would
+  look.** A composite foreign key arrives as two refs paired by position, and
+  `docs/import-format.md` says so in as many words: "The constraint's name and
+  the fact that the two refs are one constraint are not carried."
+  `docs/format.md` carries the same fact from the format's side, including that a
+  freshly imported model with composite foreign keys in it still passes.
+
+  So the second engine is not a thinner version of the first: the same commands
+  answer the same way, and the one thing it cannot represent is written down
+  rather than discovered.
+
+- **All seventeen `import/` codes were tried, and three of them cannot be reached
+  from a file a person pasted.** Twelve fire from a mangled payload and were
+  driven. `import/not-an-object` fires for a document that is a list or a string.
+  **`import/not-in-vocabulary`, `import/conflicting-fields` and
+  `import/unknown-field` do not fire at all**, and reading `src/import/contract.ts`
+  says why: they read the **canonical** field names a provider produces, not the
+  raw ones a query prints. `optionalEnum` asks for `onDelete`; the payload says
+  `on_delete`. The index-key check asks for `column` and `expression`; the
+  payload says `column_name`.
+
+  **So the contract layer validates a document the provider built, and can only
+  catch a provider bug.** An earlier agent found the same seam from the
+  `unknown-field` side and reported that it is written down nowhere. These are
+  the measurements that give that observation teeth.
+
+  What gets through, driven and confirmed on disk:
+
+  - **An `on_delete` outside the vocabulary is dropped in silence.** The ref is
+    written with its `on update:` and **no `on delete:` line at all**. That is not
+    a small loss: ADR 0049 is explicit that an absent clause and `no action` are
+    different facts, and this turns one into the other.
+  - **A column carrying both a default and a generation expression** is written
+    as an ordinary column with the default, and the generation expression is
+    gone. A generated column arrives as one that is not.
+  - **A stray key is ignored**, at the top level, on a table and on a column.
+
+  **This is a robustness gap rather than a live defect, and the difference
+  matters.** `dbmd query` cannot produce any of these three: the referential
+  action is a single catalogue character, the default and the generation
+  expression come from one `CASE`, and the keys are built by the query. The
+  documented ways a saved file goes wrong are truncation and a client's framing,
+  and both of those produce a parse error rather than a plausible-looking
+  document.
+
+  **So it is the owner's call how much the import should distrust its own input**,
+  and it is not dispatched. What is worth having either way is the sentence that
+  is missing: `docs/import-format.md` documents `import/unknown-field` as forward
+  compatibility without saying that the check sits on a layer which never sees
+  the file a person pasted.
