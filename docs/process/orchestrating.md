@@ -1372,10 +1372,18 @@ agent to append a note to ADR 0084 and told it in writing that the branch which
 had been editing that record was finished with it. That branch had forty-five
 uncommitted lines in the file at the moment I wrote the sentence.
 
-**The numbers already had a fix and the files did not.** `freeadr.mjs` reads
-`origin/main` and every open pull request and reports which numbers are free, and
-it has not been wrong since. Nothing did the same for files, so every brief
-naming a file to leave alone was written from memory of what I had dispatched.
+**The numbers already had a fix and the files did not.** `scripts/freeadr.mjs`
+reads `origin/main` and every open pull request and reports which numbers are
+free, and it has not been wrong since. It lands here alongside `scripts/held.mjs`
+because until now it had been living in a scratch directory, which is a fix that
+leaves with the session that wrote it. Nothing did the same for files, so every
+brief naming a file to leave alone was written from memory of what I had
+dispatched.
+
+**Neither is a gate and neither is in `npm run check`.** A gate answers at merge
+time. Both of these answer a question asked before a brief is written, which is
+the only moment at which the answer can still prevent anything. A check that
+tells you afterwards that you misled an agent is not worth the second it costs.
 
 **The information was always one command away.** Every agent works in a worktree
 under `.claude/worktrees/agent-<id>`, and `git status --short` in one of those is
