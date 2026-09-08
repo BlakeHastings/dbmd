@@ -1,10 +1,11 @@
 // Where the feedback overlay posts its annotations, in one place.
 //
-// Two scripts need this and they must not disagree. `build-client.mjs --dev`
+// Several scripts need this and they must not disagree. `build-client.mjs --dev`
 // compiles it into the bundle, because the toolbar is React and takes it as a
-// prop; `studio-dev.mjs` narrates it and says whether anything answered. Two
-// copies of a default port is two chances to move one and not the other, which
-// is the same argument ADR 0026 makes about `isFileName`.
+// prop; `studio-dev.mjs` narrates it and says whether anything answered; and
+// `annotations.mjs` reads the annotations back through it. Two copies of a
+// default port is two chances to move one and not the other, which is the same
+// argument ADR 0026 makes about `isFileName`.
 //
 // This module is imported rather than run.
 

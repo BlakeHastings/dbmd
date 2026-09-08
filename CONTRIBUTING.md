@@ -108,6 +108,7 @@ dbmd studio  http://127.0.0.1:57818/
   model      examples/shop
   overlay    agentation 3.0.2, from .studio-dev, which never ships
   annotate   http://127.0.0.1:4747, which answered
+  read back  npm run annotations
 ```
 
 If that last line says it is not answering, `agentation-mcp doctor` is what
@@ -116,9 +117,41 @@ annotates, still copies markdown and still keeps everything in the browser.
 Point it somewhere else with `DBMD_AGENTATION_ENDPOINT`, or set that to an empty
 string for clipboard only.
 
+### Reading the feedback back, and answering it
+
+```bash
+npm run annotations
+```
+
+What you wrote on the page, as text an agent can act on: the sentence, the
+element, and the selector that names it. It reads the studio the last
+`npm run studio:dev` opened, because the studio takes whatever port is free and
+the annotation store on this machine is shared with everything else you have
+ever annotated. The summary line says how many sessions it left out, so an empty
+answer is never ambiguous. `npm run annotations -- --all` reads all of them, and
+`npm run annotations -- --url http://127.0.0.1:57818/` reads a page you name.
+
+With no server it says so and exits zero, for the reason above: the annotations
+are still in your browser and nothing is wrong.
+
+Answering is the other half, and it is what stops the toolbar's thread looking
+broken:
+
+```bash
+npm run annotations -- --acknowledge <id>
+npm run annotations -- --reply <id> "which of the two boxes do you mean?"
+npm run annotations -- --resolve <id> "made it the same height as orders"
+```
+
+Those change what you see in the toolbar, so a reply is a question you can
+answer without leaving the page. There is no dismiss, on purpose:
+[ADR 0070](docs/architecture/decisions/0070-the-reading-half-answers-as-well-as-reads.md)
+is which of the server's nine tools are here and why the rest are not.
+
 Registering the MCP server with your agent is a separate step and a decision
 about your machine rather than about this repository, so nothing here does it
-for you. `agentation-mcp init` is the wizard.
+for you. `agentation-mcp init` is the wizard, and nothing above needs it: the
+script talks to the server over HTTP without being registered anywhere.
 
 The toolbar is [`agentation`](https://www.npmjs.com/package/agentation), it is a
 devDependency, and **it never ships**. It is built from its own entry point into

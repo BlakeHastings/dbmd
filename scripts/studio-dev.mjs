@@ -29,6 +29,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startStudio } from '../dist/studio/index.js'
 import { agentationEndpoint } from './agentation-endpoint.mjs'
+import { recordStudioUrl } from './studio-url.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -43,8 +44,15 @@ const open = !argv.includes('--no-open')
 const directory = argv.find((argument) => !argument.startsWith('-')) ?? DEFAULT_DIRECTORY
 
 const studio = await startStudio({ dir: directory, port: 0, open, clientDir: CLIENT })
+// The port is `0`, so this URL is a different number every run, and the feedback
+// server has no other way to tell this studio's annotation session from every
+// other page annotated on this machine. Written down here because this is the
+// one process that knows it without being told. `scripts/studio-url.mjs` says
+// the rest.
+await recordStudioUrl(studio.url)
 console.error('  overlay    agentation 3.0.2, from .studio-dev, which never ships')
 console.error(`  annotate   ${await syncLine()}`)
+console.error('  read back  npm run annotations')
 
 const signal = await untilStopped()
 await studio.close()
