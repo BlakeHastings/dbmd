@@ -1084,6 +1084,17 @@ is, and every one was corrected by measuring rather than by thinking harder. A
 gap that sounds larger is the more comfortable error to make while writing a
 finding, which is exactly why it needs the same evidence a defect does.
 
+**And the heading above is now false, which is the fourth correction to this one
+section and the most satisfying.** `test/docs/skill.test.ts` runs the blocks on
+that page that are exact tool output, and a word changed in a command's narration
+turns it red naming the page and the line. It was built because this section
+argued for it, so the section arguing that a document has no machinery is what
+put machinery on it. **The heading stays as it was written**, because a section
+about claims that go stale is the wrong place to quietly edit one, and because
+what replaced it is the better ending: the last document in this tree written to
+be obeyed and checked by nothing is `AGENTS.md`, and a sweep of that found three
+false counts on the same day. The pattern held every time it was tested.
+
 It went stale within the hour. A merge gave a thrown error the list of files a
 failed run had already written, and the agent that made the change correctly
 added a bullet to the skill saying so. Two hundred lines earlier, the same file

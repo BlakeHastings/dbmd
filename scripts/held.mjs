@@ -39,6 +39,44 @@ const argv = process.argv.slice(2)
 const liveAt = argv.indexOf('--live')
 const incomingAt = argv.indexOf('--incoming')
 const dashdash = argv.indexOf('--')
+
+/**
+ * Refuse and say so, rather than throwing a stack trace at somebody who typed a
+ * flag slightly wrong.
+ */
+function refuse(...lines) {
+  for (const line of lines) console.error(line)
+  console.error('')
+  console.error('  node scripts/held.mjs                     what open branches hold')
+  console.error('  node scripts/held.mjs --live <id>,<id>     what those agents hold')
+  console.error('  node scripts/held.mjs --incoming <ref>     what a rebase brings into <ref>')
+  console.error('  node scripts/held.mjs [--live <ids>] -- <path>...   are these held')
+  process.exit(2)
+}
+
+// **An unknown flag is not a filename.** An agent ran `--incoming` from a tree
+// cut before that flag existed, and the parser read it as a path and answered
+// `free --incoming`, in green, silently. That is the same defect
+// `check-commands.mjs` exists to catch for the CLI, in the tool the orchestrator
+// uses to write briefs, so it is worth the eight lines.
+const KNOWN = new Set(['--live', '--incoming', '--'])
+const beforePaths = dashdash < 0 ? argv : argv.slice(0, dashdash)
+for (const [i, arg] of beforePaths.entries()) {
+  if (!arg.startsWith('--') || KNOWN.has(arg)) continue
+  if (i > 0 && (beforePaths[i - 1] === '--live' || beforePaths[i - 1] === '--incoming')) continue
+  refuse(`held.mjs: unknown option "${arg}".`)
+}
+
+if (liveAt >= 0 && (argv[liveAt + 1] === undefined || argv[liveAt + 1].startsWith('--'))) {
+  refuse('held.mjs: --live wants a comma-separated list of agent ids.')
+}
+if (incomingAt >= 0 && (argv[incomingAt + 1] === undefined || argv[incomingAt + 1] === '--')) {
+  refuse(
+    'held.mjs: --incoming wants a branch or a sha.',
+    'It answers what a rebase would bring into that ref, so there is nothing to answer without one.',
+  )
+}
+
 const live =
   liveAt < 0
     ? undefined
@@ -48,7 +86,7 @@ const live =
           .map((id) => id.trim())
           .filter((id) => id !== ''),
       )
-const asked = dashdash < 0 ? (liveAt < 0 ? argv : []) : argv.slice(dashdash + 1)
+const asked = dashdash < 0 ? (liveAt < 0 && incomingAt < 0 ? argv : []) : argv.slice(dashdash + 1)
 
 /** Both streams, because reading only stdout has produced a false reading here. */
 function git(args, cwd) {
