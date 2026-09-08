@@ -465,6 +465,26 @@ run with 27 failing tests as passing. Worse, `cmd | tail -1 && next` runs `next`
 whatever `cmd` did: that ran a `git reset --hard` after a checkout had refused,
 and ran a branch deletion after a merge had refused.
 
+**A pull request you reviewed is not the pull request you merge.** On 2026-09-07
+I read a body describing an eleven line attribution change, said so in a report,
+and merged it twenty minutes later. By then its agent had force-pushed a second
+commit carrying a correction to its own earlier sweep, an append to another
+decision record and a sixteenth finding. Nothing unsafe landed and the merge
+wrapper did its job: the green it checked was against the head it merged. **The
+gap is mine and it is that I checked the body against my memory.** The wrapper
+knows the head sha and I do not tell it which sha I read, so nothing can notice
+the difference. Until something does, read the head sha at review time and
+compare it at merge time, and treat a moved head as an unreviewed pull request.
+
+**An identity field names a token, not a person.** `gh pr view --json mergedBy`
+answered `BlakeHastings` for a merge an agent-driven session made through
+`scripts/merge-pr.mjs`, because it names the account whose token called the API
+and every merge here uses the owner’s. An agent read it and reported that the
+owner had merged their work himself, which was wrong and would have been
+inherited by whoever read the report next. **Say “merged through
+`merge-pr.mjs`”, or say nothing about who.** The field looks like an answer about
+a person and there is no field here that is one.
+
 **A status query answers about the wrong thing.** After a force-push,
 `gh pr checks` reports `no checks reported` for a while, and a loop counting
 pending entries counts zero and calls the branch ready. Moments later it reports
@@ -484,8 +504,13 @@ person who was fixing it.
   `--limit 100` is one extra command and it is the whole check. Equal numbers
   mean a census; different numbers mean a window, and then say "of the last N".
 - **Never put a pipe between a command and a `&&`.** Run them as separate
-  commands. If you need the tail of something whose status also matters, write it
-  to a file: `cmd > out.txt 2>&1; echo $?; tail out.txt`.
+  commands. **Any pipe, not just `tail`.** If you need part of the output of
+  something whose status also matters, write it to a file:
+  `cmd > out.txt 2>&1; echo $?; head out.txt`. Hours after this section was
+  written I probed five command-line error paths with `cmd | head -4; echo $?`
+  and read every one as exiting 0. Four of them exit 1 and one exits 2, which is
+  correct behaviour I nearly reported as a defect. The bullet said `tail` three
+  times and I read it as being about `tail`.
 - **Read the top, not the bottom, of anything that creates something.**
   `bd create` prints the id it chose on the first line.
 - **Wait by the commit, never by the pull request.** Ask the run listing for runs

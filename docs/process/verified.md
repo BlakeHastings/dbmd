@@ -1606,3 +1606,226 @@ is read before the page is believed, and a decision record is a page.
 
 Both corrections are appended to the records themselves, ADR 0021 and ADR 0029,
 in the same shape as the others.
+## 2026-09-07, night: the tarball rendered, not just fetched
+
+`check:pack` packs the tarball, installs it elsewhere, drives every command and
+asks the running studio for its page, its client bundle and its model. **Nothing
+had ever rendered that page.** A fetch proves the bytes are served; it does not
+prove they run.
+
+So the tarball was packed, installed into an empty directory with `npm init -y`
+and `npm install ./dbmd-0.1.0.tgz`, given a copy of `examples/shop`, and its
+studio was opened in Chromium. What a person who ran `npm install dbmd` would
+see:
+
+```
+title                kettleback-shop · dbmd studio
+tables               8
+edges                11, all 11 carrying an id
+notes                2
+groups               1
+tooltips saying      11 of 11 name what a delete does
+what a delete does
+overlay on the page  none
+React on the page    none
+body background      rgb(246, 246, 244), so the stylesheet applied
+failed requests      none, and no 4xx
+console errors       none
+page errors          none
+```
+
+**The two `none` rows are the owner's constraint, proved from the strongest
+possible place.** ADR 0064 argues the feedback overlay cannot reach the release
+bundle and `check:guards` proves the tarball refuses to carry it. This is the
+same claim checked from the other end: the page a stranger's browser actually
+executes has no `#agentation-host` and no React on it.
+
+Everything else in that list is a thing built today arriving intact through a
+pack, an install and a render: the delete rules in the tooltips, and the edge
+ids that make feedback on a relationship name the relationship.
+
+A full-page screenshot of the installed studio is line for line the development
+one, minus the toolbar in the corner, which is the difference there is supposed
+to be.
+
+## 2026-09-07, night: what it does with six hundred tables
+
+The example model has eight tables and nothing had ever been pointed at a real
+database's worth. A synthetic payload was built from the import fixture's own
+table shape, so the columns, indexes and check constraints are the fixture's
+rather than something invented, with a foreign key on every third table.
+
+| | 120 tables | 600 tables |
+| --- | --- | --- |
+| `dbmd import` | 0.41s | 1.28s |
+| `dbmd check` | 0.33s | 0.76s |
+| `dbmd export --stdout` | | 0.76s, 165 kB |
+| re-import, unchanged | | 0.79s, one line |
+| studio first paint | 564ms | 577ms |
+| boxes drawn | 120 | 600 |
+| edges, all with unique ids | 40 | 200 |
+| fit then zoom in | 885ms | 912ms |
+| console and page errors | none | none |
+
+**First paint did not move between 120 and 600**, and neither did anything else
+much. `Tab` lands on the first box and the arrows walk one box per press at both
+sizes, with exactly one box holding `tabindex="0"` and no duplicate id anywhere
+on a page carrying six hundred of them.
+
+**One thing worth an eye rather than a number.** Fitting six hundred tables puts
+the zoom at 25%, which is the same figure it picks for eight, so it is the floor
+rather than a computed fit. Whether a box is worth reading at 25% is a question
+about the visuals phase and not a defect.
+
+**The importer refuses a malformed payload precisely.** A first attempt at the
+synthetic file put the foreign keys under the wrong key, and rather than writing
+junk it said
+`$.tables[101].foreignKeys[0].referencedSchema [import/empty-value]` and named
+the empty field. The JSON path is what made the mistake obvious in one read.
+
+- **Two more things that hold at the edges, recorded so nobody re-checks them.**
+  Every table file was moved out from under an open studio: the canvas went to
+  zero boxes with no console or page errors, and putting them back brought all
+  eight straight home. And the footer's diagnostics list is
+  `overflow-y: auto`, so two hundred of them scroll inside a 53 pixel footer
+  rather than growing the page.
+
+  A third could not be tested on this platform, which is worth saying rather than
+  leaving as an untried idea: **renaming the model directory out from under a
+  running studio fails with `EPERM` on Windows**, because the watcher is holding
+  it. So the case a person actually meets is files changing under the directory,
+  not the directory going away, and that case is covered above.
+
+- **The command line refuses cleanly and says what to run next.** Five error
+  paths, with their real exit codes read from an unpiped run: `check` on a
+  directory that is not there and `check` on a file both name the errno and the
+  diagnostic code and exit 1; `export` over a model with an error says there is
+  nothing safe to draw and points at `check`, exit 1; `refs --dir` says the
+  option does not exist and lists what that command does take, exit 2;
+  `query --engine oracle` says **"no engine goes by \"oracle\", and this build
+  knows postgres, sqlserver"**, exit 2. `check examples/shop` exits 0. So a
+  model problem is 1 and a usage mistake is 2, which is the distinction a script
+  would want and nothing had checked.
+
+- **A name with a space in it, which is the weak point of the edge ids added
+  tonight.** `order items` is a legal table name and `order id` a legal column
+  name: `dbmd check` reports `2 tables, 0 notes, 0 groups, no problems` on a
+  model built from them, and the ref between them resolves. So the id on the edge
+  really does contain spaces, `edge-lines.order id->order items.id`, and so does
+  the box id, `table-order items`, which has been true since ADR 0064 rather than
+  since tonight.
+
+  **It still works, and the reason is that nothing builds a selector by
+  concatenation.** `agentation`'s builder runs its id through `CSS.escape` and
+  produced `#edge-lines\.order\ id-\>order\ items\.id`, which resolves to exactly
+  one element. On our side the client never writes `'#' + id`: `getElementById`
+  is the only lookup, in two files, and it takes any string. The keyboard pair
+  works on `table-order items` too.
+
+## 2026-09-07, night: where the sixty seconds of the gate goes
+
+The revisit sweep found that ADR 0034 priced `npm run check` at 26.5s and
+predicted about 34.6s, and measured 54.9s. Run here end to end it is **1m0.2s**.
+Each step timed on its own, same machine, one run each:
+
+| step | time |
+| --- | --- |
+| `check:guards` | 19.3s |
+| `test` | 17.6s |
+| `check:pack` | 9.9s |
+| `typecheck` | 4.8s |
+| `format:check` | 4.0s |
+| `build` | 2.5s |
+| `check:scenes` | 1.1s |
+| `check:reviewable` | 0.8s |
+| `check:commands` | 0.8s |
+| `check:adr` | 0.7s |
+
+**Packing accounts for 29.2 seconds of the 61.5**, because `check:guards` is
+`check:pack` run twice more against a mutated copy of the tree. That is the price
+ADR 0034 chose knowingly, and the two rounds are independent of each other: each
+copies the tree, breaks it its own way, and asserts its own refusal.
+
+Nothing is proposed here. This is the measurement whoever looks at it next would
+otherwise have to take, and it is recorded so that a proposal can be argued
+against numbers rather than against an impression that the gate feels slow.
+
+- **Two studios on one model directory, which is two terminals and a plausible
+  accident.** Both start, both serve, and neither knows about the other. A drag
+  in the first wrote `tables/orders.md` and named it; the second saw the change
+  through the watcher and caught up; a drag in the second then wrote from the
+  updated position rather than from its own stale copy, so nothing was lost and
+  nothing was refused. No page errors on either.
+
+  The refusal path is the one measured separately above, where a page holding a
+  model the files had moved on from tried to write and was told
+  `1 edit was dropped rather than written over a change on disk.` **So the two
+  cases are the same mechanism seen from either side**: catch up and the write
+  lands, do not and it is refused.
+
+## 2026-09-07, night: the edge nobody can tab to already says everything elsewhere
+
+The revisit sweep left three things open and the largest was **"an edge is the
+one thing on the canvas a keyboard cannot reach"**, which four records' entries
+fire on. It is true of the drawn line and it is not true of what the line says,
+and the difference decides whether anything should be built.
+
+Driven with the keyboard only, no pointer: Tab to a box, arrows to `orders`,
+Enter, Enter into the panel, then Tab through it. Every reference that table
+makes, and every delete rule on one, is a focusable control with a real name:
+
+```
+input   ref (table.column)   "customers.id"
+select  on delete            "restrict"
+input   ref (table.column)   "addresses.id"
+select  on delete            "restrict"
+input   ref (table.column)   "subscriptions.id"
+select  on delete            "restrict"
+```
+
+**So the tooltip added in ADR 0071 is a second way to learn a delete rule and not
+the only one.** A keyboard user reaches all three of `orders`'s references, their
+targets and their actions, through a walk ADR 0073 shortened to two presses of
+Enter.
+
+What is genuinely unreachable is the **path element**: 0 of 11 carry a `tabindex`
+or an `aria-label`, measured on the page. So the open item is *a drawn object is
+not focusable* rather than *this information cannot be had*, and anybody picking
+it up should weigh a keyboard walk over eleven lines against a panel that already
+names them. Recorded here so the weighing happens before the building.
+
+## 2026-09-07, night: every block on every page that runs dbmd and shows output
+
+ADR 0056's third revisit entry fired into four pages with four readers and no
+shared parser, and the question behind it is whether anything a page claims is
+output has gone unchecked. Counted rather than guessed: **173 fenced blocks
+across the documentation, 29 carrying a `dbmd` tag and 17 plain `json`.** Most of
+the rest are shell commands, configuration and illustrative markdown, which
+ADR 0056 declined to make exhaustive on purpose.
+
+The subset that can rot is narrower and countable: **a block that runs `dbmd` and
+prints something back. There are eleven and every one is now accounted for.**
+
+- **Three are in decision records** (0041, 0049, 0054), which describe what was
+  true when they were written and are not claims about today.
+- **Four in `README.md` were swept by hand and the sweep is recorded** in
+  ADR 0069: `dbmd init`, `dbmd check examples/shop`, the `check` error block with
+  its `echo $?`, and the `studio` block whose port the kernel chooses.
+- **One is guarded by a test**, the `dbmd query` block, which is what ADR 0069
+  built.
+- **Two are sketches of a model that does not exist here**, the pair at
+  `README.md:467` showing `shop` with two errors in it. They illustrate a failure
+  rather than quote a run, which is what `dbmd-sketch` is for.
+- **Two had never been checked by anything, and both are right.** Run here:
+  `dbmd refs orders examples/shop` at `README.md:438` matches the page byte for
+  byte across all nine lines, and the pair at `README.md:500` prints
+  `Wrote db-model/README.md: 2 tables, 1 relationship.` and then
+  `db-model/README.md is already up to date: 2 tables, 1 relationship.`, both
+  exactly as shown.
+
+**So nothing on any page is currently wrong, and two blocks are one edit away
+from being wrong with nobody to notice.** That is the same position the query
+block was in this morning before its count drifted by 2576 characters. The
+machinery to fix it exists and is one table entry each in
+`test/docs/readme.test.ts`, which is a smaller change than lifting a parser
+four ways.
