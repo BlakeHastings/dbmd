@@ -6243,3 +6243,24 @@ corrected by whoever fixed the thing and the other was nobody's job.
   closes the class. The script that swept it is worth keeping rather than
   describing: it lives in the scratchpad as `failedsweep.mjs` and is eleven lines
   of cases plus a runner.
+
+- **PR #227 was verified by building its sha and driving both halves against the
+  disk.** Two tables both needing a rewrite with only the second in sort order
+  unwritable: the refusal names `db-model/tables/orders.md`, lists
+  `tables/order_line.md` as already written, and says the directory has some of
+  the changes and not the rest. The disk matched exactly, with the column back in
+  one file and not the other, and no temporary left. With the first file in sort
+  order refusing instead, it says nothing had been written before it and that the
+  directory is as it was, and neither file had moved. Before the change the whole
+  output was one line about the second file and nothing at all about the first.
+  **Its closing sentence is a claim, so it was run**: the next run found one
+  change instead of two, took it, and exited 0.
+
+- **The JSON envelope holds on all seventeen runs across all seven commands.**
+  ADR 0006 and ADR 0011 say `--json` puts one report on stdout with the same exit
+  code the text form has. Driven in success and failure and usage error: every
+  run parses as exactly one JSON document, every `schema` is 1, every `ok` agrees
+  with the exit code, and every `--json` run leaves stderr empty. Exit codes 0, 1
+  and 2 are all represented. The script is kept in the scratchpad as
+  `envelope.mjs` rather than described, so the next person can rerun it after
+  adding a command.

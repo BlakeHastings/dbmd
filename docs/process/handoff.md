@@ -93,7 +93,7 @@ have now worked between the afternoon of 2026-09-07 and here.
   record states. Verified by building the sha and driving both sides of the rule,
   every counterfactual, and the seam with #225.
 
-**The held import finding is now out.** It was held until the export branch
+**LANDED as #227.** The held import finding is done.  It was held until the export branch
 settled the wording, and #222 settled it: a refused write leads with the
 developer's file, says what happened to it, and hands over the system's words
 with the temporary explained rather than stripped. `import/a-failure-half-way-says-what-it-wrote`
@@ -429,8 +429,7 @@ bd create --ignore-schema-skew -p 2 -t task   "export prints a write failure in 
 # Out with a second agent on 2026-09-08.
 bd create --ignore-schema-skew -p 2 -t task   "refs explains a validation error as a file that did not load"
 
-# Dispatched on 2026-09-08 once #222 landed and settled the wording. This is
-# the worst of the four: it is a silent partial write, not only a message.
+# LANDED as #227. Filing it is bookkeeping; the reasoning is in ADR 0087.
 bd create --ignore-schema-skew -p 1 -t task   "import fails half way, leaves files written, and reports none of them"
 
 # Out with a third agent on 2026-09-08. All seven commands are affected.
