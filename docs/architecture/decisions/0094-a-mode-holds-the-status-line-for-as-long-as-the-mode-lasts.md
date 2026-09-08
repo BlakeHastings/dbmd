@@ -1,4 +1,4 @@
-# 0092. A mode holds the status line for as long as the mode lasts
+# 0094. A mode holds the status line for as long as the mode lasts
 
 ## Context
 

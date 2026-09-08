@@ -931,7 +931,7 @@ function renderLine(line: StatusLine): void {
  * the footer that is on screen the whole time either way. Against that, the
  * alternative is a crosshair nobody can explain, which is the state `canvas.ts`
  * calls "a mode the developer forgot they were in" and is the reason the
- * sentence exists at all. ADR 0092.
+ * sentence exists at all. ADR 0094.
  *
  * Everything that writes this element comes through here: the held sentences,
  * every render of a `WireStatus`, and the read that failed. One gate rather
