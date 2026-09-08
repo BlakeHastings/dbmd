@@ -159,6 +159,15 @@ reread.
   nothing.** No command declares a `short` today. `src/cli/command.ts` already
   has a comment saying the same thing about clustering, and this inherits the
   same door-rather-than-room position.
+- **A marker names one reference, and the first thing somebody reaches for is
+  the command line they ran.** `<!-- hypothetical: dbmd query --engine postgres
+  --bogus -->` parses as a marker for `dbmd query --engine`, which exists, so the
+  author is told that marker is stale while `--bogus` is still unmarked: two
+  messages, neither of them the one they wanted. The marker stops at the command
+  and one flag on purpose, because the alternative is a pattern that swallows a
+  whole line and then cannot say which part of it was the claim. Measured on
+  review of this change, and the failure text now says so out loud rather than
+  leaving it to be met.
 - **The marker pattern had to grow, and the old reader proves it.** Running the
   previous version of the script against this tree now reports the two new
   markers as stale, because it truncates `hypothetical: dbmd check --deep` at

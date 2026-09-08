@@ -904,6 +904,13 @@ its own line or at the end of one:
 The marker holds for the file it is written in and has to name the reference
 exactly. It fails once the thing exists, so the sentence around it gets read
 again on the day it stops being hypothetical. ADR 0036.
+
+**A marker names one reference, not the command line you ran.** That is a
+command, or a command and one flag, and nothing after it. A marker written with
+a directory or a second flag in it marks the command and the first flag only,
+which usually already exists, so you get told that marker is stale while the
+thing you meant is still unmarked. Write one marker per thing that does not
+exist.
 `)
 }
 
