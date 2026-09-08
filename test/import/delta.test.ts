@@ -377,6 +377,45 @@ describe('a table the model has never seen', () => {
     expect(once.model.tables.find((t) => t.name === 'a')?.layout).toEqual({ x: 40, y: 300 })
     expect(once.model.tables.find((t) => t.name === 'b')?.layout).toEqual({ x: 340, y: 300 })
   })
+
+  test('a block of arrivals is as wide as the block is, and nobody dragged moves', () => {
+    // Somebody has arranged these four by hand, nowhere near the grid, and one
+    // of them is far to the right, which is the case that decides where the new
+    // row starts. ADR 0075: the width the arrivals get is worked out from the
+    // arrivals, because the tables already on the canvas are not being laid out.
+    const arranged = [
+      table('orders', ORDERS.columns, { layout: { x: 1700, y: 90 } }),
+      table('customers', [column('id', 'bigint')], { layout: { x: 15, y: 640 } }),
+      table('products', [column('id', 'bigint')], { layout: { x: 980, y: 205 } }),
+      table('suppliers', [column('id', 'bigint')], { layout: { x: 620, y: 1120 } }),
+    ]
+    const arriving = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) =>
+      table(name, [column('id', 'bigint')]),
+    )
+
+    const delta = deltaOf(
+      model(arranged),
+      model([...arranged.map((t) => table(t.name, t.columns)), ...arriving]),
+    )
+
+    // Every hand-placed table is exactly where it was, to the pixel.
+    for (const before of arranged) {
+      expect(delta.model.tables.find((t) => t.name === before.name)?.layout).toEqual(before.layout)
+    }
+    // And the six new ones are three wide and two deep, starting one row pitch
+    // under the lowest thing already placed, which is `suppliers` at 1120.
+    const landed = arriving.map((t) => delta.model.tables.find((x) => x.name === t.name)?.layout)
+    expect(landed).toEqual([
+      { x: 40, y: 1380 },
+      { x: 340, y: 1380 },
+      { x: 640, y: 1380 },
+      { x: 40, y: 1640 },
+      { x: 340, y: 1640 },
+      { x: 640, y: 1640 },
+    ])
+    // Nothing was written for a table that only sat still.
+    expect([...delta.write].sort()).toEqual(arriving.map((t) => t.path).sort())
+  })
 })
 
 describe('indexes', () => {

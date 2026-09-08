@@ -151,8 +151,13 @@ export function deltaOf(existing: Model, incoming: Model): Delta {
   // nothing already placed moves. Same input, same coordinates.
   const arrivals = incoming.tables.filter((table) => !before.has(table.name))
   const start = firstFreeRow(existing)
+  // The arrivals are what is being laid out, so they are what the width is
+  // worked out from. Everything already on the canvas keeps the coordinates it
+  // has, which is the whole point of this function, so its width is not this
+  // block's business. `GRID.columnsFor` is `model.ts`'s own, not a second copy.
+  const columns = GRID.columnsFor(arrivals.length)
   arrivals.forEach((table, slot) => {
-    tables.push({ ...table, layout: place(start, slot) })
+    tables.push({ ...table, layout: place(start, slot, columns) })
     items.push(tableAdded(table))
     write.add(pathOf(table.name))
   })
@@ -613,10 +618,10 @@ function firstFreeRow(model: Model): number {
   return bottoms.length === 0 ? GRID.margin : Math.max(...bottoms) + GRID.rowPitch
 }
 
-function place(startY: number, slot: number): Layout {
+function place(startY: number, slot: number, columns: number): Layout {
   return {
-    x: GRID.margin + (slot % GRID.perRow) * GRID.columnPitch,
-    y: startY + Math.floor(slot / GRID.perRow) * GRID.rowPitch,
+    x: GRID.margin + (slot % columns) * GRID.columnPitch,
+    y: startY + Math.floor(slot / columns) * GRID.rowPitch,
   }
 }
 

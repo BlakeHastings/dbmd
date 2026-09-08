@@ -132,13 +132,25 @@ export function boundsOf(rects: Iterable<Rect>): Rect | undefined {
   return { x: left, y: top, w: right - left, h: bottom - top }
 }
 
-/** The viewport that shows all of `content` inside `into`, with a margin. */
-export function fitTo(content: Rect, into: Size, margin = 48): Viewport {
+/**
+ * The scale that would show all of `content` inside `into`, before the zoom
+ * floor has its say.
+ *
+ * Split out of `fitTo` so that a caller can ask the one question `fitTo`'s
+ * answer cannot be read for: below `MIN_SCALE` this and the scale actually used
+ * are different numbers, and that difference is the whole of "**Fit** could not
+ * fit". Capped at 1 for the same reason `fitTo` caps it, which is that a model
+ * of two tables blown up to fill a monitor is not what anybody meant by fit.
+ */
+export function fitScale(content: Rect, into: Size, margin = 48): number {
   const usableWidth = Math.max(1, into.w - margin * 2)
   const usableHeight = Math.max(1, into.h - margin * 2)
-  const scale = clampScale(
-    Math.min(usableWidth / Math.max(1, content.w), usableHeight / Math.max(1, content.h), 1),
-  )
+  return Math.min(usableWidth / Math.max(1, content.w), usableHeight / Math.max(1, content.h), 1)
+}
+
+/** The viewport that shows all of `content` inside `into`, with a margin. */
+export function fitTo(content: Rect, into: Size, margin = 48): Viewport {
+  const scale = clampScale(fitScale(content, into, margin))
   return {
     scale,
     pan: {
@@ -146,6 +158,62 @@ export function fitTo(content: Rect, into: Size, margin = 48): Viewport {
       y: (into.h - content.h * scale) / 2 - content.y * scale,
     },
   }
+}
+
+/**
+ * How many of `rects` have any of themselves inside `into` at this viewport.
+ *
+ * Touching counts. The question this answers is "how much of the model can the
+ * person see", and a box with a corner on screen is a box they can see and
+ * click; counting only the wholly visible ones would understate it by a row and
+ * a column every time.
+ *
+ * Here rather than in `canvas.ts` because it is the same conversion `toScreen`
+ * does, and because what it is for is a sentence that has to be right, which
+ * means it has to be provable without a browser.
+ */
+export function visibleCount(rects: Iterable<Rect>, into: Size, viewport: Viewport): number {
+  let shown = 0
+  for (const rect of rects) {
+    const left = rect.x * viewport.scale + viewport.pan.x
+    const top = rect.y * viewport.scale + viewport.pan.y
+    const right = left + rect.w * viewport.scale
+    const bottom = top + rect.h * viewport.scale
+    if (right > 0 && left < into.w && bottom > 0 && top < into.h) shown += 1
+  }
+  return shown
+}
+
+/**
+ * What the page says when **Fit** ran out of zoom before it ran out of model.
+ *
+ * `fitTo` clamps at `MIN_SCALE`, and until now that was the end of it: on a
+ * six-hundred-table import the button moved the view, left 530 boxes off the
+ * bottom of the window and said nothing at all, so the only reading available
+ * was that Fit had worked and there was nothing else there. A create that said
+ * `Creating tables/x.md.` fifteen seconds after the file existed was treated as
+ * a defect for the same reason and ADR 0074 came out of it; this is that shape
+ * of problem with the sentence missing rather than stale. ADR 0075.
+ *
+ * It says the count rather than "some objects are off screen" because the count
+ * is what tells a person which of the two situations they are in: two boxes
+ * over the edge is a scroll, and five hundred is a model nobody is going to
+ * read at this size. And it says what to do, because the answer is not the one
+ * the toolbar suggests: zooming out further is refused on purpose, so the way
+ * to the rest is the keyboard walk the canvas already describes.
+ *
+ * Nothing is said when the fit fit. A line that fires every time is a line
+ * people stop reading, and this one is the whole reason the button is not
+ * lying.
+ */
+export function didNotFitNotice(shown: number, total: number): string {
+  const floor = `${Math.round(MIN_SCALE * 100)}%`
+  return (
+    `Fit is as far out as this page goes, and it was not far enough: ${shown} of the ${total} ` +
+    `objects on the canvas are on screen and the rest are past the edges. The zoom stops at ` +
+    `${floor} so that a box still says what it is, so the way to the others is the arrow keys, ` +
+    `which walk to one object at a time and bring it into view.`
+  )
 }
 
 /**

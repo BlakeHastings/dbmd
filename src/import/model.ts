@@ -60,9 +60,11 @@ import { compareCodeUnits, inDocument, sortDiagnostics } from './diagnostics.js'
  * already answers "where does a table with no coordinates go" for the canvas,
  * and an import that chose differently would move every box the first time
  * somebody opened the studio on it. They are copied rather than imported
- * because that file is browser code and this is not, and four numbers across
- * that seam is a smaller wrong than a Node module importing the bundle. ADR
- * 0029 names the duplication and the way out.
+ * because that file is browser code and this is not, and three numbers and a
+ * line of arithmetic across that seam is a smaller wrong than a Node module
+ * importing the bundle. ADR 0029 names the duplication and the way out, and
+ * `test/import/model.test.ts` asserts the two agree so that a change to one of
+ * them is red rather than only regrettable.
  *
  * There is no auto layout. Same input, same coordinates, and the developer
  * arranges them once.
@@ -70,22 +72,64 @@ import { compareCodeUnits, inDocument, sortDiagnostics } from './diagnostics.js'
 const MARGIN = 40
 const COLUMN_PITCH = 300
 const ROW_PITCH = 260
-const PER_ROW = 5
 
 /**
- * The same four numbers, as a value, for `./delta.ts`.
+ * The shape the grid is aimed at, which is the shape of the window it is read in.
+ *
+ * This module runs in Node and has never seen a viewport, so the number is an
+ * assumption rather than a measurement: sixteen by nine is what a browser
+ * maximised on a laptop or a desktop display is close to. Being wrong about it
+ * costs a column, and being right about it is what decides whether **Fit** can
+ * fit, because `MIN_SCALE` in `src/studio/client/geometry.ts` stops the zoom at
+ * a quarter so that a box still says what it is. ADR 0075.
+ */
+const VIEWPORT_ASPECT = 16 / 9
+
+/**
+ * How many columns wide the grid is for `count` tables.
+ *
+ * It was five, whatever the count, and five is right for eight tables and
+ * wrong for six hundred: five columns and a hundred and twenty rows is a
+ * ribbon about 1424 by 31172 model units, and at the furthest the studio zooms
+ * out that is 356 by 7793 screen pixels, of which one screenful is 70 boxes.
+ * The button said nothing and the other 530 were below the window. ADR 0075
+ * and the entry in `docs/process/verified.md`.
+ *
+ * So the width comes from the count. A grid of `columns` by `count / columns`
+ * is `columns * COLUMN_PITCH` wide and `(count / columns) * ROW_PITCH` tall,
+ * and setting that ratio to `VIEWPORT_ASPECT` and solving for `columns` is the
+ * line below. Rounded to a whole number of columns, which is the only kind
+ * there is, and never less than one.
+ *
+ * Worked, so the numbers are checkable without running it: 4 tables land two
+ * wide, 8 land four wide, 16 land five wide, 100 land twelve wide and 600 land
+ * thirty wide, which is twenty rows rather than a hundred and twenty.
+ */
+export function columnsFor(count: number): number {
+  return Math.max(1, Math.round(Math.sqrt((count * VIEWPORT_ASPECT * ROW_PITCH) / COLUMN_PITCH)))
+}
+
+/**
+ * The same grid, as a value, for `./delta.ts`.
  *
  * A re-import puts a table the model has never seen on the same grid, below
  * everything already placed, and it has to be the same grid or the first new
  * table lands in a column of its own. Exported rather than copied so that
  * changing the pitch here changes both, which is the mistake this makes
  * impossible rather than merely unlikely.
+ *
+ * `columnsFor` rides along for the same reason the pitches do. What a re-import
+ * hands it is the number of tables that arrived rather than the number in the
+ * model: those are the tables being laid out, the ones already on the canvas
+ * are somebody's own arrangement and are not being laid out at all, and both
+ * sides of the grid still land on `MARGIN + k * COLUMN_PITCH`, so the new block
+ * lines up with whatever is above it however wide that turned out to be.
  */
 export const GRID = {
   margin: MARGIN,
   columnPitch: COLUMN_PITCH,
   rowPitch: ROW_PITCH,
-  perRow: PER_ROW,
+  columnsFor,
 } as const
 
 export interface ImportedModel {
@@ -137,7 +181,10 @@ export function modelFromIntrospection(document: IntrospectionDocument): Importe
     diagnostics,
   }
 
-  const tables = ordered.map((table, slot) => tableOf(table, slot, context))
+  // Every table's coordinates depend on how many there are, so the width is
+  // settled once, here, before any of them is placed.
+  const columns = columnsFor(ordered.length)
+  const tables = ordered.map((table, slot) => tableOf(table, slot, columns, context))
 
   const model: Model = {
     ...(document.source?.database === undefined ? {} : { name: document.source.database }),
@@ -158,7 +205,7 @@ export function modelFromIntrospection(document: IntrospectionDocument): Importe
 // One table
 // --------------------------------------------------------------------------
 
-function tableOf(table: CatalogTable, slot: number, context: Context): Table {
+function tableOf(table: CatalogTable, slot: number, columns: number, context: Context): Table {
   const refs = refsOf(table, context)
   const key = table.primaryKey?.columns ?? []
   return {
@@ -169,8 +216,8 @@ function tableOf(table: CatalogTable, slot: number, context: Context): Table {
     columns: table.columns.map((column) => columnOf(column, key, refs.get(column.name))),
     indexes: table.indexes.map(indexOf),
     layout: {
-      x: MARGIN + (slot % PER_ROW) * COLUMN_PITCH,
-      y: MARGIN + Math.floor(slot / PER_ROW) * ROW_PITCH,
+      x: MARGIN + (slot % columns) * COLUMN_PITCH,
+      y: MARGIN + Math.floor(slot / columns) * ROW_PITCH,
     },
     body: tableBody(table),
   }

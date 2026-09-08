@@ -1483,3 +1483,78 @@ the part of a record most likely to rot, because it is written about a future th
 then happens", with the advice to grep them after any decision the records
 anticipated. The habit existed. What did not exist was a sweep of all of them at
 once, which is what makes the ones nobody happened to be looking at findable.
+
+## 2026-09-07, night: what it does with six hundred tables
+
+Nobody had pointed this at more than eight. Synthetic payloads of 8, 100 and 600
+tables, each table shaped like `order_line` in
+`test/import/fixtures/postgres-raw.json` and chained by a `ref:` so there is an
+edge per table, imported with `dbmd import` and opened in Chromium at a 1600 by
+947 window. The canvas is 1600 by 798 of that; the rest is the header, the
+toolbar and the status bar.
+
+**Before**, with the grid five columns wide whatever the count:
+
+| Tables | Layout written | Zoom after Fit | Boxes on screen | Status line said |
+| --- | --- | --- | --- | --- |
+| 8 | x 40..1240, y 40..300 | 100% | 8 of 8 | `Nothing written this session.` |
+| 100 | x 40..1240, y 40..4980 | 25%, clamped | 70 of 100 | `Nothing written this session.` |
+| 600 | x 40..1240, y 40..30980 | 25%, clamped | 70 of 600 | `Nothing written this session.` |
+
+Six hundred tables is five columns and a hundred and twenty rows: about 1424 by
+31172 model units, which at 25% (`MIN_SCALE`, the furthest the studio zooms out)
+is 356 by 7793 screen pixels. Ten screenfuls of a ribbon four boxes wide, and
+**nothing anywhere said the fit could not fit**. The selection line was empty and
+the status line was the ordinary one.
+
+**The drawing itself was never the problem.** 600 boxes and 599 edges drew with
+no console error and the page was interactive.
+
+**After**, with the width taken from the count and a sentence when Fit clamps
+(ADR 0075):
+
+| Tables | Layout written | Zoom after Fit | Boxes on screen | Status line said |
+| --- | --- | --- | --- | --- |
+| 8 | x 40..940, y 40..300 | 100% | 8 of 8 | nothing new |
+| 100 | x 40..3340, y 40..2120 | 30% | 100 of 100 | nothing new |
+| 600 | x 40..8740, y 40..4980 | 25%, clamped | 264 of 600 | the notice below |
+
+> Fit is as far out as this page goes, and it was not far enough: 264 of the 600
+> objects on the canvas are on screen and the rest are past the edges. The zoom
+> stops at 25% so that a box still says what it is, so the way to the others is
+> the arrow keys, which walk to one object at a time and bring it into view.
+
+**A hundred tables now fit, which is the number that matters**, because a
+hundred is an ordinary database. Six hundred still do not and cannot: 600 boxes
+at this pitch want about 47 million square model units and a canvas at 25%
+offers about 20 million. No arrangement fixes that, which is why the sentence
+exists.
+
+**The count in the sentence was wrong the first two times it was measured and
+both causes were the page, not the arithmetic.** The load-time fit ran before
+the diagnostics list and the status line rendered, and those sit under the
+canvas, so it was fitting to a canvas 128 pixels taller than the one the page
+kept. And the sentence is three lines where the ordinary status is one, so
+saying it takes another 16 pixels and makes its own count too generous: 308
+said, 286 on screen. Both are fixed and the number now agrees with the page on
+the first draw and on every press.
+
+**The re-import onto an arrangement, driven rather than reasoned about.** Eight
+tables imported, then `t0` and `t5` dragged in a real browser to (177, 101) and
+(256, 533), which wrote those two files and nothing else. A payload with six new
+tables re-imported: the itemised list showed six `database table added` and
+nothing else, and after `--confirm` all eight existing layouts were unchanged to
+the pixel, including the two dragged, and the six arrivals landed three wide at
+y 793 and y 1053, one row pitch below the lowest thing already placed. Reopened
+in the browser: 14 boxes, all on screen at 58%, no console error.
+
+**Re-driven on the rebased build, and one more thing found.** Same payloads
+against the tree with the revisit sweep under it: 100 tables at 30% with 100 of
+100 on screen and no notice, 600 at 25% with the notice saying 264 and 264
+counted off the DOM, on load and again after pressing Fit, no console error in
+either. And **the count goes stale if the window is resized**: a page fitted in
+one window and then resized to 1600 by 947 said 180 while 286 boxes were on
+screen. Nothing re-fits on a resize, on purpose, so the sentence is about the
+moment it was said and pressing Fit again makes it true. ADR 0075 names it under
+both **Consequences** and **Revisit when** rather than fixing it, because the
+fix is a decision about what a resize should do to the view.
