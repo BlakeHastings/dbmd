@@ -830,11 +830,19 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
   // one the fallback wrote `columns: [this column]`, in a code span, which is a
   // line no file will parse; a nameless column is only ever reached beside the
   // `field-missing` above, so the sentence sends the reader there instead. The
-  // named half is unchanged, because there the line can be copied.
+  // named half can be copied, so it says the whole entry.
+  //
+  // **Including the index's own `name:`, which this used to leave out.** An
+  // index without one is `field-missing: \`name\` is required`, so a reader who
+  // did exactly what this sentence said traded one error for another; and the
+  // clause immediately before it, "a unique constraint has a name and a column
+  // has nowhere to put one", is the reason the key is needed. Omitting it from
+  // the remedy was this message contradicting its own justification one clause
+  // later.
   const uniqueRemedy =
     name === undefined
-      ? 'write it as an `indexes:` entry with `unique: true`, whose `columns:` names this column once it has a `name:`'
-      : `write it as an \`indexes:\` entry with \`columns: [${name}]\` and \`unique: true\``
+      ? 'write it as an `indexes:` entry with `unique: true` and the `name:` the constraint has in the database, listing this column in its `columns:` once the column has a `name:`'
+      : `write it as an \`indexes:\` entry with \`columns: [${name}]\`, \`unique: true\` and the \`name:\` the constraint has in the database`
   fields.reject(
     'unique',
     `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; ${uniqueRemedy}`,
