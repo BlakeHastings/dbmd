@@ -167,3 +167,47 @@ read.
 - **`dbmd check` grows a "what would this break" mode.** That is this question
   asked about a change rather than about a table, and if it lands, this command
   is the thing it should be built out of rather than beside.
+
+## Amended 2026-09-08, because the sentence was wider than the reason under it
+
+"It answers a model that does not validate" above says the reason and then
+states it one size too large: *a file that did not parse is missing from the
+model along with every ref written in it, so an answer over a model with errors
+may be short.* The reason is about a file that did not parse. The claim is about
+any error at all, and the two are not the same set.
+
+The code was built from the claim rather than from the reason. `runRefs`
+flattened the reader's diagnostics and the validator's into one count and printed
+the parse-failure sentence over all of it, so a model whose only error was a
+dangling `ref:` was told its answer might be short. That answer was complete, and
+the error being counted was one of the rows printed under the warning. Asked
+`--outgoing` about a table with `ref: ghosts.id` on it, the command found the
+dangling ref, printed it, and then warned the reader that the answer might be
+missing it.
+
+**The two counts are now kept apart, and the sentence follows the count that
+earns it.** Read errors keep this record's sentence, word for word, because for
+them it was always right. Validation errors get the opposite sentence, which
+says the model does not check out and that the answer is nonetheless whole. Both
+kinds at once get one banner rather than two, because "may be short" and
+"nothing is missing" cannot both stand over one list; the read half decides the
+wording and the count says how many of the errors are in the reading.
+
+Nothing here is a new decision, which is why this is an amendment and not a
+record. The consequence about `name-mismatch` still holds and now holds for a
+stated reason: it is raised in `src/model/read.ts`, so it is a read error, so it
+is still covered by the "this answer may be short" sentence.
+
+`--json` gained `readErrors` beside `errors` and `warnings`, which is the same
+correction made once for a program instead of a person: a caller could read
+`errors > 0` and had no way to tell a short answer from a wrong model, which is
+the reading `docs/format.md` told it to make. `errors` still counts everything
+`dbmd check` would count, so no caller's reading of it changed. ADR 0006 makes
+adding a field to a payload the cheap half of that contract and renaming one the
+expensive half, and this is the cheap half.
+
+Not fixed here: `README.md`'s `dbmd refs addresses shop` block shows the old
+banner over a mid-rename model whose errors are all the validator's, so the page
+now shows output the command does not print. That block is a plain fence rather
+than a `dbmd-run` one, so nothing failed. It is left for the owner because that
+file was being edited elsewhere while this landed.

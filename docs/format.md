@@ -1325,7 +1325,8 @@ asked for the report gets the whole answer.
   ],
   "model": {
     "errors": 0,
-    "warnings": 0
+    "warnings": 0,
+    "readErrors": 0
   }
 }
 ```
@@ -1347,10 +1348,19 @@ is relative to the model directory and slash-separated on every platform, so two
 machines produce the same bytes.
 
 `model` counts what `dbmd check` would say about the same directory, and it is
-there because **this command answers a model that does not load**. A file that
-did not parse is missing from the model along with every `ref:` written in it, so
-a non-zero `errors` means the two lists may be short. Half way through a rename
-that is exactly the state, and it is when the question is most worth asking:
+there because **this command answers a model that does not check out**. `errors`
+is every error `dbmd check` would report, and `readErrors` is the part of that
+number the reader raised rather than the validator.
+
+**Only `readErrors` means the lists may be short.** A file that did not parse is
+missing from the model along with every `ref:` written in it, and that is what
+the reader reports. An `errors` with `readErrors: 0` under it is a model that
+was read in full and disagrees with itself, so the two lists are the whole
+answer: a `ref:` at a table that is not there is one of those errors and is also
+one of the rows in `incoming` or `outgoing`. Reading `errors > 0` as "this may
+be short" gets that case backwards, and the text form said exactly that until
+2026-09-08. Half way through a rename this is the state, and it is when the
+question is most worth asking:
 
 ```json
 {
@@ -1377,7 +1387,8 @@ that is exactly the state, and it is when the question is most worth asking:
   "outgoing": [],
   "model": {
     "errors": 1,
-    "warnings": 0
+    "warnings": 0,
+    "readErrors": 0
   }
 }
 ```
@@ -1389,8 +1400,12 @@ exit code 0, because that is an answer rather than a failure.
 
 Asked of the intact directory the same question reports **two** incoming refs.
 The one missing above is `addresses.superseded_by`, a ref the deleted file was
-carrying, and `model.errors` is the only thing in the report that tells a caller
-the list is short for a reason that is not the model.
+carrying. **Nothing in the report says so**, and `readErrors: 0` is the honest
+half of that: a file that was deleted is not a file that failed to read, so the
+reader never saw it and has nothing to report about it. The one error counted
+here is the dangling `ref:` the deletion left on `orders`, which is in `incoming`
+above. The report is a complete answer about the directory as it now stands, and
+what it cannot tell you is what used to be in it.
 
 **`exists` is how a caller tells the two empty answers apart**, and they are
 opposite instructions. A table that is there with nothing pointing at it comes
@@ -1409,7 +1424,8 @@ the answer to a typo must never read as permission:
   "outgoing": [],
   "model": {
     "errors": 0,
-    "warnings": 0
+    "warnings": 0,
+    "readErrors": 0
   },
   "error": {
     "code": "no-such-table",
