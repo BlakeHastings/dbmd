@@ -183,7 +183,75 @@ describe('dbmd init', () => {
     expect(err).toContain(`${path} is not a directory, so init has left it alone.`)
     expect(err).toContain('Move it aside, or give init a different directory.')
     expect(err).not.toContain('is not empty')
+    // The path and the file are the same thing here, so "it" already points at
+    // something the developer can move and the sentence says nothing more.
+    expect(err).not.toContain('further up the path')
     expect(await readFile(path, 'utf8')).toBe('mine\n')
+  })
+
+  /**
+   * The same refusal, from the other side of a platform disagreement.
+   *
+   * `dbmd init plain.md/sub` is one command line and two code paths. Linux
+   * answers `readdir` with ENOTDIR, so `vacancy` refuses it; Windows 11 on Node
+   * 24 answers ENOENT, so `vacancy` reads the path as free and the file above it
+   * is not met until the writer's first `mkdir`. Measured on both. This test
+   * pins the answer rather than the path it took, which is the only assertion
+   * that can hold on either kernel, and it is red on Windows before the writer's
+   * refusal exists: what reached the developer there was Node's own line, an
+   * absolute path with backslashes in it, naming `plain.md` rather than what
+   * they typed, under the generic code "failed".
+   */
+  test('a file above the path is the same refusal on either platform', async () => {
+    const file = await vacantPath()
+    await writeFile(file, 'mine\n', 'utf8')
+    const path = join(file, 'sub')
+
+    const text = await run('init', path)
+    const json = await run('init', '--json', path)
+
+    expect(text.code).toBe(1)
+    expect(text.err).toContain(`${path} is not a directory, so init has left it alone.`)
+    // The advice names the file, because "move it aside" about a path that
+    // does not exist is an instruction nobody can carry out, and that is the
+    // defect this whole branch is about arriving inside the fix for it.
+    expect(text.err).toContain(`${file}, further up the path, is the file in the way.`)
+    expect(text.err).toContain('Move it aside, or give init a different directory.')
+    // Node's own sentence, which is what used to arrive here, does not.
+    expect(text.err).not.toContain('ENOTDIR')
+    expect(text.err).not.toContain('mkdir')
+
+    expect(json.code).toBe(1)
+    expect(json.err).toBe('')
+    expect(JSON.parse(json.out)).toEqual({
+      schema: 1,
+      ok: false,
+      directory: path,
+      error: { code: 'not-a-directory', message: `${path} is not a directory` },
+    })
+
+    // "left it alone" is a claim about the disk, so it is read back.
+    expect(await readFile(file, 'utf8')).toBe('mine\n')
+  })
+
+  // The name in the advice has to be the file and not merely an ancestor, so
+  // the walk that finds it is driven where the first ancestor is a real
+  // directory and the second is the file. Two components below it as well,
+  // because "the parent of what was typed" would pass the case above and fail
+  // this one.
+  test('the advice names the file itself, not the first directory above it', async () => {
+    const parent = await vacantPath()
+    await mkdir(parent, { recursive: true })
+    const file = join(parent, 'plain.md')
+    await writeFile(file, 'mine\n', 'utf8')
+    const path = join(file, 'a', 'b')
+
+    const { code, err } = await run('init', path)
+    expect(code).toBe(1)
+    expect(err).toContain(`${path} is not a directory, so init has left it alone.`)
+    expect(err).toContain(`${file}, further up the path, is the file in the way.`)
+    expect(await readFile(file, 'utf8')).toBe('mine\n')
+    expect(await readdir(parent)).toEqual(['plain.md'])
   })
 
   test('an empty file is not told that it is not empty', async () => {

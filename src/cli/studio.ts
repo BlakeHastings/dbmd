@@ -17,12 +17,18 @@
  * 2. **It closes on an interrupt.** The server installs no signal handler on
  *    purpose, and there may be a debounced write that has not fired yet, which
  *    is somebody's work. `close()` flushes it and then stops listening.
+ * 3. **It says what a refused port means.** The server binds and lets the error
+ *    out, which is right: what a caller does about a port it cannot have is the
+ *    caller's decision. Until 2026-09-08 nothing here caught it, so a busy port
+ *    reached the developer as the entry point's last-resort line, in Node's
+ *    voice, under the generic code "failed". ADR 0083's shape is applied to it
+ *    below.
  */
 
 import { stat } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { EXIT_FAILURE, UsageError, usageProblem, type Command } from './command.js'
-import { startStudio, type StudioOptions } from '../studio/index.js'
+import { EXIT_FAILURE, UsageError, messageOf, usageProblem, type Command } from './command.js'
+import { startStudio, type Studio, type StudioOptions } from '../studio/index.js'
 import type { Output } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The same default `dbmd init` writes. */
@@ -59,6 +65,15 @@ this. It listens on 127.0.0.1 only and there is no flag to change that.
 
 It runs until interrupted. Ctrl-C flushes any edit still waiting to be written
 and then stops listening.
+
+Exit codes:
+  0   it served, and an interrupt stopped it
+  1   there is no model directory there, or the port could not be bound
+  2   the command line was wrong
+
+A port something else is already listening on is the commonest way to get 1, and
+it is why the default asks the operating system for a free one: several checkouts
+of this run at once.
 `,
   run: runStudio,
 }
@@ -84,7 +99,53 @@ async function runStudio(argv: readonly string[], out: Output): Promise<number> 
 
   // No `log`: the server defaults to `narrate`, which is this repository's one
   // answer to which stream a line goes to.
-  const studio = await startStudio(options)
+  let studio: Studio
+  try {
+    studio = await startStudio(options)
+  } catch (error) {
+    const errno = listenErrno(error)
+    if (errno === undefined) throw error
+
+    // ADR 0083's shape, reaching the one refusal this command owns: lead with
+    // what the developer was doing, say what can be said without guessing, and
+    // hand over the system's own words rather than replacing them. `dbmd
+    // export` reads the same way for a write it could not make.
+    //
+    // A busy port gets its own sentence and every other refusal shares one,
+    // because the *advice* differs and nothing else does. `--port 0` is the
+    // answer to a port somebody else has, and it is not the answer to an
+    // address the machine does not have; offering it for both would be naming
+    // a cause this command did not check, which is the thing that record
+    // refuses. `EADDRINUSE` is not a guess: it is the operating system's own
+    // word for it, read off the error rather than inferred from the message.
+    //
+    // The two errnos are two `error.code`s for the same reason. A script can
+    // act on a port that is taken, by asking for another one, and there is
+    // nothing it can do by itself about a permission denied or a loopback
+    // address that is missing, so those are one thing to a caller and stay one
+    // code.
+    const message = messageOf(error)
+    const port = out.style.strong(String(options.port))
+    return out.report({
+      code: EXIT_FAILURE,
+      text:
+        `${out.style.bad('dbmd:')} Could not start the studio: ` +
+        (errno === 'EADDRINUSE'
+          ? `port ${port} is already taken. Nothing was started, and "--port 0", the default, ` +
+            `lets the operating system pick a free one.\n`
+          : `the operating system refused port ${port}. Nothing was started, so clearing ` +
+            `whatever it is refusing and running the command again is enough.\n`) +
+        `The system's own words: ${out.style.faint(message)}\n`,
+      json: {
+        directory: options.dir,
+        // The port that was asked for, because there is no port that was bound:
+        // the envelope's `ok` is what says which of those a reader is holding.
+        port: options.port,
+        error: { code: errno === 'EADDRINUSE' ? 'port-in-use' : 'listen-failed', message },
+      },
+    })
+  }
+
   const signal = await untilStopped()
   await studio.close()
 
@@ -167,6 +228,32 @@ function parsePort(value: string | undefined): number {
     )
   }
   return port
+}
+
+/**
+ * The operating system's word for why `listen` refused, or `undefined` when
+ * what was thrown is not `listen` refusing at all.
+ *
+ * `syscall` rather than a list of errnos. Node names the call on every error it
+ * builds from libuv, so one test covers a busy port, a permission denied on a
+ * low one and an address the machine does not have, and it keeps covering the
+ * next one without this file holding a list that has to stay complete. A real
+ * `EADDRINUSE` from this server is `{ code, errno, syscall, address, port }`
+ * and nothing else, which is why the message is the only prose worth printing.
+ *
+ * Both halves are required rather than one, so the caller gets an errno or
+ * nothing. An error carrying `syscall` and no `code` is not a thing libuv
+ * produces, and the alternative is a third state for a case nobody can reach.
+ *
+ * Everything `startStudio` does before it binds can throw too, an unreadable
+ * model directory among them. Those are not this command's to explain and are
+ * re-thrown to the entry point unchanged.
+ */
+function listenErrno(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !('syscall' in error) || error.syscall !== 'listen') {
+    return undefined
+  }
+  return 'code' in error && typeof error.code === 'string' ? error.code : undefined
 }
 
 /**

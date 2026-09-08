@@ -148,11 +148,33 @@ nothing to fail about.
 
 If you would rather have the diagram in the file and reviewed like any other
 change, that is a fair choice and the shape is different: run `dbmd export`
-locally, commit `db-model/README.md`, and let CI enforce that it is current
-with `dbmd export db-model` followed by `git diff --exit-code db-model`. Export
-does not rewrite a file whose diagram has not changed, so that stays quiet
-until the model moves. This repository does not run that shape, because its own
-model is one a person has open in the studio, so take it as untested here.
+locally, commit `db-model/README.md`, and let CI enforce that it is current with
+`dbmd export db-model`, then `git add -N db-model`, then
+`git diff --exit-code db-model`. Export does not rewrite a file whose diagram
+has not changed, so that stays quiet until the model moves.
+
+**`git add -N` is the line that makes that gate able to fail**, and the shape is
+broken without it, because `git diff` does not look at untracked files. A
+repository whose `db-model/README.md` was never committed runs the export,
+creates the file, shows git a tree with no tracked change in it and exits 0, so
+a gate whose whole purpose is to fail on a stale diagram goes green having
+proved nothing. `--intent-to-add` records the path in the index with no content,
+which is all `git diff` needs in order to see it. A diagram that is genuinely
+new and wanted then arrives as a whole file added and the job fails, which is
+the right answer rather than a false alarm: what the gate claims is that the
+committed diagram is current, an uncommitted one is not, and the fix is the
+first half of the recipe. It reaches anything else untracked under that
+directory as well, which is the same answer for the same reason.
+
+`test -z "$(git status --porcelain db-model)"` closes the same hole and was not
+chosen. It goes red without printing what went stale, and the diff is what
+somebody reads out of the job log to find out which table moved.
+
+This repository does not run that shape, because its own model is one a person
+has open in the studio. Both of its states were driven by hand in a scratch
+repository on 2026-09-08, a `README.md` that was committed and current and one
+that had never been committed, and the second exited 0 until `git add -N` was
+in it.
 
 ## Why the upload cannot be empty
 
