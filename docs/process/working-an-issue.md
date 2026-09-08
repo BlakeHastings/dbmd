@@ -51,9 +51,20 @@ npm ci
 npm run check
 ```
 
-`npm run check` is typecheck, format check, tests and build, and it is the same
-command CI runs. It is the whole mechanical gate: there is nothing else to
-remember.
+`npm run check` is the same command CI runs, and it is the whole mechanical gate:
+there is nothing else to remember.
+
+**This sentence used to list four stages and there are twelve.** It was the third
+place in this repository the gate is enumerated, and the only one of the three
+that had gone wrong, which is what happens to a copy nobody updates. The list
+that is kept correct lives in `AGENTS.md`, beside the invariants, and it is kept
+correct by habit rather than by machinery: every commit that has ever changed the
+chain edited that file in the same commit, seven of seven, measured. So read it
+there, or ask the manifest, which cannot be wrong:
+
+```bash
+node -p "require('./package.json').scripts.check"
+```
 
 Where the change touches the studio, bring it up and drive it. **Point it at a
 copy of the example, and make the copy with `git archive`**, where `$SCRATCH` is
