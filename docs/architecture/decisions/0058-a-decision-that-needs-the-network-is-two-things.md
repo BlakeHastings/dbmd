@@ -120,3 +120,44 @@ in `stalenessNotice` and all asserted.
   and no test can notice GitHub changing either. A guard that passes every test
   and reads a field that no longer exists is exactly the disease ADR 0034 is
   about, moved from the decision into the fetch.
+
+## The first revisit entry fired in ADR 0082, and it had fired before the sentence was typed
+
+Appended rather than edited, the way `README.md` in this directory asks. The
+decision stands: a guard that needs the network is a set of exported decision
+functions whose facts are arguments, plus a `main()` that owns `gh`, the disk and
+the exit codes and runs only when the file is the entry point.
+
+**"A third guard's decision needs the network" fired, and the answer is ADR
+0082.**
+[ADR 0082](0082-a-reason-not-to-test-something-is-a-claim-with-a-date-on-it.md)
+landed in #207 and applied this pattern to
+`scripts/report-merge-aftermath.mjs`. It names this record six times, at its
+lines 15, 36, 45, 85, 128 and 154, and its Decision opens "ADR 0058's pattern
+fits here and is applied". This record named it nowhere, so the entry has read as
+open work since #207 while the split it asked for was already in the tree.
+
+**0082 also says where this entry's wording let it down, and that is the part
+worth carrying back here.** Its line 36: "ADR 0058's own list came closer and
+still missed, for a reason in its wording." The entry ends "a new script that
+mixes the two should be split before it is installed rather than after somebody
+notices". It is written forward, at the next script. The third script was already
+installed, seventeen minutes old, and sitting in the same tree while that
+sentence was typed. So the entry did not fire later; it was already false when it
+was written, and a condition phrased at future work cannot see work that has just
+landed.
+
+**What that means for the decision.** Nothing about the pattern. Three scripts
+now have this shape, which is the evidence the pattern is worth having, and it is
+the first entry that is spent rather than the argument above it. The entry should
+be read as "a guard's decision needs the network", present tense, with the
+current answer being: look at what is already installed before deciding nothing
+has fired.
+
+**The other three entries were read at the same time and nothing was found that
+fires them.** All three of `check-main-provenance.mjs`, `merge-pr.mjs` and
+`report-merge-aftermath.mjs` still have a single `main()` behind the
+`import.meta.url` guard, at their lines 273, 536 and 617, so no decision has
+migrated into one. The other two entries are about events rather than about the
+tree: a test going red for a rewording, and GitHub changing a payload. Neither is
+a thing this reading can look up, and no record of either was found.

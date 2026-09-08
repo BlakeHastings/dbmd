@@ -137,3 +137,54 @@ check and it is honest about being weaker.
   about not driving it is a judgement about a moving surface, and ADR 0039 owns
   that condition. This record only notes that the paragraph's third reason has
   already moved once, when `dbmd refs` landed.
+
+## The first revisit entry fired the same night, four times over
+
+Appended rather than edited, the way `README.md` in this directory asks. The
+decision stands: a shipped skill states the contract a caller branches on and
+cites the record rather than paraphrasing the argument.
+
+**"A sixth stale claim is found in this file" fired.** Pull request #229, "the
+skill says what tonight's merges made true", merged on 2026-09-08 at 07:59Z and
+removed four more false claims from `.claude/skills/dbmd/SKILL.md`, which are the
+sixth through the ninth. `docs/process/verified.md` records the sweep
+independently of the pull request, at its line 2696, including that the sentence
+it was sent to check was wrong in a way the author had not guessed.
+
+**One of the four had been falsified seventeen minutes earlier by a merge in the
+same session.** #227 landed ADR 0087, "a refused write says what it had already
+written", at 07:42Z. The skill's `WriteFailed` passage said the throw "took the
+`written` array with them, so `git status` is the only record of what landed",
+and after #227 that is false in both halves. #229 measured it rather than
+reasoning about it and found the second half wrong about the mechanism as well as
+stale: the old script did not print nothing, it printed an unhandled rejection
+that now carries `written`.
+
+**What that means for the decision, which is not what the entry predicted.** The
+entry says a sixth means "the citation habit is not holding and the question is
+what could be mechanised after all". That reading does not survive the four. Each
+of them was falsified by a merge landing the same night, #227, #223 and #226, so
+what they show is a page describing a tree that moved under it rather than an
+author paraphrasing something they could have cited. The five this record was
+written from were the other kind: three drifted and two were never true. So the
+entry has fired on its literal condition and not on its reason, and a mechanism
+aimed at the paraphrasing failure would have caught none of the four.
+
+**It is also still firing, and the answer to the second half of the entry now
+exists.** Pull request #246, "The skill went stale again: a group-empty sentence
+that stands down, and a proposal for what could check this page", has merged. Its
+proposal is four groups of what could be checked on that page mechanically, and
+it recommends a test in `test/docs/` on the pattern of
+`test/docs/readme.test.ts` rather than a guard. Its key finding arrives at the
+paragraph above from the other direction: a check on diagnostic code spellings
+would not have caught the defect it found, because the code was real and
+correctly spelled and what had gone stale was the condition in the prose beside
+it. Two readings of this file on the same day, reached separately, agree that the
+mechanisable part is not the part that goes wrong.
+
+**The other three entries have not fired.** `.claude/skills/` still holds exactly
+one file, `dbmd/SKILL.md`, so there is no second skill to read the rule against.
+`src/import/delta.ts` still names nine `kind` values and they are the same nine
+the consequence above lists, so the delta has neither gained nor lost one. And
+`docs/` still holds no studio API reference page, which is ADR 0039's condition
+rather than this record's.
