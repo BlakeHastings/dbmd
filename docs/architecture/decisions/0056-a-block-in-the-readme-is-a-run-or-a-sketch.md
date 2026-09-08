@@ -251,3 +251,36 @@ would have to give all five of those back.
 
 **The second and fourth entries are unchanged and still stand**, and the first is
 answered in the section above.
+
+## The third revisit entry is now answered, and narrower than it said
+
+Appended rather than edited, below the section that recorded the entry as half
+answered, so the three appends read in the order they happened. Nothing the four
+tags decide changes here.
+
+**[ADR 0101](0101-a-tag-two-pages-share-is-read-by-one-function.md) is the
+answer, and it declines the thing this record's third entry asked for.** The
+entry said a third page carrying output blocks is the moment to lift the fence
+parser out of both tests. Five pages carry them, and the parser is still copied
+five times, on purpose.
+
+**What was lifted instead is `sessionIn`.** `dbmd-run` stopped being one page's
+tag when `.claude/skills/dbmd/SKILL.md` reused it in #251, and the function that
+reads it was copied along with the tag. Two copies of that function can drift
+while both suites stay green, which makes a block that passes on one page one
+that would have failed on the other, with the tag spelled identically on both.
+That was reproduced before it was fixed, using the edit an author makes the first
+time they put two commands in one fence. It now lives in `test/docs/sessions.ts`
+with the tag, and both readers import it.
+
+**The fence loop was measured rather than lifted.** The case for lifting it was
+that an unterminated fence or a fence inside a fence is silent. All five scanners
+were sliced out of their files and driven with both shapes, and both are loud in
+every one of them: an unterminated fence throws by page and line, and a nested
+fence truncates a block that then fails its own content assertion while the next
+block is still found. ADR 0101 carries the two output tables and the rest of the
+argument, including what the available lift actually is, which is not the twelve
+lines five times that this entry assumed.
+
+**The second and fourth entries are unchanged and still stand**, the first is
+answered in the section above, and the third is now closed rather than owed.

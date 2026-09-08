@@ -71,10 +71,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { runCli } from '../cli/harness.js'
+import { DBMD_RUN, sessionIn } from './sessions.js'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const readmePath = fileURLToPath(new URL('../../README.md', import.meta.url))
 const fixtures = fileURLToPath(new URL('../import/fixtures', import.meta.url))
+
+/** The path a failure names, which is the only thing `sessionIn` needs of this page. */
+const PAGE = 'README.md'
 
 /** Where the fixtures have to land for the paths the page prints to be the paths it runs. */
 const FIXTURES_IN_PAGE = 'test/import/fixtures'
@@ -109,8 +113,13 @@ interface Block {
  * is the case for a shell session, and after the language when there is one.
  * Either way GitHub shows nothing, and `docs/format.md` has the same convention
  * for the same reason.
+ *
+ * `DBMD_RUN` comes from `./sessions.js` rather than being spelled here, because
+ * `SKILL.md` carries the same tag and the function that reads a block carrying
+ * it now lives there too. The other three are this page's own.
  */
-const OPENING = /^```(?:(\S+)\s+)?(dbmd-run|dbmd-sketch|dbmd-file:\S+|dbmd-head:\S+)\s*$/
+const TAGS = [DBMD_RUN, 'dbmd-sketch', 'dbmd-file:\\S+', 'dbmd-head:\\S+']
+const OPENING = new RegExp(`^\`\`\`(?:(\\S+)\\s+)?(${TAGS.join('|')})\\s*$`)
 
 function blocksIn(lines: readonly string[]): Block[] {
   const blocks: Block[] = []
@@ -121,7 +130,7 @@ function blocksIn(lines: readonly string[]): Block[] {
     if (end === -1) throw new Error(`unterminated fence at README.md:${i + 1}`)
     const text = `${lines.slice(i + 1, end).join('\n')}\n`
     const tag = opening[2] as string
-    if (tag === 'dbmd-run') blocks.push({ kind: 'run', text, line: i + 1 })
+    if (tag === DBMD_RUN) blocks.push({ kind: 'run', text, line: i + 1 })
     else if (tag === 'dbmd-sketch') blocks.push({ kind: 'sketch', text, line: i + 1 })
     else if (tag.startsWith('dbmd-head:'))
       blocks.push({ kind: 'head', path: tag.slice('dbmd-head:'.length), text, line: i + 1 })
@@ -370,7 +379,7 @@ describe('a block in README.md that narrates a command is what that command narr
 
       const session =
         row.argv === undefined
-          ? sessionIn({ kind: 'run', text: `${lines.slice(at, end).join('\n')}\n`, line: at + 1 })
+          ? sessionIn(PAGE, { text: `${lines.slice(at, end).join('\n')}\n`, line: at + 1 })
           : [{ argv: [...row.argv], expected: `${lines.slice(at + 1, end).join('\n')}\n` }]
 
       await runNarrated(row, async () => {
@@ -425,7 +434,7 @@ describe('the import walkthrough in README.md prints what it shows', () => {
 
     if (block.kind === 'run') {
       test(`the session at README.md:${block.line} prints its own output`, async () => {
-        for (const { argv, expected } of sessionIn(block)) {
+        for (const { argv, expected } of sessionIn(PAGE, block)) {
           const run = await runCli(argv)
           expect(run.err, `\`dbmd ${argv.join(' ')}\` at README.md:${block.line}`).toBe(expected)
           // Every command in the walkthrough succeeds. A block that needs a
@@ -442,35 +451,3 @@ describe('the import walkthrough in README.md prints what it shows', () => {
     }
   }
 })
-
-/**
- * A shell session as commands and the output each one claims.
- *
- * A line opening with `$ ` is a command and everything under it up to the next
- * one is what it printed. The prompt is dropped, `dbmd` is dropped because that
- * is the name of the binary rather than an argument, and what is left is the
- * argument list `main` is given.
- */
-function sessionIn(block: Block): { readonly argv: string[]; readonly expected: string }[] {
-  const session: { argv: string[]; output: string[] }[] = []
-  for (const line of block.text.split('\n').slice(0, -1)) {
-    if (line.startsWith('$ ')) {
-      const words = line.slice(2).trim().split(/\s+/)
-      if (words[0] !== 'dbmd') {
-        throw new Error(`README.md:${block.line} runs \`${words[0] ?? ''}\`, and only dbmd runs here`)
-      }
-      session.push({ argv: words.slice(1), output: [] })
-      continue
-    }
-    const current = session.at(-1)
-    if (current === undefined) {
-      throw new Error(`README.md:${block.line} has output above its first command`)
-    }
-    current.output.push(line)
-  }
-  if (session.length === 0) throw new Error(`README.md:${block.line} runs nothing`)
-  return session.map(({ argv, output }) => ({
-    argv,
-    expected: output.length === 0 ? '' : `${output.join('\n')}\n`,
-  }))
-}
