@@ -1470,3 +1470,191 @@ Three things to take from it, in order of how much they cost:
   operate on is not the file you named. This is the seventh false step from
   tooling in this session and the fourth from a shell rather than from the
   product.
+
+## An edit by line range swallowed a section I had written an hour earlier
+
+A script to shorten one section of the handoff. It found the paragraph to keep
+until, found the heading of the next section, and replaced everything between. It
+printed `replaced 310 lines with 70`, and `git diff --stat` said 55 insertions
+and 295 deletions, which is exactly the shape of what I meant to do.
+
+**Two whole sections were inside that range**, and only one of them was the one I
+was removing. The other was thirty lines I had written an hour before, on a
+different subject, which had been added between the anchor and the heading and
+which I was no longer thinking about.
+
+**Nothing about the diff looked wrong.** A large deletion was the point. The
+number was in the range I expected. The guards passed, because a missing section
+is not a broken link or a repeated block or a command that does not exist. There
+is no mechanical check for "you deleted something you meant to keep", and there
+is not going to be one.
+
+**The check that works is the heading list, before and after, side by side.**
+
+```bash
+git show HEAD:docs/process/handoff.md | grep -n '^## '
+grep -n '^## ' docs/process/handoff.md
+```
+
+Two commands, and the missing line is obvious in a way that 295 deletions is not.
+It caught this in seconds, and putting the section back was one more small script
+reading it out of `HEAD`.
+
+**The general rule is to prefer an anchor pair to a line range**, naming both
+ends by the text you actually mean, so that anything inserted between them is at
+least a visible decision rather than an invisible one. Where a range is the only
+practical shape, the heading list is the receipt. This is the same failure as
+quoting a count from arithmetic: the number looked right, so nobody read what it
+was a count of.
+
+## Four places make one claim, and the ones with machinery on them are right
+
+The claim is what `dbmd check` says when a file on disk did not load. ADR 0090
+made one diagnostic stand down for the whole model in that case, and four places
+in this repository describe the behaviour. They were written by different people
+at different times and none of them cites another.
+
+| where | what checks it | verdict |
+| --- | --- | --- |
+| `docs/format.md` | `test/docs/format.test.ts` | right, with its own section and three table rows |
+| `test/cli/check.test.ts` | it is the machinery | right, and it knew first |
+| `.claude/skills/dbmd/SKILL.md` | nothing | wrong, for an unknown number of weeks |
+| `dbmd check --help` | `check-commands.mjs`, names and flags only | wrong, for an unknown number of weeks |
+
+**The two that were wrong were both wrong in the same way and were found
+separately, hours apart, by two agents who never spoke.** One was sweeping the
+skill against recent merges; the other was reading all 258 lines of `--help` as
+assertions. Neither knew about the other's finding. That is what a real class of
+defect looks like from the inside: it does not present as one bug found twice, it
+presents as two people independently noticing the same sentence is not true.
+
+**The test knew before either of them.** `test/cli/check.test.ts` builds its
+four-problem fixture out of a broken **note** rather than a broken table, and the
+comment above it says why in as many words: a broken table would make
+`group-empty` stand down and turn a four-problem fixture into a three-problem
+one. So the exception was understood, precisely, by the person writing the test,
+at the moment ADR 0090 landed. It just never reached the two documents a person
+reads.
+
+**The lesson is not "write more tests".** It is narrower and it is about which
+documents get them. `docs/format.md` is a reference: people look things up in it.
+The skill and `--help` are obeyed: an agent and a person act on them without
+looking anything up. **The two documents that are acted on rather than consulted
+are the two that had no machinery**, and they are the two where being wrong costs
+something immediately.
+
+That ordering is backwards and it is the argument for `test/docs/skill.test.ts`
+and for whatever eventually checks `--help`. It is also the reason the fix for
+both was to correct the sentence rather than the behaviour: the behaviour has a
+decision record, an argued cost, and a test. Only the prose had drifted.
+
+## "None of those commits touches your files", said twice, wrong once
+
+Sending a branch back to be rebased, I told the agent which incoming commits it
+was about to absorb and added that none of them touched its files. I had not run
+anything. I was answering from memory of what I had merged.
+
+The agent checked, and one of the four had changed the very file its whole branch
+is about. It said so, and then did the thing that actually matters: it re-ran its
+six block assertions against the post-merge page rather than treating git's
+silence as an answer.
+
+**A clean apply is not evidence.** Two commits can edit one file in different
+places, merge without a conflict, and leave a test asserting against a page that
+has moved underneath it. Git's job is to reconcile text. Nobody's job, until
+somebody makes it theirs, is to ask whether the claims in that text still hold.
+
+`scripts/held.mjs --incoming <branch>` answers it. It takes the merge base,
+collects the files the branch touches, walks every commit ahead of it on
+`origin/main`, and marks the ones that overlap:
+
+```
+$ node scripts/held.mjs --incoming syn/proof-of-overlap
+syn/proof-of-overlap touches 1 file(s). 5 commit(s) are ahead of it on origin/main.
+
+TOUCH  c9d2224  The skill said a warning fires that now stands down ... (#246)
+         .claude/skills/dbmd/SKILL.md
+       1b09898  the stand-down rule, driven in four models (#248)
+       ...
+2 of them touch a file this branch touches. A clean apply is not evidence
+that the claims in those files still hold. Re-run what asserts against them.
+```
+
+That output is from a branch built on purpose to reproduce the case I got wrong,
+cut from the commit the real branch was cut from, so the check is proven to catch
+it rather than assumed to.
+
+**This is the same failure as the decision-record numbers and the held files, for
+the third time, and the shape is now unmistakable.** Every one of them is a claim
+about the repository, made to an agent, in writing, from memory, when one command
+would have answered it. The agent has no way to doubt it and every reason to act
+on it. So the rule is not "be careful": it is that **a sentence in a brief that
+states a fact about the repository is a sentence that should have a command
+behind it**, and three of those commands now live in `scripts/`.
+
+## I typed a sha from memory twice, and the second time I had already written the lesson
+
+`merge-pr.mjs` wants the whole forty-character sha of the commit you reviewed.
+Twice in one session I gave it a sha whose first seven characters were right and
+whose remaining thirty-three I had supplied from somewhere else. It refused both
+times, correctly, and said the head had moved.
+
+**Between the two, I wrote a section in this file about the first one.** Writing
+it changed nothing, which is the useful part of the story. An instruction is not
+a control, and the instruction I had written was aimed at the wrong thing: it
+said read the diff before naming the head, and I was reading the diff. What I was
+not doing was reading the sha.
+
+**The cause was in my own tooling and was one expression long.** The command I
+had been polling with, and which I had put into this repository's own handoff as
+the way to see what is open, ended:
+
+```
+--jq '.[] | "#\(.number) \(.mergeStateStatus) \(.headRefOid[0:7])  \(.title)"'
+```
+
+`[0:7]` is the whole bug. A seven-character prefix on screen, forty characters
+wanted by the next command, and a gap that gets filled by whatever is nearby.
+The prefix is there because a prefix is what a person likes to read, and this is
+not a place with a person reading.
+
+**So the fix is to stop truncating**, in the handoff and in every poll, and the
+general form of it is worth more than the instance: **do not display a shortened
+version of a value that a later step needs in full.** The convenience is one
+line of screen width and the cost is a value reconstructed from memory at the
+exact moment that is most expensive.
+
+The guard caught it both times, which is the fourth constraint doing its job:
+whatever prevention you have, add detection, because detection runs on the
+result and the result is the one thing a mistake cannot avoid producing.
+
+## A path list does not show a coupling, and the agent read the test instead
+
+`held.mjs --incoming` compares two sets of file paths: the ones a branch touches
+and the ones each incoming commit touches. When they do not intersect it says so,
+and I built it after telling an agent twice that they did not.
+
+An agent rebasing over it found the case it cannot see. The incoming commit added
+`test/docs/skill.test.ts`, which touches no file its branch touched. But that test
+**runs `dbmd refs` and asserts what the command narrates**, and its branch was
+editing `src/cli/refs.ts`. The two commits have a real dependency, and no
+intersection of path names contains it.
+
+**The agent found it by reading what the new test does rather than what it is
+named**, and then established the specific fact that made it safe: its own edit
+to `refs.ts` is inside the help text, which no run of that block reads. That is
+the difference between "the paths do not overlap" and "these two changes cannot
+affect each other", and only the second one is an answer.
+
+**Do not try to automate this one.** A tool that resolved which strings a test
+asserts against, through the command that produces them, to the source that
+writes them, would be a static analyser for this repository specifically, and it
+would be wrong in both directions on the day somebody wrote a test cleverly. What
+the path check buys is the cheap half, which is knowing when to look. **Say so
+when handing it to somebody**: the overlap list is where to start reading, not a
+verdict, and a branch with no overlap has not been cleared, it has been narrowed.
+
+The general shape is one this project keeps meeting. A mechanical check answers
+a question adjacent to the one you care about. It is worth having when the
+adjacent question is cheap and the real one is not, and it is dangerous exactly
+when its answer gets quoted as though it were the real one.

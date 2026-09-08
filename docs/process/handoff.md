@@ -52,33 +52,51 @@ are listed below.
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-## In flight right now, which is two agents and two branches of mine
+## In flight, which this file no longer tries to count
 
-**This section went stale in exactly the way it warns about**, listing three
-agents that had all landed. It is rewritten rather than patched, and the date
-below is the thing to distrust first.
+**This section has gone stale three times in one day**, in the file that keeps
+a section about going stale. Twice it was wrong about how many agents were out,
+once about how many branches of mine were open, and each time it was rewritten
+with the new number. That is the move that does not work, so it stops carrying
+numbers and carries the commands that produce them.
 
-**As of 2026-09-08, very late.** Two agents are out, and neither is fixing a
-defect: one is sweeping all 331 revisit conditions across the 92 decision
-records, which were last swept before about twenty changes landed, and one is
-sweeping `.claude/skills/dbmd/SKILL.md`, which has gone stale twice in one day.
-The second also carries a question worth more than the sweep: **what about that
-file could be checked mechanically**, given every page beside it is checked by
-something and it is the only document written to be obeyed rather than read.
+```bash
+# What is open, whose it is, and whether it can land.
+# The whole sha, never a prefix. Merging wants all forty and a prefix in front
+# of you is an invitation to supply the rest from memory, which was done twice
+# in one session and refused twice by the merge script.
+gh pr list --state open --json number,title,headRefOid,mergeStateStatus \
+  --jq '.[] | "#\(.number) \(.mergeStateStatus) \(.headRefOid)  \(.title)"'
 
-**Two branches of mine are open and only one needs a decision.** #241 is the
-README fix and is **deliberately not merged**: it is two lines, proven against a
-real run, and merging it makes the owner's next `git pull` refuse until they
-stash the edit they have in that file. That is theirs to accept. The other is
-this branch, the consolidation you are reading. #244, which recorded that the
-studio the owner has open predates eight studio fixes, has landed, and its
-paragraphs are the next section down.
+# What a running agent is holding, so a brief does not tell one a lie.
+# The live ids are the one fact this cannot derive, so pass them.
+node scripts/held.mjs --live <id>,<id>
 
-**Everything else dispatched today has landed.** Eleven branches: the export and
-refs message fixes, the flag guard, the three false check and init sentences, the
-import partial write, the skill sweep, the last-resort test, the duplication
-guard, the six diagnostic messages, and four studio branches carrying fourteen of
-the fifteen page findings.
+# Which decision record numbers are free, across main and every open PR.
+node scripts/freeadr.mjs
+```
+
+**What no command will tell you is which open item is held on purpose.** There
+is one, and it is #241: a two-line README fix, proven against a real run, and
+**deliberately not merged**, because merging it makes the owner's next
+`git pull` refuse until they stash the edit they have in that file. That is
+theirs to accept and it is not waiting on review.
+
+**The cost of accepting it has been measured rather than guessed, and it is three
+commands.** The two edits are in different parts of the file: the owner's is the
+opening paragraphs about what this is and who wrote it, and #241's is one command
+block at about line 470. Simulated end to end in a throwaway worktree, by
+applying the owner's uncommitted diff to a clean `main`, stashing, merging the
+fix and popping:
+
+```bash
+git stash && git pull && git stash pop
+```
+
+**It came back clean**, with both edits present, no conflict markers, and the
+working tree holding exactly the one modified file it held before. So the answer
+to "will this be annoying" is no, and the reason to keep holding it is not risk.
+It is that moving somebody's working tree is theirs to say yes to.
 
 **Three sweeps are closed and accounted for**, each with its list written down
 rather than left as a feeling: 35 model diagnostics with 9 fixed, 17 import
@@ -87,6 +105,17 @@ and about 90 studio sentences with 15 suspect and 14 fixed. **The fifteenth is
 held on purpose** and is the owner's: a sentence that is true in every clause and
 on screen for 13 milliseconds, where fixing it means deciding how long a status
 line holds.
+
+**A fourth sweep is running and its subject is the one nobody had swept.** All
+eight `--help` outputs, 258 lines, read as a list of testable assertions the way
+the other three were. It is the first thing a person reads and the last surface
+to be driven.
+
+**And the skill is finally getting machinery.** `.claude/skills/dbmd/SKILL.md`
+has gone stale nine or ten times depending on how you count, and ADR 0084 said to
+revisit when a sixth was found. The blocks in it that are already exact tool
+output are being made to run, following `test/docs/readme.test.ts`, which has
+done exactly this for the README since long before the skill needed it.
 
 ## The session the owner has open, and the loop they asked for
 
@@ -272,236 +301,84 @@ signed build from the beads project.
 be queried with `node` or `grep`. **Do not hand-edit it.** The database is the
 source of truth and the next export overwrites the file.
 
-**These writes are owed to the tracker and should be replayed in this order once
-`bd` runs again.** Each one is a thing that actually happened, not a plan:
+**Four writes are owed and the rest is history.** An earlier version of this
+section carried thirty `bd create` commands, and the list had stopped being
+maintained twice. It cannot win: **120 pull requests have merged since the
+tracker went read-only and 93 of them name no item**, because the backlog ran
+out of dispatchable work at midday on 2026-09-07 and everything after that came
+from driving the product rather than from an item. Filing and closing 93 items
+adds nothing `git log` does not already hold.
+
+**Worse, it had gone false.** Eight entries said "out with an agent on
+2026-09-08" about branches that had landed hours before, while another section
+of this same file said everything dispatched that day had landed. So the list
+was not merely behind, it was telling a successor to go and check on agents that
+do not exist.
+
+What is genuinely owed is this, and each of the four was checked against the
+tree rather than remembered:
 
 ```bash
-# The feedback reader, if its pull request has landed by the time you read this.
-bd close dbmd-v6c --ignore-schema-skew --reason "..."
+# The feedback reader. It merged as #186 and is open only because nothing can
+# write to the tracker.
+bd close dbmd-v6c --ignore-schema-skew --reason "merged as #186"
 
-# The work dispatched while the tracker was down, which has no item because
-# there was no way to file one. Its whole brief is in its pull request body.
-bd create --ignore-schema-skew -p 2 -t task \
-  "Hovering an edge says what it references and not what a delete does"
-
-# Found on 2026-09-07 and not yet filed anywhere but here.
-bd create --ignore-schema-skew -p 3 -t task \
-  "An annotated edge comes back as a position because SVG has no string className"
-
-# Found on 2026-09-07 by driving the keyboard. ANSWERED BEFORE IT WAS FILED:
-# ADR 0073 built the second Enter and the Escape back out, and index.html now
-# says both clauses. File and close it in one motion; do not dispatch it.
-bd create --ignore-schema-skew -p 3 -t task \
-  "Enter says it opens the panel and does not say how to reach it"
-```
-
-The list above was written before three more pieces of work were found by
-driving the studio, all of which are built, reviewed and merged. They have no
-item because the tracker was already blocked when they were found, so they are
-owed too, and each should be filed and closed in the same motion:
-
-```bash
-# Built, reviewed and merged. Filing these is bookkeeping; the reasoning for
-# each is in its own pull request body.
-bd create --ignore-schema-skew -p 2 -t task \
-  "Hovering an edge says what it references and not what a delete does"    # PR 187
-bd create --ignore-schema-skew -p 3 -t task \
-  "An annotated edge comes back as a position, not an identity"            # PR 189
-bd create --ignore-schema-skew -p 3 -t task \
-  "The studio says it is creating a file it created fifteen seconds ago"   # PR 191
-```
-
-The last of those turned out to be two defects rather than one: a rename had it
-too, and worse, because renaming a table that other files reference ended the
-act by showing a true sentence about the least interesting file it touched.
-
-The third one needs its reasoning, so here it is. `agentation` records the
-element a person annotated by building a CSS selector, and its rule is an id
-first, then a class longer than two characters that matches exactly one element,
-and otherwise a recursion into the parent with `> tag:nth-child(n)` appended.
-Read out of `node_modules/agentation/dist/index.mjs` on 2026-09-07. The class
-branch is guarded by `typeof el.className === "string"`, and an SVG element's
-`className` is an `SVGAnimatedString`, so **no SVG element can ever match on
-class**. Every edge on the canvas is an SVG path with no id, so feedback on a
-relationship arrives as a position from the top of the drawing: resolvable while
-that render is up, and meaningless once the layout moves. Every table box has an
-id, so feedback on a table and on a column is anchored properly and needs
-nothing.
-
-The fourth one needs its reasoning too. `index.html` describes the canvas to a
-screen reader as *"Tab reaches one object on the canvas. Arrow keys move between
-objects, Home and End go to the first and the last, and Enter opens the panel for
-the one you are on."* Every clause of that was driven on 2026-09-07 and every one
-of them is true: arrows move between objects spatially, Home and End reach the
-first and the last, and Enter opens `aside#inspector` with the right heading on
-it.
-
-**What the sentence does not say is how to get into the panel it just opened.**
-Focus stays on the canvas object, which is defensible on its own, because it lets
-somebody arrow to the next table and watch the panel follow. But the panel holds
-101 of the page's 136 focusable elements, and reaching the first of them from
-where Enter leaves you takes **nine presses of Tab**, through a note and the
-whole toolbar. Nothing announces that and nothing shortens it.
-
-So this is not a claim that the keyboard work is wrong. It is that the last step
-of it has no key, and the help text is the evidence: it describes opening and
-stops there.
-
-**One entry above is now stale, and it is the fourth one.** The item "Enter says
-it opens the panel and does not say how to reach it" was filed here against the
-help text as it stood. ADR 0073 answered it, and the sentence in `index.html` has
-grown the two clauses it was missing. Read off a running studio on 2026-09-07:
-
-> Tab reaches one object on the canvas. Arrow keys move between objects, Home and
-> End go to the first and the last, and Enter opens the panel for the one you are
-> on. **Enter again moves into that panel, at its heading. Escape from the panel
-> comes back to the canvas.**
-
-Driven the same day and both clauses hold: a second `Enter` on a focused box
-lands on the panel's `h2`, and `Escape` returns to the box. So that entry should
-be filed and closed in the same motion like the three above it, rather than filed
-as open work. The nine presses of Tab it describes are no longer the only route.
-
-**The revisit lists in `docs/architecture/decisions/` were swept on 2026-09-07**,
-all 263 conditions across 73 records, and [`verified.md`](verified.md) carries the
-method and the count. **Sixteen** conditions had fired without anything saying so
-and their records now say so. The sixteenth was the sweep's own mistake, found an
-hour later when ADR 0075 landed: ADR 0021's second entry had fired and the sweep
-said it had not, because it believed the record's description of `dbmd import`
-instead of reading `src/import/model.ts`. That correction is on ADR 0021, on
-ADR 0029 and in `verified.md`, and it is the reason to distrust any "not fired"
-verdict in the sweep that does not name what was read. Three things came out of
-it that are open work rather than history, and they are owed to the tracker too:
-
-```bash
-# ADR 0065, ADR 0071, ADR 0072 and ADR 0073 all carry a revisit entry that fires
-# on this one condition, and none of them can close alone. Measured 2026-09-07 on
-# a running studio against a copy of examples/shop: 0 of the 11 edges carry a
-# tabindex and 0 carry an aria-label, while all 11 canvas objects carry both a
-# name and a place in the arrow order. So a relationship is the one thing on the
-# canvas a person cannot land on, and its title, which is the sentence saying
-# what a delete does, is reachable only by hovering or by a reader walking the
-# tree. Deciding it means answering three questions together: what an edge is in
-# the reading order (0073), whether the id ADR 0072 wrote for a development tool
-# becomes something a person lands on (0072), and whether the title's length
-# starts to cost once it can be landed on deliberately (0071).
+# Still open, checked just now: no edge in src/studio/client/edges.ts carries a
+# tabindex or an aria-label, so a relationship is the one thing on the canvas a
+# keyboard cannot land on. Four records carry a revisit entry that fires on this
+# one condition, 0065, 0071, 0072 and 0073, and none of them can close alone.
 bd create --ignore-schema-skew -p 3 -t task \
   "An edge is the one thing on the canvas a keyboard cannot reach"
 
-# ADR 0056's third revisit entry: "a third page starts carrying output blocks...
-# the moment to lift the parser out of both tests rather than to copy it again".
-# Four pages carry them now and four test files read fenced blocks out of them:
-# test/docs/format.test.ts, test/import/docs.test.ts, test/docs/readme.test.ts
-# and test/docs/payloads.test.ts. The fourth was added by ADR 0066 with an
-# argument for its own shape and none about sharing, so the question the entry
-# raises has not been asked rather than answered. It is a refactor with no
-# decision in it. Whoever takes it should know the four do not read the same
-# thing: three match an info string, one matches a bare json fence on a named
-# page, and ADR 0069 added a fifth assertion inside readme.test.ts that reads a
-# narration block against a command's stderr.
+# Still open, and the shape of it changed while this was being written. ADR
+# 0056's third revisit entry says a third page carrying output blocks is the
+# moment to lift the parser out. Five pages carry them now. But the agent who
+# wrote the fifth reader, having just done it beside the other four, reports
+# that only about twelve lines are truly common, that everything above that loop
+# is legitimately different in all five, and that a lift sold on making the next
+# one cheap would be oversold.
+#
+# What is worth doing instead is narrower and is a real defect rather than
+# untidiness. `dbmd-run` is now a tag two pages spell identically and two test
+# files read with two copies of one function, `sessionIn`. A divergence there
+# means a block that passes on one page and would have failed on the other, and
+# nothing would ever say so. Lift that one, and the twelve-line fence loop can
+# wait. The reasoning is in #251's body.
 bd create --ignore-schema-skew -p 4 -t task \
-  "Four test files read fenced blocks and none of them shares a parser"
+  "Two pages share the dbmd-run tag and two tests read it with two functions"
+
+# The owner's, not an agent's. ADR 0002's first revisit entry fired on
+# 2026-08-24 and the decision was never taken: the backlog stayed in beads
+# because nobody asked. The tracker now being refused by Application Control is
+# a second fact pointing at the same question. This is not a recommendation to
+# move it. It is that the answer should be chosen once and appended to ADR 0002
+# either way.
+bd create --ignore-schema-skew -p 3 -t task \
+  "Decide once where this backlog lives, and write it into ADR 0002"
 ```
 
-**And one is the owner's rather than an agent's.** ADR 0002's first revisit entry
-is *"the owner asks for the GitHub repository. The backlog does not have to move
-with it, and moving it is a decision to make deliberately rather than by drift."*
-That happened on 2026-08-24 and the decision was never taken: the backlog stayed
-in beads because nobody asked. It is worth asking now rather than later, because
-the tracker being refused by Application Control is a second fact pointing at the
-same question, and because the file the entry sends a reader to,
-`references/backlog-port.md`, is in the orchestrated-delivery skill and not in
-this repository. **This is not a recommendation to move it.** It is that the
-answer should be chosen once, and written into ADR 0002 as an appended section
-either way.
-
-**Four more are owed from 2026-09-08, found by driving the CLI rather than the
-studio.** Two are out with agents and the third is deliberately held; the fourth
-is a note rather than a defect. File all of them when `bd` runs again, and check
-the pull requests before closing any of them.
+**If somebody does want the full list one day**, it is derivable rather than
+remembered, and this is the query:
 
 ```bash
-# Out with an agent on 2026-09-08. Its whole brief is in its pull request body.
-bd create --ignore-schema-skew -p 2 -t task   "export tells a README holding both markers that it is missing one"
-
-# Out with the same agent, in the same branch, for the same reason.
-bd create --ignore-schema-skew -p 2 -t task   "export prints a write failure in Node's voice with an absolute path"
-
-# Out with a second agent on 2026-09-08.
-bd create --ignore-schema-skew -p 2 -t task   "refs explains a validation error as a file that did not load"
-
-# LANDED as #227. Filing it is bookkeeping; the reasoning is in ADR 0087.
-bd create --ignore-schema-skew -p 1 -t task   "import fails half way, leaves files written, and reports none of them"
-
-# Out with a third agent on 2026-09-08. All seven commands are affected.
-bd create --ignore-schema-skew -p 2 -t task   "Every command names the first dash token as the unknown one, not the wrong one"
-
-# Out with a fourth agent on 2026-09-08, as one branch.
-bd create --ignore-schema-skew -p 2 -t task   "init tells a plain file it is a directory that is not empty"
-bd create --ignore-schema-skew -p 2 -t task   "check counts diagnostic headings and calls them files"
-bd create --ignore-schema-skew -p 2 -t task   "check says there is no _model.md above the line that names _model.md/"
-
-# Found 2026-09-08 and NOT dispatched. Its fix has to edit README.md, which
-# carries the owner's uncommitted edit, so it waits on them.
-bd create --ignore-schema-skew -p 3 -t task   "The README shows thirteen command sessions and two of them are checked"
-
-# Found 2026-09-08 and not dispatched. Lower than the rest.
-bd create --ignore-schema-skew -p 3 -t task   "studio prints a busy port in Node's voice, with the advice it already knows"
-
-# Found 2026-09-08 by driving docs/ci.md claim by claim. The page is not wrong,
-# it says to commit the file first and calls the shape untested, so this is a
-# sharp edge in a recipe that is about to ship.
-bd create --ignore-schema-skew -p 3 -t task   "The CI recipe's git diff --exit-code shape is silent on an untracked README"
-
-# Found 2026-09-08 by enumerating the class rather than hunting it. The last
-# command that still reports a failure in Node's voice, with an absolute
-# backslashed path that ADR 0006 rule 4 forbids.
-bd create --ignore-schema-skew -p 2 -t task   "init leaks a raw ENOTDIR when the parent of its target is a plain file"
+# Every merge since the tracker went read-only that names no item.
+gh pr list --state merged --limit 200 --json number,title,mergedAt,headRefName \
+  --jq '.[] | select(.mergedAt > "2026-09-07T12:00:00Z")
+         | select((.title + " " + .headRefName) | test("dbmd-[a-z0-9]{3}") | not)
+         | "#\(.number) \(.title)"'
 ```
 
-**The last three above are one branch**, `cli/a-busy-port-and-a-gate-that-cannot-fail`,
-dispatched on 2026-09-08. With it and the import branch landed, no command
-reports a failure through the last-resort handler any more. That was checked by
-driving fourteen failure modes across all seven commands with `--json` and
-reading `error.code`, not by counting the ones that had been fixed.
+**The one thing that is not derivable is which of them deserved an item at all**,
+and the answer for almost all 93 is no. A guard that was built, a page that was
+corrected, an evidence entry: those are done and their reasoning is in the pull
+request that carried them. An item filed and closed in one motion is bookkeeping
+wearing the clothes of a backlog.
 
-**Two more were found on 2026-09-08 and both are out with agents.** The agent
-skill contradicted itself within an hour of #227, saying in one place that a
-failed write's record is lost and in another that it is reported, both from the
-same author in the same commit. And `scripts/check-commands.mjs` resolves every
-`dbmd` command name written anywhere in the repository and no flag, so
-a flag no command declares passes in the README, in the published recipe and in
-the skill, all three measured. It is deliberately not quoted, because these
-files are scanned by that same guard once it learns about flags. The recipe is the sharp one: that line would ship to a
-stranger and exit 2 in their CI.
-
-**Three of the four not-dispatched items are one small branch when a slot
-frees**: the studio's busy port, the CI recipe's untracked-README hazard, and
-whatever the README needs. The third is the one that waits on the owner, because
-it edits a file holding their uncommitted work.
-
-**One of those is blocked on the owner rather than on an agent, and it is one
-block, not a page.** `README.md` holds thirteen lines beginning `$ dbmd`: two in
-the `dbmd-run` blocks the test suite executes, one in the `dbmd-sketch` block,
-and ten in plain fences. **All ten were then run by hand.** Nine match what the
-built CLI prints, several byte for byte. One prints a port the operating system
-picked and so can never match exactly. **Exactly one is wrong**, and it is
-`dbmd refs addresses shop` around line 472: #223 replaced its two-line banner
-with a three-line one saying the opposite, and the rest of the block still
-matches. The replacement text is known and was produced by reconstructing the
-model that block describes and running the command.
-
-So the work here is one block plus, if wanted, moving the other nine under
-`dbmd-run` so they cannot drift again. Both edit a file holding the owner's
-uncommitted work, so both wait on them.
-
-**The third of those is the one to read first if time is short.** ADR 0083
-decided that a refusal from the disk leads with the file and keeps the system's
-words. It was applied to the studio and to nothing else, so the two commands that
-document a write failure in their own exit-code lists both leak the raw error
-instead, and `dbmd import` names a temporary file that no longer exists. That is
-a decision that was made and then not carried to the surfaces it was about, which
-is a different failure from a decision nobody made.
+**Where the reasoning went.** The long paragraphs that used to sit here,
+explaining each finding, are in the places that own them:
+[`verified.md`](verified.md) for what was measured, the decision records for why,
+and each pull request body for the change itself. A handoff that restates them
+becomes a second place for them to go stale, which is what happened.
 
 ## Three sweeps, all closed, and where their evidence lives
 
@@ -532,55 +409,6 @@ defect was a sentence that was true in the common case and false in a case
 nobody had constructed, and every one was found by enumerating a surface rather
 than by using the product and noticing. Four of the nine model diagnostics had
 survived every previous pass over that code.
-
-## Ten more merges the owed list stopped covering
-
-**The list above was maintained up to #231 and then the night ran ahead of it.**
-Checked by asking which of the day's product merges the file names: it named six
-and missed ten. That is the failure this list exists to prevent, so here they
-are, and a successor replaying the tracker should run this block as well.
-
-All ten are **built, reviewed and merged**, so each is filed and closed in one
-motion. The reasoning for every one is in its own pull request body, and the
-evidence is in [`verified.md`](verified.md).
-
-```bash
-# The command line, all landed.
-bd create --ignore-schema-skew -p 2 -t task \
-  "A refused port and a gate that could not fail"                          # PR 228
-bd create --ignore-schema-skew -p 2 -t task \
-  "A flag beside a command is a claim that it exists"                      # PR 230
-bd create --ignore-schema-skew -p 2 -t task \
-  "Nothing reaches the last resort, and a test says when that stops"       # PR 233
-bd create --ignore-schema-skew -p 2 -t task \
-  "Six diagnostics, and the states each one was false about"               # PR 236
-bd create --ignore-schema-skew -p 1 -t task \
-  "Two tables that became one, and a key that vanished on the way in"      # PR 239
-
-# The evidence log and its guard.
-bd create --ignore-schema-skew -p 2 -t task \
-  "An evidence log held its own body three times and nothing was looking"  # PR 235
-
-# The studio page, four branches carrying fourteen findings.
-bd create --ignore-schema-skew -p 2 -t task \
-  "Five sentences the inspector says about a state nobody constructed"     # PR 237
-bd create --ignore-schema-skew -p 1 -t task \
-  "Three studio sentences that cost a person something"                    # PR 238
-bd create --ignore-schema-skew -p 2 -t task \
-  "Five studio sentences true in the common case, false in the built one"  # PR 240
-bd create --ignore-schema-skew -p 2 -t task \
-  "Four studio sentences that were true when they were written"            # PR 243
-```
-
-**One item is deliberately not here and is the owner's**: the sentence saying a
-group move writes table files and not the group file is true in every clause and
-on screen for 13 milliseconds. Changing that means deciding how long a status
-line holds, which is taste rather than truth.
-
-**And three are questions rather than work**: the three import codes that cannot
-be reached from a file a person pasted, the sentence a zero-table import does not
-say, and whether the studio should tell somebody how old the build it is serving
-is. All three are recorded in [`verified.md`](verified.md) with what was measured.
 
 ## What a successor would otherwise have to reconstruct
 **SETTLED, and my framing of it was wrong.** I recorded here that my briefs and

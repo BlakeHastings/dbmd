@@ -19,10 +19,19 @@ checking the premise is part of the job.
 
 ## Branch and commits
 
-**Name the branch for what changed, not for the item.** Recent ones:
-`model-file-missing-names-the-fix`, `keyboard-reaches-the-canvas`,
-`json-payloads-are-run`. A prefix like `docs/` or `studio/` is welcome and not
-required.
+**Name the branch for what changed, not for the item.** A prefix like `docs/` or
+`studio/` is welcome and not required.
+
+The three names this paragraph used to give as recent were
+`model-file-missing-names-the-fix`, `keyboard-reaches-the-canvas` and
+`json-payloads-are-run`. All three are real and all three merged, and by the time
+anybody read the word "recent" about sixty more had landed behind them. **A list
+of examples that calls itself recent is a claim with a shelf life**, so here is
+the command instead:
+
+```bash
+gh pr list --state merged --limit 10 --json headRefName --jq '.[].headRefName'
+```
 
 This used to say `<area>/<issue-number>-<short-slug>`, with the number taken
 from the id, so that `dbmd-4` became `format/4-markdown-parser`. **Beads stopped

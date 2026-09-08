@@ -3360,6 +3360,43 @@ read like a product defect and are not. The provider reads `table_schema`,
 under the seventeen import codes, met from the other side, and it cost two runs
 here before it was recognised.
 
+## 2026-09-08: the tarball again, after thirty more merges, and one false alarm defused in advance
+
+The publish path was checked on 2026-09-07 and about thirty pull requests have
+landed since. It was driven again rather than assumed, because the next thing to
+happen to this repository is somebody running `npm publish`.
+
+- **`npm run build`, `npm run check:pack` and `npm run check:guards` are all
+  green.** The tarball is 273.1 kB packed, 915.4 kB unpacked, 77 files. The smoke
+  test installs it, reads the packaged manifest for `private` and `bin`, reads all
+  37 shipped `.js` files for source-map references, runs the installed binary
+  through every command's `--help` and through `init`, `check`, `check --strict`,
+  `export --stdout`, `refs accounts`, `query --engine postgres` and an `import`
+  with nothing on standard input, asks a running studio for its page, its bundle
+  and its model, and imports both entry points a consumer is offered.
+- **Both pack guards were seen to fail.** Removing the studio client bundle from
+  `files` and setting `"private": true` is refused with both reasons named, and an
+  entry point importing the development overlay is refused by name. So the check
+  that protects the publish is itself proven rather than trusted, which is ADR
+  0034.
+
+**And one thing to know before somebody greps the tarball and raises an alarm.**
+The rule is that the `agentation` overlay is a devDependency and never ships.
+Grepping the packed tree for `agentation` finds exactly one hit, and it is in
+`package/package.json` at the `devDependencies` block:
+
+```
+"agentation": "3.0.2",
+```
+
+**That is npm's normal behaviour and the rule still holds.** `npm pack` keeps the
+`devDependencies` block in the packed manifest, a consumer installing this package
+never installs them, and the thing the rule is about is the code. No file under
+`dist/` mentions `agentation`, and none mentions the overlay under any of its
+other names either. The precise statement is that **the package and its code do
+not reach the tarball, and the dependency's name does**, which is worth writing
+down because the loose version of it produces a false alarm the first time
+somebody checks.
 ## 2026-09-08: every sentence in all eight `--help` outputs, constructed and run
 
 The model diagnostics, the import diagnostics and the studio page have each been
