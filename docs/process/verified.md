@@ -1234,3 +1234,18 @@ place, and the create path does not go through it.
   So the thing that was lost was a layout nudge and the thing that was kept was
   somebody's column, which is the right way round. Tone `bad`, named file, and
   no page errors.
+
+- **A seventh path, groups, driven after the other six.** `Add group` goes
+  straight to a form rather than arming a placement, because a group has no
+  coordinates of its own. Creating one settles at 3 and 12 seconds on a sentence
+  that is both true and useful: *"Created groups/roastery.md. Nothing is in it
+  yet, so it draws as an empty box and dbmd reports group-empty: put a table in
+  it from that table's panel."* That sentence predates ADR 0074 and is the shape
+  the other paths were changed to follow.
+
+  Moving `shipments` out of `warehouse` and into the new group through the
+  panel's `Group` select wrote `group: roastery` into `tables/shipments.md`, said
+  so by name, redrew both group shapes, and left `dbmd check` reporting
+  `8 tables, 2 notes, 2 groups, no problems`. The `group-empty` diagnostic that
+  the new group had while it was empty went away when the table joined it, which
+  is the same read feeding the canvas, the panel and the footer.
