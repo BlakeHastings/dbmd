@@ -6453,3 +6453,29 @@ corrected by whoever fixed the thing and the other was nobody's job.
 <!-- hypothetical: dbmd query --bogus -->
 <!-- hypothetical: dbmd init --force -->
 <!-- hypothetical: dbmd check --fix -->
+
+- **The repair of that triplication is worked out and provable, and it is one
+  deletion.** The three runs are not equal. The first two are pre-sweep and both
+  are cut mid-sentence, ending inside the words "The `refs` fence opens at
+  `README.md:439` with its". The third is the swept version and it is the one to
+  keep.
+
+  Simulated on a copy: dropping everything between the heading and the third run
+  takes the file from 5903 lines to 2250. Checked mechanically afterwards, every
+  substantial line of the original appears in the result **except five**, and all
+  five are the one paragraph the truncation cut. Its substance is not lost: the
+  sweep rewrote it, and the kept text carries "The two documentation blocks
+  nothing checked did not, so it has one now. ADR 0076 guarded both, and the
+  entry stood for hours saying they were one edit away from being wrong with
+  nobody to notice."
+
+  So the pre-sweep paragraph is a superseded draft that the duplication happened
+  to preserve half of. **The proof is a script rather than an assertion**: it
+  reads both files, takes every line longer than 20 characters after trimming,
+  and lists what the repair would drop. It lives in the scratchpad as
+  `nolost.mjs` and belongs in the pull request that does the repair, run in both
+  directions.
+
+  Held until the documentation branch lands, because the repair deletes lines
+  3 to 3656 and that branch appends at the end, so the two commute and doing them
+  in one diff would bury a 3654-line deletion under a thousand lines of prose.
