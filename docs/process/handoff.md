@@ -4,125 +4,42 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with one agent running, one pull request open, and every
-epic closed.**
+**As of 2026-09-07, with one pull request in flight and every epic closed.**
 
 ## Where the work is
 
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
 `gh pr list --state merged` said 158. Every pull request has merged through
 `merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
-for the number, run the command. As of the last measurement: **181 merged, 123
-items closed, 3 open, and one P1.**
+for the number, run the command. As of the last measurement: **189 merged, 123
+items closed, 3 open, and no P1s.**
 
-**Two of the three open need the owner rather than an agent.** The visuals epic,
-which is taste, and one recoverable layout they have not said whether to
-restore. The third, `dbmd-v6c`, is dispatched and is the P1.
+**All three open items need the owner rather than an agent.** The visuals epic,
+which is taste and now has a picture attached to one of its two questions. One
+recoverable layout they have not said whether to restore. And the epic's own
+parent question about box weight, whose recorded recommendation is to do nothing
+without a reason.
 
-**The three items this section used to list as owner-blocked are gone.** The
-stale screenshot was retaken and merged. `dbmd-s22`, the studio warning forever
-about a `_model.md` it could not create, is closed. The character count in
-`README.md` turned out to be editable after all, because the owner's own
-uncommitted hunks are at lines 14 and 17 and the number is at line 238; the
-claim that it could not be touched was mine and it was wrong, which is what
-`orchestrating.md` means by a blocker you wrote being a claim like any other.
+**Everything dispatchable was dispatched and landed.** `dbmd-v6c`, the reading
+half of the feedback loop, is done and closed in spirit though not in the
+tracker, which cannot be written to. Three more pieces of work were found by
+driving the studio rather than by reading the backlog, and none of them has an
+item because of the same tracker problem: the edge tooltip, the edge ids and the
+panel key, and the status line that lied after a create.
+
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-**The screenshot item needs a server rather than a click.** It was one click
-until the browser tool's server stopped connecting at all in this session, and a
-session cannot take a screenshot without it. Do not dispatch an agent at
-`dbmd-joa`: it cannot succeed and the wall is invisible from a brief.
-
-**`main` now tells a pull request what its merge did to `main`.** ADR 0057 and
-`scripts/report-merge-aftermath.mjs`, triggered by
-[`aftermath.yml`](../../.github/workflows/aftermath.yml) on a `workflow_run` that
-did not finish green. It comments on the pull request the commit came from,
-because its author is already subscribed there, so nobody has to remember to
-look. Run it with no arguments at any time for the current state of `main` and
-the all-time count of red runs, which it labels a floor rather than a rate
-because a re-run updates a run in place.
-
-**`merge-pr.mjs` now names the branches a merge is about to make stale**, before
-merging, and the four refusals it has always had are ordinary tests for the first
-time. Recovered from a branch that had never been pushed. Its first real merge
-named its own pull request as the branch it was making stale, which is the
-change demonstrating itself.
-
-**`npm run check` passes on `main`**, and CI has been green on every post-merge
-run since. It is typecheck, format, the four content checks, the tests, the
-build, the pack smoke and the pack guard, and it is the command `release.yml`
-runs through `prepublishOnly`, so it is the closest thing there is to a
-rehearsal of the publish. **Do not quote a test count here.** It moved four times
-on 2026-09-07 alone and a number in this file is a number nobody updates; run the
-command, or read what `report-merge-aftermath.mjs` says about `main` right now.
-
-**Eight runs on `main` have finished red across all time and nobody noticed any
-of them**, including me. Seven on `check` and one on `provenance`, and that last
-is the repository's own first push, which needs no investigation. Of the seven,
-four were a race the flush repair had already fixed by the time I read them and
-three were the watcher flake, fixed in #144. **That count is a floor**, because a
-re-run updates a run in place and every failure later re-run green has stopped
-being counted anywhere. `report-merge-aftermath.mjs` prints it and says so.
-
-**Nothing is blocked.** That has been true since the owner answered the two
-questions that were, at about 13:20.
-
-From a checkout, the tool does the whole loop:
-
-```bash
-node dist/cli.js query    # prints your engine's introspection SQL, for you to run
-node dist/cli.js import   # that JSON becomes a model directory, and a re-import is a delta you confirm
-node dist/cli.js init     # scaffolds a model directory
-node dist/cli.js check    # validates it, exits 1 on an error, --strict promotes warnings
-node dist/cli.js refs     # what points at this table, from which column, and what a delete does to it
-node dist/cli.js export   # a mermaid diagram GitHub renders in a pull request
-node dist/cli.js studio   # a canvas: drag, edit, rename across files, add and delete tables
-```
-
-Every one of those takes `--json`, and every one of those shapes is now shown on
-a page and run by `test/docs/payloads.test.ts`. **The canvas is reachable
-without a mouse** since #167: one tab stop, arrows to walk it, `Enter` to select,
-and every object names itself to a screen reader since #162.
-
-`npm run studio:dev` is the same studio with the feedback toolbar on it, which is
-the owner's own channel for design notes. It never ships; ADR 0064 says how that
-is guaranteed rather than argued.
-
-**The journey runs end to end for the first time.** `dbmd query` prints the SQL,
-you run it with the client you already trust, and `dbmd import` reads what came
-back. It was proved against a PostgreSQL 16 container: query, run, import,
-`dbmd check` clean. No credential and no driver is ever this tool's business.
-
-
-**Publishing was decided on 2026-09-07**, so `"private": true` came out of
-`package.json` and the version is `0.1.0`. Nothing is on the registry yet. A
-release is a `v*` tag the owner pushes,
-[`.github/workflows/release.yml`](../../.github/workflows/release.yml) is the
-whole of the mechanism, and it needs an `NPM_TOKEN` repository secret that only
-the owner can add. ADR 0051. The older lesson still stands: two files claimed the
-package was published when it was not, and that false claim is why a CI recipe
-invented a version number.
-`npm view dbmd versions` is the answer to "is it out" that a page cannot get
-wrong.
-
-**`examples/shop` is clean and the owner's edits are gone.** This file carried
-"four uncommitted edits from the owner, do not commit or revert them" for hours
-after the owner said _"You can remove my edits if I have any on disk"_ and after
-something removed them. Checked on 2026-09-07: `git diff HEAD -- examples/shop`
-is empty, no commit since 04:00 changes a `layout` line there, so the edits were
-discarded rather than landed.
-
-**That paragraph is the reason to distrust an instruction in this file more than
-a description in it.** A stale description is merely out of date. A stale
-instruction directs whoever reads it, and this file is read by the most degraded
-version of the orchestrator, immediately after a compaction, with nothing else
-loaded. `orchestrating.md` carries the general form.
-
 ## In flight, and what is actually left
 
-**One agent is running**, building the reading half of the feedback loop
-against `dbmd-v6c`. #182 landed as 2d83bea.
+**One pull request is in flight**, the status line that stopped saying it was
+creating a file it had created. Everything else has landed.
+
+**The studio is running for the owner** at whatever port `npm run studio:dev`
+last bound, with the feedback overlay on it and `npm run annotations` able to
+read what they write. That command finds the studio's own page among the
+hundreds of sessions on the annotation server, most of which belong to a
+different project on this machine.
 
 **The annotation server is reachable and the way it is reachable is not the way
 this file used to say.** The earlier version of this paragraph claimed the
@@ -294,6 +211,26 @@ bd create --ignore-schema-skew -p 3 -t task \
 bd create --ignore-schema-skew -p 3 -t task \
   "Enter says it opens the panel and does not say how to reach it"
 ```
+
+The list above was written before three more pieces of work were found by
+driving the studio, all of which are built, reviewed and merged. They have no
+item because the tracker was already blocked when they were found, so they are
+owed too, and each should be filed and closed in the same motion:
+
+```bash
+# Built, reviewed and merged. Filing these is bookkeeping; the reasoning for
+# each is in its own pull request body.
+bd create --ignore-schema-skew -p 2 -t task \
+  "Hovering an edge says what it references and not what a delete does"    # PR 187
+bd create --ignore-schema-skew -p 3 -t task \
+  "An annotated edge comes back as a position, not an identity"            # PR 189
+bd create --ignore-schema-skew -p 3 -t task \
+  "The studio says it is creating a file it created fifteen seconds ago"   # PR 191
+```
+
+The last of those turned out to be two defects rather than one: a rename had it
+too, and worse, because renaming a table that other files reference ended the
+act by showing a true sentence about the least interesting file it touched.
 
 The third one needs its reasoning, so here it is. `agentation` records the
 element a person annotated by building a CSS selector, and its rule is an id

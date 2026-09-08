@@ -682,3 +682,70 @@ and blobs, dropped stashes among them, and `git cat-file -p` reads any of them.
 That is how the README came back. **Search for the content rather than for a
 commit**, because you will not know which object holds it.
 
+
+## Your own documentation is the one merge whose timing you control
+
+**Seen twice in one evening, the second time ten minutes after deciding not to.**
+The existing rule above is about merging while something is *rebasing*. This is
+the neighbouring case and it is not covered: merging while an agent is still
+*building*.
+
+On 2026-09-07 two agents were mid-build and an evidence entry of mine was ready.
+I reasoned that merging it would cost both of them a rebase, held it deliberately,
+said so, and then merged a different evidence entry of mine ten minutes later.
+The agent that had been building for twenty minutes came back to a stale green
+and one round trip that bought nothing.
+
+**The asymmetry that makes this worth a rule.** An agent's pull request has to
+merge: it is the work. A docs branch of yours has no deadline at all, so it is
+the only thing in the queue whose timing is free. Holding it costs nothing and
+merging it costs one round trip per agent in flight, and those are the expensive
+kind, because a rebase puts a tree you already reviewed back into motion.
+
+**The rule.** While any agent is building, your own documentation branches are
+pushed and left open. Open a pull request so the work is durable and out of your
+head, and merge it after the agents' branches land, rebasing it yourself. The
+same reasoning that says do not merge during a rebase says do not merge during a
+build, and only for the branches you own.
+
+**What made it fail was not disagreement.** The decision had already been made
+and stated in the same session. What happened is that the second entry felt like
+finishing a piece of work rather than like a merge, so the rule was never
+consulted. A rule you agree with is not a rule you apply, which is the same shape
+as every other entry in this file.
+
+## Read what the code does before filing what the page appears to do
+
+**Four in one evening, and only one of the five survived.** Driving the studio
+looking for defects produced five candidates. Four were the instrument:
+
+- **`Add table` appears to do nothing.** It arms a placement and the canvas click
+  places it. Clicking the button and checking for a new box measures half an
+  interaction.
+- **`Rename` appears to do nothing.** It arms a confirmation, like delete, and
+  the second button carries the same word, so a selector matching the text
+  clicks the first one twice.
+- **A file that became unreadable appears to go unnoticed.** The test's stopping
+  condition was "diagnostics are not empty", and three unrelated diagnostics were
+  already on the page. The page had in fact named the file in under three
+  seconds.
+- **Escape from the panel appears not to return.** Focus was in the rename field,
+  which answers Escape itself on purpose, and the report being reviewed said so.
+
+**The one that survived was the one checked against the source.** The status
+line said `Creating tables/x.md.` fifteen seconds after the file landed. That
+became a finding rather than a fifth false alarm because the next step was to
+read where the held sentence is cleared, find that it happens in exactly one
+place, and see that the create path does not go through it. The measurement in
+the browser was the same quality as the other four; what separated them was the
+reading.
+
+**So the order is: observe in the browser, then find the line, then file.** A
+report that says what the page appeared to do is a report about the harness. An
+agent sent after one of those spends an hour proving the product was right, and
+comes back correct and annoyed, which has happened here.
+
+**It is also the argument for driving at all.** Four false alarms is not an
+argument against the method: the fifth was real, nothing else had found it, and
+two more defects came out of the one brief it produced. The cost of the four was
+about twenty minutes and no agent was dispatched at any of them.
