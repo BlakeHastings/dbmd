@@ -6067,3 +6067,35 @@ corrected by whoever fixed the thing and the other was nobody's job.
   share. What it forbids is the temporary arriving cold and first. The agent read
   the record rather than obeying the brief and was right. The import brief had
   been written on the same wrong reading and was corrected before dispatch.
+
+- **`docs/ci.md`, the recipe published for somebody else's repository, was driven
+  claim by claim and every testable one held.** The clean line it quotes came
+  back verbatim: `examples/shop: 8 tables, 2 notes, 1 group, no problems.`
+  `dbmd check` writes zero bytes to stdout and puts its diagnostics on stderr.
+  `dbmd export --stdout` writes the document to stdout and zero bytes to stderr.
+  No ANSI escape reaches either stream when neither is a terminal. `--json`
+  carries the same exit code as the text form on 0, 1 and 2, checked on all
+  three. And the whole "why the upload cannot be empty" argument is exact: a
+  model with one bad ref exits 1, leaves the shell's redirect target at zero
+  bytes, and prints the refusal on stderr, with the check job's sample error
+  matching the page word for word.
+
+- **The version guard has a control behind it, and it was made to fire.** A
+  worktree with one `dbmd@0.1.0` changed to `dbmd@9.9.9` in the published recipe
+  made `scripts/check-commands.mjs` exit 1 and name the file, the line, the
+  version pinned and the version in `package.json`. On the unmutated tree it
+  exits 0 and says what it covered: 186 files scanned, 5 pinned versions naming
+  0.1.0, and all 7 commands documented in the README. A guard that says what it
+  checked is a guard somebody can tell has stopped checking.
+
+- **One hazard in `docs/ci.md`, and the page is not wrong about it.** The
+  alternative shape it offers, `dbmd export db-model` followed by
+  `git diff --exit-code db-model`, is silent when the README does not exist yet,
+  because `git diff` does not look at untracked files. Run against
+  `examples/shop`, which has no committed README, the export created one and the
+  diff still exited 0, so a job whose whole purpose is to fail on a stale diagram
+  would go green having proved nothing. The page does say to commit the file
+  first, and it labels the whole shape untested here, so this is a sharp edge
+  rather than a false sentence. `git status --porcelain` on the directory, or
+  `git add -N` before the diff, closes it in one line. Worth doing before the
+  recipe ships with the package.

@@ -440,7 +440,17 @@ bd create --ignore-schema-skew -p 3 -t task   "The README shows thirteen command
 
 # Found 2026-09-08 and not dispatched. Lower than the rest.
 bd create --ignore-schema-skew -p 3 -t task   "studio prints a busy port in Node's voice, with the advice it already knows"
+
+# Found 2026-09-08 by driving docs/ci.md claim by claim. Not dispatched. The
+# page is not wrong, it says to commit the file first and calls the shape
+# untested, so this is a sharp edge in a recipe that is about to ship.
+bd create --ignore-schema-skew -p 3 -t task   "The CI recipe's git diff --exit-code shape is silent on an untracked README"
 ```
+
+**Three of the four not-dispatched items are one small branch when a slot
+frees**: the studio's busy port, the CI recipe's untracked-README hazard, and
+whatever the README needs. The third is the one that waits on the owner, because
+it edits a file holding their uncommitted work.
 
 **One of those is blocked on the owner rather than on an agent.** `README.md`
 shows thirteen `$ dbmd` sessions and `test/docs/readme.test.ts` checks two of
