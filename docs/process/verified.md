@@ -2047,3 +2047,43 @@ packed tarball are all fine.
 
 So the answer to "can somebody else pick this up" is yes, in about a minute, with
 one warning that the guide already tells them to ignore for the right reason.
+
+## 2026-09-08: the studio in a second browser
+
+Every measurement of the studio in this file was taken in Chromium, because that
+is what Playwright installs by default. **This tool's entire interface is a local
+web view and nobody had opened it in anything else.** The `README.md` says "a
+local web view" and names no browser, so a Firefox user is a user the page makes
+a promise to.
+
+Firefox 153 installed for the purpose, driven against a copy of `examples/shop`:
+
+```
+title              kettleback-shop · dbmd studio
+boxes              8
+edges              11, all 11 carrying an id
+tooltips saying    11 of 11
+what a delete does
+zoom               90%
+body background    rgb(246, 246, 244), so the stylesheet applied
+console errors     none
+page errors        none
+```
+
+**The keyboard works too**, which is the part most likely to differ between
+engines: `Tab` reaches `table-addresses`, `ArrowRight` moves to
+`table-order_items`, and `Enter` twice lands on the panel's heading inside
+`#inspector`. That is ADR 0067's roving tab stop and ADR 0073's second `Enter`,
+both built and measured in Chromium.
+
+**And it writes.** A box dragged in Firefox took `tables/orders.md` from
+`layout: { x: 480, y: 340 }` to `{ x: 480, y: 418 }`, and the status line named
+the file it wrote. So the whole loop, pointer to disk, works in a browser nothing
+here was developed against.
+
+Reasoned rather than measured, and worth saying separately: the client uses no
+engine-specific API. Grepped for `scrollIntoViewIfNeeded`, `checkVisibility`,
+`showPicker`, vendor prefixes and `requestIdleCallback` and found none, and the
+only modern CSS in `index.html` is `inset:`. So the result above is what the code
+predicts rather than a surprise, which is the least interesting kind of good news
+and the kind worth having in writing.
