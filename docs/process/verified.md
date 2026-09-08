@@ -5901,3 +5901,54 @@ corrected by whoever fixed the thing and the other was nobody's job.
   the owner, so the last of the three open items is now a decision they can make
   by looking rather than by reading numbers. Nothing was committed and the
   tracked example was never touched.
+
+- **`dbmd export` tells a file that holds both markers that it is missing one.**
+  `splice` finds the opening marker and then searches for the closing one
+  starting from the opening marker's index, so a file whose closing marker sits
+  above its opening one reports `markers-unbalanced` and prints "has
+  `<!-- dbmd:diagram -->` and not `<!-- /dbmd:diagram -->`". The file has both.
+  Its advice, add the missing marker or delete the one that is there, fits
+  neither: adding leaves the stray marker embedded in the prose for good, and
+  deleting the one the message names lands the reader in the opposite error.
+  Reproduced against the built CLI in both the text and `--json` forms.
+
+- **Three CLI write failures come out in Node's voice, and one of them leads
+  with a temporary file.** ADR 0083 decided the shape of a refusal from the
+  disk: lead with the file the developer was working on, keep the operating
+  system's own words. It was applied to the studio and to nothing else. Neither
+  `dbmd export` nor `dbmd import` catches its write failure, so both fall
+  through to `failure()` in `src/cli/main.ts` and print the raw error with an
+  absolute backslashed path, reporting the generic `"code": "failed"` and
+  dropping every field their successful reports carry. Both commands document
+  the case in their own exit-code lists, so it was meant to be reported rather
+  than to leak. `dbmd import` is the worse of the two: it names
+  `.orders.md.<uuid>.tmp`, a file that no longer exists by the time the reader
+  looks for it, which is the exact sentence ADR 0083 exists to prevent. The
+  temporary files themselves are cleaned up correctly; only the reporting is
+  wrong.
+
+- **A `dbmd import` that fails half way writes files and then says nothing about
+  them.** `writeModel` sorts its jobs by path and pushes each written path onto
+  a list it only returns after the loop, so a throw discards the record of
+  everything already on disk. Reproduced: a model of two tables, both needing a
+  change, with only the second unwritable in sort order. `order_line.md` was
+  rewritten and the removed column came back; `orders.md` failed; the command's
+  entire output was one raw `EPERM` about `orders.md` and it exited 1. A
+  developer reading that has no reason to think their tree changed at all, and
+  it did.
+
+- **`dbmd refs` explains every error as a file that did not load.** It counts
+  the reader's diagnostics and the validator's together and hands one number to
+  a sentence written only about the reader's. On a model whose one error is a
+  dangling `ref:`, the command warns that a file failed to load and that the
+  answer may be short, then prints the dangling ref as the second row of that
+  answer. Every file loaded and the answer was complete. The counterfactual was
+  run too: with a genuinely unparseable file the same banner is accurate, so the
+  warning is right for one of the two kinds it is printed for.
+
+- **Everything else driven on `dbmd refs` matched its help exactly.** A name
+  nothing in the model has heard of exits 1 and says so; a table that no file
+  defines but a ref still names exits 0 and lists the ref, which is the
+  mid-rename state the help promises to answer; `--outgoing` alone narrows the
+  text; and the JSON carries both directions whichever flags were given, with
+  the file, the nullability and the referential actions on each row.

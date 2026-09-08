@@ -4,8 +4,8 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-08, early, with nothing running, nothing open and every epic
-closed.**
+**As of 2026-09-08, with two agents out on the CLI, nothing open on GitHub and
+every epic closed.**
 
 ## Where the work is
 
@@ -53,8 +53,31 @@ two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 ## In flight, and what is actually left
 
-**Nothing is running and nothing is open.** Fourteen agents worked between the
-afternoon and the small hours and every branch landed.
+**Two agents are out on 2026-09-08, both on the CLI, and neither has an item in
+the tracker because the tracker cannot be written to.** Each brief is the whole
+issue and each pull request body will carry it, so nothing is lost if this file
+is. Sixteen agents have now worked between the afternoon of 2026-09-07 and here.
+
+- **`export/markers-out-of-order-and-a-refusal-in-the-commands-voice`.** Two
+  defects in `src/cli/export.ts`. A README holding both diagram markers in the
+  wrong order is told it is missing one, with advice that fits neither state. And
+  a write that fails escapes to the last-resort handler in `src/cli/main.ts`, so
+  it prints a raw Node error with an absolute backslashed path in a command whose
+  own helper exists to stop exactly that.
+- **`refs/every-error-is-not-a-file-that-did-not-load`.** `dbmd refs` counts the
+  reader's errors and the validator's together and explains all of them as a file
+  that failed to load. On a model whose one error is a dangling ref it warns that
+  the answer may be short, then prints the dangling ref as part of the answer.
+
+**A third finding is held back on purpose.** `dbmd import` has the same
+uncaught write failure, it leads with a temporary file whose name is gone by the
+time anybody looks, and worse, a failure half way through writes files and then
+reports nothing about them, because `writeModel` returns its list of written
+paths after the loop and a throw discards it. Reproduced on two tables where only
+the second was unwritable: the first was rewritten on disk and the entire output
+was one `EPERM` about the second. It is held because the export agent is settling
+the wording that ADR 0083 asks for, and the import fix should copy a landed
+pattern rather than invent a second one beside it. Dispatch it once export lands.
 
 **The studio is running for the owner** at `http://127.0.0.1:49192/`, started at
 20:37 on 2026-09-07 with `npm run studio:dev`, with the feedback overlay on it.
@@ -359,6 +382,35 @@ same question, and because the file the entry sends a reader to,
 this repository. **This is not a recommendation to move it.** It is that the
 answer should be chosen once, and written into ADR 0002 as an appended section
 either way.
+
+**Four more are owed from 2026-09-08, found by driving the CLI rather than the
+studio.** Two are out with agents and the third is deliberately held; the fourth
+is a note rather than a defect. File all of them when `bd` runs again, and check
+the pull requests before closing any of them.
+
+```bash
+# Out with an agent on 2026-09-08. Its whole brief is in its pull request body.
+bd create --ignore-schema-skew -p 2 -t task   "export tells a README holding both markers that it is missing one"
+
+# Out with the same agent, in the same branch, for the same reason.
+bd create --ignore-schema-skew -p 2 -t task   "export prints a write failure in Node's voice with an absolute path"
+
+# Out with a second agent on 2026-09-08.
+bd create --ignore-schema-skew -p 2 -t task   "refs explains a validation error as a file that did not load"
+
+# HELD, not dispatched, until the export branch lands and settles the wording.
+# The reasoning is in the "In flight" section above. This is the worst of the
+# four: it is a silent partial write, not only a message.
+bd create --ignore-schema-skew -p 1 -t task   "import fails half way, leaves files written, and reports none of them"
+```
+
+**The third of those is the one to read first if time is short.** ADR 0083
+decided that a refusal from the disk leads with the file and keeps the system's
+words. It was applied to the studio and to nothing else, so the two commands that
+document a write failure in their own exit-code lists both leak the raw error
+instead, and `dbmd import` names a temporary file that no longer exists. That is
+a decision that was made and then not carried to the surfaces it was about, which
+is a different failure from a decision nobody made.
 
 ## What a successor would otherwise have to reconstruct
 **SETTLED, and my framing of it was wrong.** I recorded here that my briefs and
