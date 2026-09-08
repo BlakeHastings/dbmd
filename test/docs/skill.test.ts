@@ -39,10 +39,11 @@
  * the lines beneath each compared against what that command wrote to stderr,
  * which is where every command's narration goes (ADR 0006). It is shared rather
  * than reinvented because a second spelling of one idea is the thing ADR 0084
- * warns about, one layer down. `sessionIn` is small enough that the two files
- * each hold a copy rather than growing a helper module for eleven lines; what
- * matters is that an author writing a block does not have to learn a second
- * convention, and they do not.
+ * warns about, one layer down. The tag and the function that reads it are both
+ * in `./sessions.ts`, which the two pages' readers import, so an author writing
+ * a block does not have to learn a second convention and neither reader can
+ * quietly grow one. ADR 0101 is the argument, and the divergence it was written
+ * from was reproduced rather than imagined.
  *
  * `dbmd-script` and `dbmd-script-out` are new, because the thing they mark is
  * not a dbmd command. The skill hands an agent a complete node program, tells
@@ -140,6 +141,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { runCli } from '../cli/harness.js'
+import { DBMD_RUN, sessionIn } from './sessions.js'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const PAGE = '.claude/skills/dbmd/SKILL.md'
@@ -161,8 +163,13 @@ interface Block {
  * The tag sits where a language would when there is no language to write, and
  * after the language when there is one, which is `test/docs/readme.test.ts`'s
  * convention and `docs/format.md`'s before it.
+ *
+ * `DBMD_RUN` comes from `./sessions.js` rather than being spelled here, because
+ * `README.md` carries the same tag and the function that reads a block carrying
+ * it now lives there too. The other two are this page's own.
  */
-const OPENING = /^```(?:(\S+)\s+)?(dbmd-run|dbmd-script|dbmd-script-out)\s*$/
+const TAGS = [DBMD_RUN, 'dbmd-script', 'dbmd-script-out']
+const OPENING = new RegExp(`^\`\`\`(?:(\\S+)\\s+)?(${TAGS.join('|')})\\s*$`)
 
 function blocksIn(lines: readonly string[]): Block[] {
   const blocks: Block[] = []
@@ -192,36 +199,6 @@ function payloadsIn(lines: readonly string[]): Block[] {
     i = end
   }
   return blocks
-}
-
-/**
- * A shell session as commands and the output each one claims.
- *
- * A line opening with `$ ` is a command and everything under it up to the next
- * one is what it printed. `test/docs/readme.test.ts` reads a `dbmd-run` block
- * with the same eleven lines, which is what makes the tag one convention rather
- * than two that look alike.
- */
-function sessionIn(block: Block): { readonly argv: string[]; readonly expected: string }[] {
-  const session: { argv: string[]; output: string[] }[] = []
-  for (const line of block.text.split('\n').slice(0, -1)) {
-    if (line.startsWith('$ ')) {
-      const words = line.slice(2).trim().split(/\s+/)
-      if (words[0] !== 'dbmd') {
-        throw new Error(`${PAGE}:${block.line} runs \`${words[0] ?? ''}\`, and only dbmd runs here`)
-      }
-      session.push({ argv: words.slice(1), output: [] })
-      continue
-    }
-    const current = session.at(-1)
-    if (current === undefined) throw new Error(`${PAGE}:${block.line} has output above its first command`)
-    current.output.push(line)
-  }
-  if (session.length === 0) throw new Error(`${PAGE}:${block.line} runs nothing`)
-  return session.map(({ argv, output }) => ({
-    argv,
-    expected: output.length === 0 ? '' : `${output.join('\n')}\n`,
-  }))
 }
 
 /** A JSON document with only the whitespace taken out of it. Key order survives. */
@@ -464,7 +441,7 @@ describe('SKILL.md has the blocks this file thinks it has', () => {
 describe('a session block in SKILL.md prints what it shows', () => {
   for (const block of sessions) {
     test(`the session at ${PAGE}:${block.line} prints its own output`, async () => {
-      for (const { argv, expected } of sessionIn(block)) {
+      for (const { argv, expected } of sessionIn(PAGE, block)) {
         const command = `dbmd ${argv.join(' ')}`
         const run = await runCli(argv)
         expect(run.err, `\`${command}\`, against the block at ${PAGE}:${block.line}`).toBe(expected)
