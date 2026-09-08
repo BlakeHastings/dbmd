@@ -6017,3 +6017,27 @@ corrected by whoever fixed the thing and the other was nobody's job.
   GitHub rejects the push with `GH014: branch or tag names starting with 'refs/'
   are not allowed`. A brief that hands an agent a branch name is handing it a
   thing that can be invalid; this one cost an agent a push and a rename.
+
+- **The studio flushes a pending write on demand, proven; whether an interrupt
+  reaches that flush is untested and cannot be tested from here.** `dbmd studio
+  --help` promises that "Ctrl-C flushes any edit still waiting to be written and
+  then stops listening", and the claim has two halves. The second half was
+  driven: a `PATCH` to a table's layout, then `POST /api/flush` inside the 250ms
+  debounce, and the file on disk carried the new coordinates the instant flush
+  returned, with `pendingWrite` false. `close()` calls the same flush. The first
+  half, that a console interrupt reaches the handler, could not be driven.
+  Neither `taskkill` without `/F` nor `kill -INT` from Git Bash delivers a
+  console control event to a Node process this harness started: both were tried,
+  both left the studio listening and answering. **So the flush is proven and the
+  signal path is not, and nobody should read a green sweep of this command as
+  covering it.** Testing it properly needs a real console or a
+  `GenerateConsoleCtrlEvent` harness.
+
+- **A `PATCH` that moves a table does not move the studio's revision, and that
+  is deliberate.** Two edits in a row were accepted against `x-dbmd-revision: 0`,
+  which looked like optimistic concurrency failing to bite. It is not.
+  `src/studio/edits.ts` moves the revision only when the model's *shape* changes,
+  and its comment gives the reason: a change that leaves every object saying what
+  the session already says cannot make an edit made against the old picture lose
+  anything. A layout is not shape. Filed nowhere, recorded here so the next
+  reader who notices it does not spend the same twenty minutes.
