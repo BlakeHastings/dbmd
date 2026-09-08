@@ -39,10 +39,10 @@ record exists rather than a note about being careful:
 > an instruction not to merge at all, which no argument to that script encodes.
 
 [ADR 0077](0077-the-merge-names-the-commit-the-reviewer-read.md) added the
-refusal about the person, and it asks the right question of the wrong person: it
+refusal about the person, hours before this happened, and it was satisfied. It
 asks the caller which commit they read, and the caller had read it. Every
 refusal in the file is about whether this merge is a good idea. None of them is
-about whether the caller is allowed to merge anything.
+about whether this caller is allowed to merge anything.
 
 **The mechanism of the accident is worth one line on its own, because it will be
 repeated by somebody who has read everything above.** The command was in a tool
