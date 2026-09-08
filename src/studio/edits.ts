@@ -63,7 +63,8 @@
  * fired, and the staleness check needs neither of them.
  */
 
-import { access, rm } from 'node:fs/promises'
+import { access, readdir, rm } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { readModel } from '../model/read.js'
 import { WriteFailed, serialiseModelFile, serialiseObject, writeModel } from '../model/write.js'
 import type {
@@ -432,14 +433,15 @@ export class Edits {
       throw new EditRefused(409, `${kind}-exists`, `there is already a ${kind} called \`${name}\``)
     }
     const created = apply(blankObject(kind, name) as ObjectByKind[K])
-    // A file with no object in the model is a file the reader could not parse
-    // (ADR 0008 leaves it out rather than guessing), and writing over it would
-    // destroy the thing whose problem the developer is trying to see.
+    // A file in the way is refused rather than written over, and which refusal
+    // it gets is decided from what the directory actually holds. See
+    // `occupiedNotice`: the check above is case-sensitive and this one is not,
+    // on the two filesystems most of this project's developers are standing on.
     if (await exists(target)) {
       throw new EditRefused(
         409,
         `${kind}-exists`,
-        `\`${created.path}\` is already a file, and it is not in the model, which means it did not parse. Fix or delete it rather than writing over it`,
+        occupiedNotice(kind, name, await readdir(dirname(target)), objectsOfKind(this.model, kind)),
       )
     }
     this.model = withAdded(this.model, kind, created)
@@ -512,7 +514,8 @@ export class Edits {
   }
 
   /**
-   * Look again, but only while the session is holding a file it could not read.
+   * Look again, but only while the session is stuck on something only the
+   * filesystem can un-stick.
    *
    * **A lock being released is not a filesystem event.** Nothing is delivered
    * to `fs.watch` when whatever had `orders.md` open lets go of it, so the
@@ -535,10 +538,24 @@ export class Edits {
    * that is not in this state. The gate is the diagnostics of the read being
    * served, so it closes itself: the read that makes the file readable is the
    * read that removes the diagnostic that was licensing the next one.
+   *
+   * **A write the disk refused is the same shape and is answered the same
+   * way.** ADR 0083's sentence said the edit rode out with the next write, and
+   * the next write was the next edit: `write`'s catch puts the files back in
+   * the pending set and nothing re-arms the debounce, so a developer who
+   * cleared the read-only attribute and then stopped touching the page had an
+   * unwritten edit and a red status line for as long as they left it there.
+   * Measured on 2026-09-08, six seconds after the attribute was cleared, and
+   * cleared by one unrelated drag of another table. Clearing a permission is
+   * not a filesystem event under the model directory either, so this is where
+   * it belongs rather than in a timer of its own. ADR 0092.
+   *
+   * The gate closes itself here too: the flush that lands sets `failure` back
+   * to null, and a flush with nothing pending is a re-read.
    */
-  async recheckUnreadable(): Promise<void> {
-    if (!anythingUnreadable(this.diagnostics)) return
-    await this.reload()
+  async recheck(): Promise<void> {
+    if (anythingUnreadable(this.diagnostics)) await this.reload()
+    if (this.failure !== null && this.edited.size > 0) await this.flush()
   }
 
   /** Write anything pending, now, and re-read. Idempotent when nothing is pending. */
@@ -662,6 +679,14 @@ export class Edits {
         // notes warn about: telling the developer their work is saved when it is
         // not.
         for (const file of this.writing) this.edited.add(file)
+        // Which file was already refusing when this attempt started, so that a
+        // retry that fails the same way is not a second line. `recheck` retries
+        // on the page's beat now (ADR 0092), and a permission nobody clears
+        // would otherwise write a line every two seconds for as long as the tab
+        // stayed open. Compared on the path rather than on the message, because
+        // the message carries a fresh temporary file name every attempt and
+        // would never match itself.
+        const standing = this.failure !== null ? (this.failureFile?.path ?? '') : null
         this.failure = error instanceof Error ? error.message : String(error)
         // The file travels beside the operating system's words rather than
         // replacing them, so the page can lead with what the developer was
@@ -672,11 +697,13 @@ export class Edits {
             : null
         // Named the way the two refusals above this are named, because somebody
         // reading this log is scanning it for a file and not for a verb.
-        this.log(
-          this.failureFile === null
-            ? `write failed: ${this.failure}`
-            : `failed to write ${this.failureFile.path}: ${this.failure}`,
-        )
+        if (standing !== (this.failureFile?.path ?? '')) {
+          this.log(
+            this.failureFile === null
+              ? `write failed: ${this.failure}`
+              : `failed to write ${this.failureFile.path}: ${this.failure}`,
+          )
+        }
       }
     } finally {
       this.writing = new Set()
@@ -1088,6 +1115,65 @@ function applyGroupPatch(group: Group, patch: GroupPatch): Group {
     else next.color = patch.color
   }
   return next
+}
+
+/**
+ * Why the file already sitting at a new object's path is in the way.
+ *
+ * A create is refused twice over: once because the model already holds the
+ * name, and once because the path already holds a file. The second refusal used
+ * to say the file `is not in the model, which means it did not parse`, and that
+ * inference is only sound when the first refusal ruled out "in the model".
+ *
+ * **On Windows and macOS it does not rule it out.** The name check is
+ * case-sensitive, because that is what a name is; `access` is answered by the
+ * filesystem, and there `tables/Orders.md` and `tables/orders.md` are one file.
+ * So creating `Orders` beside a healthy `orders` fell through the first check
+ * and into the second, and a developer was told a file that was parsing fine,
+ * drawn on the canvas in front of them, had not parsed, with `Fix or delete it`
+ * beside it. **Taken literally that advice deletes a healthy table.** Renaming
+ * `products` to `Products` says the same thing, because a rename creates the
+ * new file first (see `renameTable`).
+ *
+ * The directory listing is what settles it, and it is asked rather than
+ * guessed: an entry under exactly the wanted name is a second file, and no such
+ * entry with the filesystem still saying the path is taken is the same file
+ * under another spelling. Only then is a fold compared, and only to say which
+ * entry it was; `NFC` is in that comparison because macOS folds the accent as
+ * well as the case.
+ *
+ * The counterfactual is the sentence this whole refusal was written for and it
+ * is untouched: a stray file at that path that the reader could not parse still
+ * gets `did not parse`, and still gets told to fix or delete it.
+ */
+export function occupiedNotice(
+  kind: ObjectKind,
+  name: string,
+  entries: readonly string[],
+  held: readonly CanvasObject[],
+): string {
+  const path = fileOf(kind, name)
+  const unparsed = `\`${path}\` is already a file, and it is not in the model, which means it did not parse. Fix or delete it rather than writing over it`
+  const wanted = `${name}.md`
+  if (entries.includes(wanted)) return unparsed
+  const fold = (entry: string): string => entry.normalize('NFC').toLowerCase()
+  const folded = entries.find((entry) => fold(entry) === fold(wanted))
+  // Nothing to name, so nothing is claimed about it beyond what was already
+  // claimed. A directory that lists no entry the filesystem then matches is not
+  // a state this has seen, and inventing a third sentence for it would be
+  // prose nobody has read.
+  if (folded === undefined) return unparsed
+  const other = `${directoryOfKind(kind)}/${folded}`
+  const object = held.find((candidate) => candidate.path === other)
+  const same = `\`${path}\` and \`${other}\` are the same file on this filesystem, which does not distinguish case`
+  if (object === undefined) {
+    return `${same}, and it is not in the model, which means it did not parse. Fix or delete it rather than writing over it`
+  }
+  return (
+    `${same}, and that file is the ${kind} \`${object.name}\`. ` +
+    `Nothing was written, because writing it would have written over \`${object.name}\`. ` +
+    `Pick a name that differs by more than case: changing only the case of a ${kind} is a rename the studio cannot make here`
+  )
 }
 
 /** The reader sorts, so a model that gained an object keeps the order a reload would give it. */
