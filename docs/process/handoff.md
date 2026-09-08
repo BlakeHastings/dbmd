@@ -532,6 +532,55 @@ nobody had constructed, and every one was found by enumerating a surface rather
 than by using the product and noticing. Four of the nine model diagnostics had
 survived every previous pass over that code.
 
+## Ten more merges the owed list stopped covering
+
+**The list above was maintained up to #231 and then the night ran ahead of it.**
+Checked by asking which of the day's product merges the file names: it named six
+and missed ten. That is the failure this list exists to prevent, so here they
+are, and a successor replaying the tracker should run this block as well.
+
+All ten are **built, reviewed and merged**, so each is filed and closed in one
+motion. The reasoning for every one is in its own pull request body, and the
+evidence is in [`verified.md`](verified.md).
+
+```bash
+# The command line, all landed.
+bd create --ignore-schema-skew -p 2 -t task \
+  "A refused port and a gate that could not fail"                          # PR 228
+bd create --ignore-schema-skew -p 2 -t task \
+  "A flag beside a command is a claim that it exists"                      # PR 230
+bd create --ignore-schema-skew -p 2 -t task \
+  "Nothing reaches the last resort, and a test says when that stops"       # PR 233
+bd create --ignore-schema-skew -p 2 -t task \
+  "Six diagnostics, and the states each one was false about"               # PR 236
+bd create --ignore-schema-skew -p 1 -t task \
+  "Two tables that became one, and a key that vanished on the way in"      # PR 239
+
+# The evidence log and its guard.
+bd create --ignore-schema-skew -p 2 -t task \
+  "An evidence log held its own body three times and nothing was looking"  # PR 235
+
+# The studio page, four branches carrying fourteen findings.
+bd create --ignore-schema-skew -p 2 -t task \
+  "Five sentences the inspector says about a state nobody constructed"     # PR 237
+bd create --ignore-schema-skew -p 1 -t task \
+  "Three studio sentences that cost a person something"                    # PR 238
+bd create --ignore-schema-skew -p 2 -t task \
+  "Five studio sentences true in the common case, false in the built one"  # PR 240
+bd create --ignore-schema-skew -p 2 -t task \
+  "Four studio sentences that were true when they were written"            # PR 243
+```
+
+**One item is deliberately not here and is the owner's**: the sentence saying a
+group move writes table files and not the group file is true in every clause and
+on screen for 13 milliseconds. Changing that means deciding how long a status
+line holds, which is taste rather than truth.
+
+**And three are questions rather than work**: the three import codes that cannot
+be reached from a file a person pasted, the sentence a zero-table import does not
+say, and whether the studio should tell somebody how old the build it is serving
+is. All three are recorded in [`verified.md`](verified.md) with what was measured.
+
 ## What a successor would otherwise have to reconstruct
 **SETTLED, and my framing of it was wrong.** I recorded here that my briefs and
 `docs/process/working-an-issue.md` disagreed about the example model, mine saying
