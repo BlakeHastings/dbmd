@@ -19,7 +19,7 @@ import { describe, expect, test } from 'vitest'
 import { formatDiagnostics } from '../../src/diagnostics.js'
 import { readModel } from '../../src/model/read.js'
 import { validate } from '../../src/model/validate.js'
-import type { Column, Index, Model, Table } from '../../src/model/types.js'
+import type { Column, Index, Model, RefusedFile, Table } from '../../src/model/types.js'
 
 const invalidModel = fileURLToPath(new URL('../fixtures/invalid', import.meta.url))
 const shopModel = fileURLToPath(new URL('../../examples/shop', import.meta.url))
@@ -416,6 +416,56 @@ describe('what the validator refuses to say', () => {
     ])
   })
 
+  test('nor about a ref into a table whose file is there and did not load', () => {
+    const orders = aTable('orders', {
+      columns: [column('id', { pk: true }), column('customer_id', { ref: 'customers.id' })],
+    })
+
+    const present = validate(aModel([orders], [], [refusedTable('customers')]))
+    const absent = validate(aModel([orders]))
+
+    // The file exists. `dbmd check` prints an error about it four lines above
+    // this one, and "there is no tables/customers.md" is the half a reader
+    // acts on: they write the file that is already there. ADR 0090.
+    expect(formatDiagnostics(present)).toEqual([])
+    // And the common case is untouched. Nothing is at that path here, the
+    // sentence is true, and it is the same sentence it has always been.
+    expect(formatDiagnostics(absent)).toEqual([
+      'error tables/orders.md [ref-table-unknown] `ref: customers.id` on column `customer_id` names no table; there is no tables/customers.md',
+    ])
+  })
+
+  test('nor that a group is empty while a table file has not loaded', () => {
+    const billing = aGroup('billing')
+
+    const refused = validate(aModel([], [billing], [refusedTable('orders')]))
+    const loaded = validate(aModel([aTable('orders')], [billing]))
+
+    // `tables/orders.md` may declare `group: billing`, and nothing in this
+    // model can say whether it does. "Usually a rename that missed a file"
+    // would send the reader to look for a file that is on their screen.
+    expect(formatDiagnostics(refused)).toEqual([])
+    // The counterfactual, which is the common case: every table loaded, none
+    // of them joined, and the warning is the one it was written to be.
+    expect(formatDiagnostics(loaded)).toEqual([
+      'warning groups/billing.md [group-empty] no table declares `group: billing`; an empty group is usually a rename that missed a file',
+    ])
+  })
+
+  test('nor that a group is empty while a table the reader stumbled in is in the model', () => {
+    const diagnostics = validate(
+      aModel(
+        [aTable('orders', { complete: false, columns: [column('id', { pk: true })] })],
+        [aGroup('billing')],
+      ),
+    )
+
+    // The same rule as the three tests above this one, reaching the one place
+    // it could not: a `group:` line is as droppable as a column, and this rule
+    // reads every table at once, so one of them being incomplete is enough.
+    expect(formatDiagnostics(diagnostics)).toEqual([])
+  })
+
   test('and nothing the reader has already said', async () => {
     // `group-unknown` is the overlap that matters: the item this file came from
     // asks for it, the reader already raises it, and the reader can put a line
@@ -465,7 +515,11 @@ describe('the rules a directory cannot break', () => {
 // indexes, and these tests are what would fail if that ever changed quietly.
 // --------------------------------------------------------------------------
 
-function aModel(tables: readonly Table[], groups: readonly Model['groups'][number][] = []): Model {
+function aModel(
+  tables: readonly Table[],
+  groups: readonly Model['groups'][number][] = [],
+  refused: readonly RefusedFile[] = [],
+): Model {
   return {
     name: 'in-memory',
     body: '',
@@ -475,7 +529,17 @@ function aModel(tables: readonly Table[], groups: readonly Model['groups'][numbe
     groups,
     referencesTo: new Map(),
     groupMembers: new Map(),
+    refused,
   }
+}
+
+/** A file on disk the reader complained about and built nothing from. */
+function refusedTable(name: string): RefusedFile {
+  return { kind: 'table', name, path: `tables/${name}.md` }
+}
+
+function aGroup(name: string): Model['groups'][number] {
+  return { kind: 'group', name, path: `groups/${name}.md`, body: '', complete: true }
 }
 
 type TableParts = {

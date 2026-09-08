@@ -121,6 +121,7 @@ let model: WireModel = {
   groups: [],
   referencesTo: [],
   groupMembers: [],
+  refused: [],
 }
 /** What the last read of the directory said. The validator's half is recomputed. */
 let readerDiagnostics: readonly Diagnostic[] = []

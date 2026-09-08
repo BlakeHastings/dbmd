@@ -196,6 +196,9 @@ export function modelFromIntrospection(document: IntrospectionDocument): Importe
     groups: [],
     referencesTo: referencesTo(tables),
     groupMembers: new Map(),
+    // Nothing was read off a disk, so every absence from `tables` above is an
+    // absence and not a file somebody has to go and look at.
+    refused: [],
   }
 
   return { model, diagnostics: sortDiagnostics(diagnostics) }

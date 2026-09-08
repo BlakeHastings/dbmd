@@ -120,6 +120,8 @@ export function exampleModel(): Model {
       ],
     ]),
     groupMembers: new Map(),
+    /** Written from here, not read from a disk, so there is nothing to refuse. */
+    refused: [],
     body: `
 An example model, written by \`dbmd init\`. Two tables and a sticky note: enough
 to show what the format is for. Change \`name\` and \`engine\` above, then replace

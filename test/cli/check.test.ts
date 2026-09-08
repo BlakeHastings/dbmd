@@ -111,11 +111,20 @@ async function modelWith(files: Readonly<Record<string, string>>): Promise<strin
   return directory
 }
 
-/** One broken file, one dangling ref, one keyless table, one empty group. */
+/**
+ * One broken file, one dangling ref, one keyless table, one empty group.
+ *
+ * The broken file is a note rather than a table, and that is load-bearing since
+ * ADR 0090. A table file the reader refuses is a table whose `group:` nothing
+ * can read, so `group-empty` stands down for the whole model while one is
+ * there, and a fixture with a broken table would be a fixture with three
+ * problems in it. A note declares no membership and masks nothing, which keeps
+ * the four independent, which is the only thing these tests want from them.
+ */
 async function fourProblems(): Promise<string> {
   return await modelWith({
     '_model.md': MODEL_FILE,
-    'tables/orders.md': UNPARSEABLE,
+    'notes/scratch.md': UNPARSEABLE,
     'tables/customers.md': DANGLING,
     'tables/events.md': NO_KEY,
     'groups/legacy.md': EMPTY_GROUP,
@@ -169,9 +178,9 @@ describe('dbmd check reports every file, not just the first broken one', () => {
     // validator's. One list, one sort, no seam, and the order is the sort's.
     expect(payload(run).diagnostics.map((d) => d.code)).toEqual([
       'group-empty',
+      'frontmatter-invalid',
       'ref-table-unknown',
       'primary-key-missing',
-      'frontmatter-invalid',
     ])
   })
 
@@ -199,6 +208,156 @@ Two problems, one file.
     expect(code).toBe(1)
     expect(err.match(/tables\/events\.md/g)).toHaveLength(1)
     expect(err).toContain('across 1 file.')
+  })
+})
+
+describe('it does not deny a file it is printing as a heading', () => {
+  // ADR 0090. Three diagnostics learned something from the model and reported
+  // it as a fact about the disk, and a half-finished rename is exactly the
+  // state where those two disagree. Each test here is a pair: the file is
+  // there and broken, and then the file is not there at all, which is the
+  // common case and the one every one of these sentences was written for.
+
+  /** Refuses to load: one line of prose where the frontmatter should be. */
+  const NO_FRONTMATTER = 'Renamed from `clients`, and not finished.\n'
+
+  const REFERRING = `---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: uuid
+    pk: true
+  - name: customer_id
+    type: uuid
+    ref: customers.id
+---
+
+Points at a table whose file is in the middle of a rename.
+`
+
+  const IN_A_GROUP = `---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: uuid
+    pk: true
+group: billing
+---
+
+Declares the membership the group file is about to be told nobody declares.
+`
+
+  const GROUP = `---
+kind: group
+label: Billing
+---
+
+A group that one table joins.
+`
+
+  test('a ref at a table whose file is there and broken is not called a table that is not there', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/customers.md': NO_FRONTMATTER,
+      'tables/orders.md': REFERRING,
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    // The reader's error about the file, and nothing on top of it. The old
+    // second sentence read "there is no tables/customers.md" four lines under
+    // a heading reading `tables/customers.md`.
+    expect(code).toBe(1)
+    expect(err).toContain('frontmatter-absent')
+    expect(err).not.toContain('ref-table-unknown')
+    expect(err).not.toContain('there is no tables/customers.md')
+  })
+
+  test('and the same ref with nothing at that path says exactly what it always said', async () => {
+    const directory = await modelWith({ '_model.md': MODEL_FILE, 'tables/orders.md': REFERRING })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain(
+      '`ref: customers.id` on column `customer_id` names no table; there is no tables/customers.md (ref-table-unknown)',
+    )
+  })
+
+  test('a `group:` at a group file that is there and broken is not called a file that is not there', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'groups/billing.md': NO_FRONTMATTER,
+      'tables/orders.md': IN_A_GROUP,
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain('frontmatter-absent')
+    expect(err).not.toContain('group-unknown')
+    expect(err).not.toContain('names no file at groups/billing.md')
+  })
+
+  test('and the same `group:` with nothing at that path says exactly what it always said', async () => {
+    const directory = await modelWith({ '_model.md': MODEL_FILE, 'tables/orders.md': IN_A_GROUP })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain('`group: billing` names no file at groups/billing.md (group-unknown)')
+  })
+
+  test('a group is not called empty on the line above the table that declares it', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'groups/billing.md': GROUP,
+      // Refused for a reason of its own: the directory decides the kind, so
+      // this file is not loaded, and its `group: billing` goes with it.
+      'tables/orders.md': IN_A_GROUP.replace('kind: table', 'kind: note'),
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain('kind-mismatch')
+    expect(err).not.toContain('group-empty')
+    expect(err).not.toContain('no table declares `group: billing`')
+  })
+
+  test('and a group nothing declares says exactly what it always said', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'groups/billing.md': GROUP,
+      'tables/orders.md': IN_A_GROUP.replace('group: billing\n', ''),
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    // A warning, so the run still passes, which is the other half of what the
+    // reader of this message needs to stay true.
+    expect(code).toBe(0)
+    expect(err).toContain(
+      'no table declares `group: billing`; an empty group is usually a rename that missed a file (group-empty)',
+    )
+  })
+
+  test('a directory wearing a table file name is not also said not to exist', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      // A directory called `customers.md`, which is what a link to one, or a
+      // half-finished move, leaves behind.
+      'tables/customers.md/notes.txt': 'not a table\n',
+      'tables/orders.md': REFERRING,
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain('`customers.md` is a directory rather than a file')
+    expect(err).not.toContain('there is no tables/customers.md')
   })
 })
 

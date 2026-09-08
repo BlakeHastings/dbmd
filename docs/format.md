@@ -631,6 +631,11 @@ column half that names no column of a table that does exist is
 `ref-column-unknown`. Both are errors, and both point at the file the `ref` is
 written in rather than at the target, because that is the file you edit.
 
+**Names no file is meant exactly.** If `tables/customers.md` is there and did
+not load, you get the error about that file and nothing else: the ref may be
+perfectly good, and the fix is the file the run already named. See
+[what is said about a file that did not load](#what-is-said-about-a-file-that-did-not-load).
+
 The target also has to identify one row, and when it does not you get a
 `ref-target-not-unique` **warning**:
 
@@ -839,7 +844,10 @@ no list and no nesting.
 
 If the group file does not exist you get a `group-unknown` **error**. Note that
 this one is about the model rather than about the file, so the table itself
-still loaded fine and dbmd will still save over it.
+still loaded fine and dbmd will still save over it. A `groups/billing.md` that
+is there and did not load is not "does not exist", and you get the error about
+that file instead. See
+[what is said about a file that did not load](#what-is-said-about-a-file-that-did-not-load).
 
 ## `notes/<name>.md`
 
@@ -928,7 +936,9 @@ the interface that would write a position into it. [ADR 0030][adr30].
 An empty group, one nothing declares itself a member of, is legal and is almost
 always a rename that went wrong, so it is a `group-empty` **warning** rather
 than an error. The warning is on the group file, because that is the file to
-delete if the group really has gone.
+delete if the group really has gone. It is not said at all while any table file
+in the model failed to load, since one of those may be the member. See
+[what is said about a file that did not load](#what-is-said-about-a-file-that-did-not-load).
 
 ## Values, quoting and the YAML traps
 
@@ -1172,13 +1182,13 @@ leaves the line off.
 | `unknown-key` | warning | A key that means nothing here. The message lists the ones that do. | Check the spelling. Otherwise delete it: it is dropped on the next save. |
 | `superseded-key` | error | A real key in the wrong place or under its old name: `null:`, or `unique:` on a column. | The message names the replacement. |
 | `ref-malformed` | error | A `ref:` that is not `table.column`. | Add the column. |
-| `group-unknown` | error | `group:` names a file that is not in `groups/`. | Create it, or fix the name. |
+| `group-unknown` | error | `group:` names a file that is not in `groups/`. Not raised when that file is there and did not load: [see below](#what-is-said-about-a-file-that-did-not-load). | Create it, or fix the name. |
 
 And about the model, with a path and no line:
 
 | code | severity | what happened | what to do |
 | --- | --- | --- | --- |
-| `ref-table-unknown` | error | A `ref:` whose table half names no file in `tables/`. | Fix the spelling, or add the table. |
+| `ref-table-unknown` | error | A `ref:` whose table half names no file in `tables/`. Not raised when that file is there and did not load: [see below](#what-is-said-about-a-file-that-did-not-load). | Fix the spelling, or add the table. |
 | `ref-column-unknown` | error | A `ref:` whose table exists and whose column half is not one of its columns. | Check it against that table's `columns:`. |
 | `ref-target-not-unique` | warning | A `ref:` at a column that does not identify one row: it is in no key of the target at all, or it is one column of a composite key whose other columns this table does not also `ref`. The message says which, and the second names what is missing. | Add the missing `ref:`, add the `unique: true` index the database already has, or fix the ref. |
 | `duplicate-table` | error | Two tables in one model under one name. A directory cannot do this; an import of two schemas can. | Rename one of them. |
@@ -1186,13 +1196,50 @@ And about the model, with a path and no line:
 | `duplicate-index` | error | Two indexes of one table under one name. | Rename one. The database would refuse the second. |
 | `index-column-unknown` | error | An index names a column its own table does not have. Never fires on an expression key. | Usually the column was renamed and the index was not. If you meant an expression, write `{ expression: ... }`. If the name already is that, quoted, the message says to remove the quotes rather than wrapping it again. |
 | `primary-key-missing` | warning | A table with columns and no `pk: true` on any of them. | Add `pk: true`, or accept a keyless table. |
-| `group-empty` | warning | A group file no table declares itself a member of. | Add `group:` to a table, or delete the group file. |
+| `group-empty` | warning | A group file no table declares itself a member of. Not raised at all while any table in the model failed to load or loaded incompletely, since one of those may be the member: [see below](#what-is-said-about-a-file-that-did-not-load). | Add `group:` to a table, or delete the group file. |
 
 `dbmd check` prints all of these from the command line, grouped by the file they
 are in, and `dbmd check --json` prints them as the objects this page's `code` and
 `severity` columns describe. Its exit code is the short version: 0 when nothing
 worse than a warning turned up, 1 when an error did, and 1 for a warning too
 under `--strict`. [ADR 0020][adr20] is why the boundary is there.
+
+### What is said about a file that did not load
+
+Three of the codes above conclude that something is **not there**:
+`ref-table-unknown`, `group-unknown` and `group-empty`. Each of them learns what
+it knows from the model, and the model holds what loaded. So when a file is on
+disk and did not load, which is exactly what a rename looks like half way
+through, all three used to say the file was missing while the same run printed
+an error under that file's own name.
+
+They now say nothing in that case. The reader has already raised an error naming
+the file, that error is the one to fix, and fixing it is what makes the ref
+resolve or the membership count. What you never get is two sentences about one
+mistake, one of which sends you to write a file that is already there.
+
+```
+$ dbmd check db-model
+tables/customers.md
+    error  no frontmatter: the file does not start with a `---` line (frontmatter-absent)
+
+db-model: 1 error across 1 file.
+```
+
+`tables/orders.md` refs `customers.id` in that model and is not mentioned,
+because there is nothing wrong with it.
+
+**The common case is unchanged**, and it is the case the three messages were
+written for. Nothing at `tables/customers.md` at all, and you get
+`ref-table-unknown` saying "there is no tables/customers.md", word for word as
+before. The two states are opposite next steps: one of them means writing a
+file, and the other means fixing one.
+
+`group-empty` pays for this more widely than the other two, and deliberately.
+Membership is declared by the member, so *any* table file that did not load may
+be the missing member, and one of them is enough to make dbmd stand down on
+every group in the model until it is fixed. [ADR 0090][adr90] has the argument
+and what was rejected.
 
 ### One parse error per file
 
@@ -1563,4 +1610,5 @@ If this page and the code disagree, the code is right and this page is a bug.
 [adr46]: architecture/decisions/0046-a-key-may-say-what-the-engine-does.md
 [adr47]: architecture/decisions/0047-the-studio-carries-an-expression-index-and-does-not-learn-to-write-one.md
 [adr49]: architecture/decisions/0049-the-answer-before-a-delete-says-what-the-delete-does.md
+[adr90]: architecture/decisions/0090-a-diagnostic-says-what-the-model-knows-not-what-the-disk-says.md
 [prettier]: https://prettier.io

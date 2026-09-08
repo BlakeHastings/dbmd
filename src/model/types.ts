@@ -204,6 +204,31 @@ export interface RefEdge {
 }
 
 /**
+ * A file at an object's path that this model holds no object for.
+ *
+ * The reader found it, said something about it, and could not build an object
+ * from it: it would not open, it is a directory wearing an object's name, or
+ * its frontmatter said something the reader refuses. Every one of those raised
+ * a diagnostic naming this same path.
+ *
+ * It is here because "there is no table called `customers`" and "there is no
+ * `tables/customers.md`" are different facts, and only the read can tell them
+ * apart. A `Model` used to carry the first and every consumer of it said the
+ * second, which is true right up until somebody is half way through a rename,
+ * which is the hour they need it most. ADR 0090.
+ *
+ * `kind`, `name` and `path` are the same identity a `CanvasObject` carries, for
+ * the same reason: the name is the file's base name and is the identity the
+ * object would have had, and the path is what a diagnostic prints.
+ */
+export interface RefusedFile {
+  readonly kind: ObjectKind
+  readonly name: string
+  /** Slash-separated and relative to the model directory, as a diagnostic's is. */
+  readonly path: string
+}
+
+/**
  * A whole model directory.
  *
  * `referencesTo` and `groupMembers` are computed rather than declared. They are
@@ -241,6 +266,16 @@ export interface Model {
    * invent one.
    */
   readonly groupMembers: ReadonlyMap<string, readonly string[]>
+  /**
+   * The object files that are on disk and are not objects here, sorted by path.
+   *
+   * Empty for a model nobody read off a disk, which is the honest answer for
+   * one: an importer builds tables out of a catalogue and refuses no files, so
+   * every absence from `tables` is an absence, full stop. It is required rather
+   * than optional so that saying so is a thing a constructor does out loud,
+   * which is the argument `complete` above is written with.
+   */
+  readonly refused: readonly RefusedFile[]
 }
 
 /**
