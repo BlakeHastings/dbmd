@@ -222,7 +222,10 @@ Seven things that bite, in the order they bite:
    constraint's name is the string the engine prints when it fires.
 
 Lowercase names, with digits, hyphens and underscores. A model with `Orders` and
-`orders` is two tables on Linux and one file on Windows.
+`orders` is two tables on Linux and one file on Windows, which is why
+`dbmd import` refuses that pair on every platform rather than only where the
+filesystem folds, and why the studio refuses a create whose file name a table it
+already holds would answer to. ADR 0093.
 
 ## The prose is the point
 
@@ -393,8 +396,17 @@ about a thing that is genuinely still called that.
 
 **A note or a group is renamed the same way**, and a group has the extra step
 that every member declares `group: <name>` in its own file, so those move too. A
-group nobody declares is `group-empty`, a warning, and it is nearly always a
-rename that missed a file.
+group nobody declares is `group-empty`, a warning, and in a model that otherwise
+loads it is nearly always a rename that missed a file.
+
+**Do not read a silent run as an empty group you have not got.** Membership is
+declared by the member, so the evidence for `group-empty` is every table file at
+once, and one table that did not load is enough to make the conclusion a guess:
+the missing member may be exactly that file. So `group-empty` stands down for
+the whole model while any table file is refused or incomplete, and comes back on
+the run after you have fixed it. Every way a file fails to load is an error, so
+that run exits 1 anyway and is already telling you which file to fix. See
+[what a check says about a file that did not load](#what-a-check-says-about-a-file-that-did-not-load).
 
 ### Delete a table
 
@@ -458,6 +470,36 @@ purpose. `--strict` is how a team says warnings do not reach `main`.
 
 `docs/format.md` has every code, its severity, and what to do about it.
 
+### What a check says about a file that did not load
+
+**A file that is on disk and did not load is not a file that is absent, and
+three codes now say nothing rather than guess.** Each of them concludes that
+something is missing, and each learns what it knows from the model, which holds
+what loaded. So a run that has already complained about `tables/customers.md`
+under its own name does not also say there is no `tables/customers.md`.
+
+| code                | stands down when                                         |
+| ------------------- | -------------------------------------------------------- |
+| `ref-table-unknown` | `tables/<target>.md` is there and did not load           |
+| `group-unknown`     | `groups/<name>.md` is there and did not load             |
+| `group-empty`       | **any** table file in the model is refused or incomplete |
+
+**The common case is unchanged**, and it is the one you meet in a rename: with
+nothing at that path at all, `ref-table-unknown` still says "there is no
+tables/customers.md", word for word. The two states are opposite next steps, one
+of them writing a file and the other fixing one.
+
+What this costs you as a caller is that **the absence of one of these three is
+not evidence** while any error is outstanding. Fix the file the run names, then
+read the next run. Nothing is dropped from a model that otherwise passes.
+
+For a script: `readModel` returns a `Model` carrying `refused`, an array of
+`{ kind, name, path }` for exactly these files, sorted by path, and `dbmd studio`
+puts the same array on `GET /api/model`. It is empty for a model nobody read off
+a disk, which is the honest answer for one. That array is how you tell "there is
+no table `customers`" from "there is no `tables/customers.md`". ADR 0090, and
+`docs/format.md` under "What is said about a file that did not load".
+
 ## Bootstrapping from a real database
 
 dbmd never connects to a database and never asks for a credential. The journey
@@ -478,6 +520,29 @@ the mistake the importer sees most.
 Tables land on a grid in name order; the layout is a person's job in the studio.
 Every table gets the one-line placeholder body. **Replacing those is the work**,
 and it is the part of this that is worth doing carefully rather than quickly.
+
+**Read the import's own diagnostics before you read the model it wrote.** Two of
+them are about the file you handed it rather than about the model, and both mean
+the same thing: the query was cut short.
+
+- **`import/key-column-not-exported`**, a warning, is a table whose
+  `primaryKey.columns` names a column its own `columns` does not hold. No `pk:`
+  is written for it, so the key in the model is not the key in the database, and
+  the first `dbmd check` says `primary-key-missing` and sends you to invent a key
+  the database already has. Re-run the query rather than answering the check.
+- **`import/name-collision`**, an error, is two tables that would be written to
+  one file. Names are folded before they are compared, so `public.Orders` and
+  `public.orders` collide too, **on every platform** and not only on the ones
+  whose filesystem folds. Only the first is written. A case-only collision says
+  so in its own words, because "import one schema at a time" is no advice at all
+  for two tables that are already in one schema. ADR 0093.
+
+Neither is a reason to start editing the model directory by hand. The warning
+exits 0 and the model is on disk, so fix the export and run the import again,
+which is a re-import and shows you the delta first. The error exits 1 over a
+directory that has been part written, and the run's own last line is the one to
+follow: empty it and import again once the export is one this can be written
+from.
 
 `dbmd init` writes a small example model with its prose, meant to be read once
 and replaced. That one refuses rather than writes into two states, and they are
@@ -545,5 +610,9 @@ Three exits, and they are what a script reads:
   it in a loop leaves `git status` empty. It replaces only what is between its
   two markers, so the rest of that README is a place to write.
 - **A file that does not parse does not stop a check.** It is reported and
-  skipped and every other file is still checked, so one broken file never hides
-  the other nine.
+  skipped and every other file is still read and checked, so one broken file
+  never stops you being told about the other nine. It does silence the three
+  diagnostics that would have concluded something is missing, which is a
+  deliberate exception and is
+  [above](#what-a-check-says-about-a-file-that-did-not-load): read a run with an
+  error in it as incomplete, not as clean.
