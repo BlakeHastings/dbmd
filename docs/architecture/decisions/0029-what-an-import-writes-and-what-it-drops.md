@@ -274,3 +274,50 @@ Nobody has asked for the normalised type in the file. The
 `timestamp with time zone(3)` wart has not shown up in a real diff, so
 `EngineProvider` still has no `formatType`. Two schemas with the same table name
 is still rare, and `tables/` is still flat.
+
+## The grid paragraph is superseded by 0075, and the five is the only part that goes
+
+Appended rather than edited, because the paragraph corrected below is the
+argument ADR 0075 had to answer and it should still be readable as it was
+argued. The agent that wrote 0075 left this alone deliberately, because this
+directory was held by the sweep of the revisit lists; this is that sweep picking
+it up rather than a second opinion about the layout.
+
+**What is superseded is one number.** The section above headed *The layout is a
+grid, and it is the studio's grid* says tables go at
+`(40 + n mod 5 x 300, 40 + floor(n / 5) x 260)`.
+[ADR 0075](0075-the-grid-is-shaped-like-the-window-and-a-fit-that-cannot-fit-says-so.md)
+replaces the five with a width derived from the count and aimed at the window's
+shape, so four tables land two wide, sixteen land five wide, a hundred land
+twelve wide and six hundred land thirty wide.
+
+**Everything else in that paragraph holds and is worth saying so.** Name order,
+because `readModel` sorts by name and the grid should agree with what the page
+draws. The studio's own pitches, 300 and 260, unchanged. The copy across the
+browser seam rather than an import of the bundle, for the reason ADR 0011 gives.
+And no auto layout: 0075 turns the choice of width into arithmetic on a count
+and changes nothing about a position being the developer's to arrange once.
+
+**Why the five was wrong is not that it was five.** It is that it was fixed while
+the thing it had to suit was not. Nothing had ever pointed this command at more
+than eight tables when the number was chosen, and at eight tables five is fine.
+The measurement that overturned it is in 0075 and in `docs/process/verified.md`
+and is not restated here.
+
+**The way out this paragraph names has not been taken and its signal has not
+fired.** The paragraph says the way out is a shared module of layout constants,
+and that the signal it is needed is "somebody changing one of the two and not the
+other". The two were changed together: `src/import/model.ts` and
+`src/studio/client/place.ts` both gained `columnsFor`, and
+`test/import/model.test.ts` imports both and drives them against each other at
+thirteen sizes, so drifting apart is a red test rather than a picture that moves
+the first time somebody opens the studio on an import. So this is a duplicated
+function now rather than four duplicated numbers, which is more to keep in step
+and is held in step by something rather than by memory. ADR 0075 carries the
+trigger for taking the way out: a third copy.
+
+**No revisit entry of this record has fired with 0075**, which was checked at the
+same time. Nobody has asked for the normalised type in the file, the
+`timestamp with time zone(3)` wart has not appeared in a real diff, two schemas
+with the same table name is still rare, and the two entries that had already
+fired are recorded in the section above this one.
