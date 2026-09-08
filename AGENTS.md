@@ -186,6 +186,16 @@ on the line you wrote it: `<!-- hypothetical: dbmd fmt -->` in markdown, or
 it fails once the thing exists, so the sentence gets reread on the day it stops
 being hypothetical. ADR 0036.
 
+**So is a flag written beside it.** The same script reads what comes after the
+command word on a command line and resolves it against that command's own
+options table, plus `--json`, `--no-color`, `--help` and `-h`, which the entry
+point accepts after every command. `dbmd check --deep` was written on three
+pages, one of them the CI recipe this project hands a stranger, and all three
+passed. A flag is marked the same way: `hypothetical: dbmd check --deep`. The
+options table is the authority on what a command takes and the `Options:` block
+in its `--help` is checked against it, so a flag that works and is undocumented
+is a red build rather than a gap somebody finds a year later. ADR 0089.
+
 **A command that exists owes `README.md` an entry.** The same script reads the
 registry the other way, and fails when a command on it is documented nowhere. An
 entry is a paragraph under "The commands" that opens with the command in bold
