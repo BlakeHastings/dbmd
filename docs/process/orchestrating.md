@@ -979,3 +979,41 @@ the built CLI found nine correct, several byte for byte, one unverifiable becaus
 it prints a port the operating system picks, and exactly one wrong. A number
 describing a risk is worth much less than the list of which items carry it, and
 the list took twenty minutes.
+
+## Check the instrument before you believe what it says about the product
+
+A script written to check whether every column in the model reaches the exported
+diagram reported that all 64 columns were missing from all 8 tables. The counts
+were right. The table names were right. The output was exactly what a serious
+defect in the exporter would produce, presented with the confidence of a
+measurement.
+
+The exporter was fine. The script's regexes had no backslashes in them by the
+time they reached disk, because a quoted heredoc in this harness halves
+consecutive backslashes, so a JavaScript literal written as a regex escape
+arrives as a bare letter and matches nothing.
+
+**The thing that saved it was that the result was too good.** Every column
+missing from every table is not how software fails. A real defect drops one
+column, or one kind of column, or the last one. A clean sweep of nothing means
+the instrument, and the next step was to print the regex rather than to write the
+issue.
+
+Three rules come out of it, and only the first is about backslashes.
+
+**Any script with a backslash in it goes through the Write tool.** This is the
+third quoting failure of the session, after a `node -e` that could not carry an
+apostrophe and an argv order that wrote a stray directory into the main checkout.
+The pattern is the shell, every time, and the fix is to stop putting code through
+it.
+
+**A negative result is a claim and needs the same standard as a positive one.**
+Every check here is aimed at the product, so a check that says the product is
+broken feels like it has done its job and a check that says nothing is wrong
+feels like it failed. That is backwards: the alarming answer is the one to
+distrust first, because it is the one that costs an agent a day.
+
+**"Read the code before filing" applies to your own tools.** The rule was written
+here about agents describing what a page appeared to do. It reads as advice about
+somebody else's report, and its sharpest case is your own instrument, which you
+trust more because you wrote it ten minutes ago.

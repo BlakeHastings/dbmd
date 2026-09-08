@@ -6153,3 +6153,44 @@ corrected by whoever fixed the thing and the other was nobody's job.
   option today. The trade is deliberate and written down: a helper that guesses
   there could call an accepted flag unknown the day somebody adds one, which is
   worse than a fallback that reads slightly louder.
+
+- **The mermaid diagram tells the truth about the model, checked table by table
+  and relationship by relationship.** This is the one output where being wrong is
+  invisible to its reader, which is the argument ADR 0023 makes for refusing to
+  draw a model with an error in it. Drawn from `examples/shop`: all 8 tables and
+  all 64 columns reach the diagram, and all 11 refs in the model become 11
+  relationships. Every cardinality matches the file. A required ref draws the
+  parent as exactly one and a nullable ref draws it as zero or one, on all
+  eleven. The one relationship drawn with a solid line rather than a dashed one
+  is `orders` to `order_items`, whose `order_id` is part of `order_items`' own
+  primary key, which is exactly what an identifying relationship means. A primary
+  key column with no explicit nullability is drawn as exactly one, which is right
+  because a key column cannot be null, and is the case a naive reading of the
+  file gets wrong.
+
+- **A quoted heredoc in this harness halves consecutive backslashes, and it
+  destroyed an instrument in a way that looked like a serious product defect.**
+  Measured, writing four lines through `<<'EOF'`:
+
+  | written | arrived |
+  | --- | --- |
+  | `\s` | `\s` |
+  | `\s` | `\s` |
+  | `\\s` | `\s` |
+  | `\\s` | `\s` |
+
+  So a JavaScript string literal written as `'\s'` lands on disk as `'\s'`,
+  which JavaScript then reads as the letter `s`. Every regex escape written the
+  normal way is silently gone.
+
+  **What that cost.** A script checking whether every column reaches the diagram
+  reported all 64 of them missing from all 8 tables. That is precisely what an
+  export dropping every column would look like, and the numbers were right for
+  the wrong reason, so nothing about the output said the instrument was broken.
+  It was caught by printing `regex.source` and finding `(^|s)id(s|$)` where
+  `(^|\s)id(\s|$)` was written.
+
+  **The rule: any script containing a backslash goes through the Write tool, not
+  a heredoc.** This is the third quoting failure in one session, after a
+  `node -e` that could not carry an apostrophe and an argv order that wrote a
+  directory into the main checkout.
