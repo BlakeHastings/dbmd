@@ -25,7 +25,12 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import mermaid from 'mermaid'
-import { mermaidDiagram, mermaidSection } from '../../src/export/mermaid.js'
+import {
+  MERMAID_MAX_TEXT_SIZE,
+  MERMAID_VERSION,
+  mermaidDiagram,
+  mermaidSection,
+} from '../../src/export/mermaid.js'
 import { modelFromIntrospection } from '../../src/import/model.js'
 import { readIntrospection } from '../../src/import/read.js'
 import { readModel } from '../../src/model/read.js'
@@ -609,5 +614,61 @@ describe('a bare entity name is worse than a parse error now, which is a finding
     expect(await parseError('erDiagram\n  one two three {\n    uuid id PK\n  }\n')).toMatch(
       /error/i,
     )
+  })
+})
+
+/**
+ * The two constants this module states about mermaid, asked of the mermaid that
+ * is installed.
+ *
+ * They cannot be read at run time. Mermaid is a devDependency (ADR 0048) and
+ * `files` ships `dist` only (ADR 0024), so an installed `dbmd` has no mermaid to
+ * ask and `dbmd export` has to work on that install. They are therefore typed in
+ * `src/export/mermaid.ts`, and this block is what stops them being a number
+ * somebody copied off a page once and nothing ever read again. ADR 0100.
+ *
+ * `package-lock.json` pins what `npm ci` installs, so the day either of these
+ * goes red is a day somebody moved mermaid on purpose, which is the same
+ * arrangement ADR 0048 already describes for the grammar.
+ */
+describe('what this module claims about mermaid, asked of mermaid', () => {
+  test('MERMAID_MAX_TEXT_SIZE is the installed default maxTextSize', () => {
+    // `render` compares the diagram against `config?.maxTextSize ?? MAX_TEXTLENGTH`
+    // and `getConfig()` answers with the default config whenever nothing has
+    // overridden it, so the default config's value is the one that decides and
+    // the private fallback beside it is never reached. Both are 50000 in
+    // 11.17.2, and this reads the one that does the deciding.
+    expect(
+      mermaid.mermaidAPI.defaultConfig.maxTextSize,
+      'mermaid.mermaidAPI.defaultConfig.maxTextSize, against MERMAID_MAX_TEXT_SIZE in src/export/mermaid.ts',
+    ).toBe(MERMAID_MAX_TEXT_SIZE)
+  })
+
+  test('MERMAID_VERSION is the version those constants were read out of', () => {
+    const installed = (
+      JSON.parse(
+        readFileSync(new URL('../../node_modules/mermaid/package.json', import.meta.url), 'utf8'),
+      ) as { version: string }
+    ).version
+    expect(
+      installed,
+      'the installed mermaid version, against MERMAID_VERSION in src/export/mermaid.ts. Every ' +
+        'message that prints the size limit prints this beside it, so a bumped mermaid means ' +
+        'reading maxTextSize again rather than only editing this string.',
+    ).toBe(MERMAID_VERSION)
+  })
+
+  test('`characters` counts the diagram and not the prose the section wraps it in', async () => {
+    // What a markdown renderer hands mermaid is the body of the fence, so that
+    // is what the limit is compared against. The section carries the markers, a
+    // notice and the caveats paragraph as well, which is about a kilobyte more,
+    // and comparing that number against 50000 instead would warn about models
+    // mermaid draws perfectly well.
+    const { model } = await readModel(exampleShop)
+    const section = mermaidSection(model)
+
+    expect(section.characters).toBe(mermaidDiagram(model).length)
+    expect(section.characters).toBeLessThan(section.text.length)
+    expect(section.characters).toBeLessThan(MERMAID_MAX_TEXT_SIZE)
   })
 })

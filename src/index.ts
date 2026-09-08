@@ -1,4 +1,13 @@
-export { mermaidDiagram, mermaidSection } from './export/mermaid.js'
+// `MERMAID_MAX_TEXT_SIZE` and `MERMAID_VERSION` are out here for the same
+// reason `MermaidSection.characters` exists: a caller that builds a diagram has
+// the size problem `dbmd export` has, and the alternative is every one of them
+// typing 50000 out of a blog post. ADR 0100.
+export {
+  MERMAID_MAX_TEXT_SIZE,
+  MERMAID_VERSION,
+  mermaidDiagram,
+  mermaidSection,
+} from './export/mermaid.js'
 export type { MermaidSection } from './export/mermaid.js'
 export { readModel } from './model/read.js'
 export { validate } from './model/validate.js'

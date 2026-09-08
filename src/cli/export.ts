@@ -26,7 +26,13 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { sortDiagnostics } from '../diagnostics.js'
-import { SECTION_BEGIN, SECTION_END, mermaidSection } from '../export/mermaid.js'
+import {
+  MERMAID_MAX_TEXT_SIZE,
+  MERMAID_VERSION,
+  SECTION_BEGIN,
+  SECTION_END,
+  mermaidSection,
+} from '../export/mermaid.js'
 import { readModel } from '../model/read.js'
 import { validate } from '../model/validate.js'
 import { writeAtomically } from '../model/write.js'
@@ -67,6 +73,13 @@ opening one, is an error rather than a guess.
 
 The file is not written at all when the diagram has not changed, so running
 this in a loop leaves "git status" empty.
+
+A diagram over ${MERMAID_MAX_TEXT_SIZE} characters is written and warned about
+rather than refused. That is mermaid ${MERMAID_VERSION}'s default maxTextSize,
+past which it draws a red "Maximum text size in diagram exceeded" box in place
+of the diagram; the file is still a correct diagram, so the exit code is still
+0, and a renderer configured with a larger limit draws it. The warning names
+the character count and goes to stderr in both forms, --stdout included.
 
 Exit codes:
   0   written, or already up to date
@@ -113,13 +126,32 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
 
   const section = mermaidSection(model)
   const inventory = `${plural(section.tables, 'table')}, ${plural(section.relationships, 'relationship')}`
+  // ADR 0100. The diagram is correct and this is a fact about what a renderer
+  // will do with it, so it is a warning beside a success rather than a refusal.
+  const oversized = section.characters > MERMAID_MAX_TEXT_SIZE
+  const warning = oversized ? tooLargeToDraw(section.characters) : ''
 
   if (stdout) {
     // ADR 0006 rule 1, in the sentence it is written with: "dbmd export
     // --stdout > diagram.md produces a diagram and no chatter". So there is no
     // narration here, not even a success line.
+    //
+    // The warning is the one exception and it does not cost that sentence
+    // anything. Rule 1 is about stdout: the redirect still captures the
+    // document and only the document, there is still no success line to strip
+    // and no quiet flag to remember, and a run under the limit still writes
+    // nothing at all to stderr. What is different about this run is that the
+    // text going into somebody's file will not draw, which is the same defect
+    // whether the text was written here or printed, and the flag most likely to
+    // be used for pasting a diagram somewhere is the worst one to keep quiet
+    // in. This command already writes to stderr on a model with errors, under
+    // the same flag, for the same reason.
     out.data(section.text)
-    return out.report({ code: 0, text: '', json: { directory, format: 'mermaid', stdout: true } })
+    return out.report({
+      code: 0,
+      text: warning,
+      json: { directory, format: 'mermaid', stdout: true },
+    })
   }
 
   const path = join(directory, README)
@@ -206,9 +238,10 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
 
   return out.report({
     code: 0,
-    text: written
-      ? `Wrote ${out.style.strong(slashed(path))}: ${inventory}.\n`
-      : `${out.style.strong(slashed(path))} is already up to date: ${inventory}.\n`,
+    text:
+      (written
+        ? `Wrote ${out.style.strong(slashed(path))}: ${inventory}.\n`
+        : `${out.style.strong(slashed(path))} is already up to date: ${inventory}.\n`) + warning,
     json: {
       directory,
       format: 'mermaid',
@@ -216,8 +249,55 @@ async function runExport(argv: readonly string[], out: Output): Promise<number> 
       written,
       tables: section.tables,
       relationships: section.relationships,
+      characters: section.characters,
+      mermaid: {
+        version: MERMAID_VERSION,
+        maxTextSize: MERMAID_MAX_TEXT_SIZE,
+        overMaxTextSize: oversized,
+      },
     },
   })
+}
+
+/**
+ * The warning a diagram over mermaid's `maxTextSize` gets, on stderr, beside an
+ * exit code of 0.
+ *
+ * Three sentences, and each one is answering a different reader.
+ *
+ * The **first** is for the reader who has to know what will happen: mermaid
+ * substitutes a red box carrying that exact sentence in place of the diagram,
+ * so quoting it is what lets somebody who has already seen the box on GitHub
+ * match the two up. Both numbers are printed, because the gap between them is
+ * how far over the model is, and because the fence boundary is worth a
+ * character either way (`MermaidSection.characters`).
+ *
+ * The **second** is for the reader who is pasting this into something else.
+ * 50,000 is one renderer's default and any renderer may raise it, so a person
+ * with a bigger limit should read this and stop. Saying what GitHub configures
+ * would be the useful sentence and it cannot be written: nothing in this
+ * repository can observe it, and `release.yml` and ADR 0060 both handle an
+ * unobserved fact by naming it as unobserved rather than by guessing.
+ *
+ * The **third** is for the reader deciding whether they have broken something.
+ * Nothing failed, the file on disk is right, and the model is fine; what is
+ * wrong is downstream of all three. `dbmd studio` is the answer this project
+ * already gives for a model too big to look at as one picture, and the caveats
+ * paragraph inside every generated section says so too.
+ *
+ * There is no `dbmd:` prefix and no `bad` styling. Both mean "this run failed"
+ * everywhere else in the CLI, and this run did not. `dbmd check` prints the
+ * word `warning` plain for the same reason.
+ */
+function tooLargeToDraw(characters: number): string {
+  return (
+    `warning: that diagram is ${characters} characters, and mermaid draws a red "Maximum text ` +
+    `size in diagram exceeded" box in place of any diagram over ${MERMAID_MAX_TEXT_SIZE}.\n` +
+    `${MERMAID_MAX_TEXT_SIZE} is mermaid ${MERMAID_VERSION}'s default maxTextSize rather than a ` +
+    `rule, so a renderer configured with a larger one draws this, and what GitHub configures ` +
+    `cannot be read from here.\n` +
+    `Nothing failed and the model is fine. "dbmd studio" is what reads a model this size.\n`
+  )
 }
 
 /**
