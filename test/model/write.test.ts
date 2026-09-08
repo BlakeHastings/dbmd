@@ -674,6 +674,69 @@ describe('the write is atomic', () => {
     })
   })
 
+  test('a refusal names the files it landed before it, and they are really on disk', async () => {
+    await withCopy(canonicalModel, async (dir) => {
+      const { model: read } = await readModel(dir)
+      const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
+      const both = withTable(changed, 'addresses', (addresses) => ({
+        ...addresses,
+        group: 'billing',
+      }))
+
+      rename.instead = async (from, to) => {
+        if (!to.endsWith('orders.md')) return renameSync(from, to)
+        throw new Error('EPERM: operation not permitted')
+      }
+
+      const refusal = (await writeModel(dir, both, {
+        only: new Set(['tables/addresses.md', 'tables/orders.md']),
+      }).catch((error: unknown) => error)) as WriteFailed
+
+      // The half a caller could not see before ADR 0087. `addresses` is on disk
+      // under its real name and the throw said so; without this the only thing
+      // a report could say was the sentence about `orders`.
+      expect(refusal.written).toEqual(['tables/addresses.md'])
+      expect(refusal.path).toBe('tables/orders.md')
+      // Asserted from the file rather than from the list, because the list
+      // being right about a write that did not happen is exactly the failure
+      // this is guarding.
+      expect(await readFile(join(dir, 'tables', 'addresses.md'), 'utf8')).toContain(
+        'group: billing',
+      )
+      expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).not.toContain(
+        'group: billing',
+      )
+    })
+  })
+
+  test('a refusal carries the skips too, so a report is the same report either way', async () => {
+    await withCopy(canonicalModel, async (dir) => {
+      const { model: read } = await readModel(dir)
+      const changed = withTable(read, 'orders', (orders) => ({ ...orders, group: 'billing' }))
+      // A name from a catalogue that no file can hold, which the writer answers
+      // with a skip rather than a throw (ADR 0026). It is decided before the
+      // first job runs, so a refusal three files later must not lose it: the
+      // caller turns it into a diagnostic and the run that failed owes the
+      // reader that diagnostic as much as the run that finished.
+      const unwritable: Model = {
+        ...changed,
+        tables: [...changed.tables, table({ name: 'Ledger: Entry', path: 'tables/whatever.md' })],
+      }
+
+      rename.instead = async () => {
+        throw new Error('EPERM: operation not permitted')
+      }
+
+      const refusal = (await writeModel(dir, unwritable).catch(
+        (error: unknown) => error,
+      )) as WriteFailed
+      expect(refusal.skipped).toContainEqual({
+        path: 'tables/Ledger: Entry',
+        reason: 'unsafe-name',
+      })
+    })
+  })
+
   test('a refusal before there is a temporary file says there is none', async () => {
     await withCopy(canonicalModel, async (dir) => {
       const { model: read } = await readModel(dir)

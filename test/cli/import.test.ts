@@ -16,18 +16,40 @@
  *   model and therefore a diagnostic naming the table rather than an exception
  */
 
+import { renameSync } from 'node:fs'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { type Input, processStdin, runImport } from '../../src/cli/import.js'
 import { createOutput } from '../../src/cli/output.js'
 import { captureEnvironment, runCli, type Run } from './harness.js'
 
+/**
+ * The one call whose failure this command has to report rather than throw, and
+ * no real filesystem will fail it on demand. The same switch
+ * `test/model/write.test.ts` uses, for the same reason, and it is inert until a
+ * case sets it: `vi.hoisted` because the factory is lifted above every import.
+ */
+const rename = vi.hoisted(() => ({
+  instead: undefined as undefined | ((from: string, to: string) => Promise<void>),
+}))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    default: actual,
+    rename: async (from: string, to: string) =>
+      rename.instead === undefined ? actual.rename(from, to) : rename.instead(from, to),
+  }
+})
+
 const temporaries: string[] = []
 
 afterEach(async () => {
+  rename.instead = undefined
   for (const directory of temporaries.splice(0)) {
     await rm(directory, { recursive: true, force: true })
   }
@@ -703,6 +725,178 @@ describe('re-importing over a model', () => {
     expect(run.code).toBe(1)
     expect(flat(run.err)).toContain('holds a model this cannot read')
     expect(await readFile(join(dir, 'tables', 'Tenant.md'), 'utf8')).toBe('no frontmatter here\n')
+  })
+})
+
+/**
+ * The disk refuses one of the files, half way through.
+ *
+ * This is dbmd's own reproduction, not a hypothetical: a model of two tables
+ * where both files need writing, `attrib +R` on the second, and the writer
+ * reaching it after the first has already landed. Two things were wrong with
+ * what came out. The refusal arrived in Node's voice, with an absolute path and
+ * a temporary file the reader never made, from the last-resort handler in
+ * `main.ts` (ADR 0083 fixed the same defect on `dbmd export`). And the file that
+ * had landed was reported nowhere, in either form, so the one thing on the
+ * screen was an error about the other file and the developer had no reason to
+ * think their tree had changed at all. It had. ADR 0087.
+ *
+ * `rename` is mocked because no real filesystem refuses on demand, and the mock
+ * passes every other file through to the real call, so the files that land here
+ * really land.
+ */
+describe('a file the filesystem refuses', () => {
+  const ID = { column_name: 'id', format_type: 'bigint', not_null: true }
+  const ADDED = { column_name: 'note', format_type: 'text', not_null: false }
+
+  /** Two tables, one column each. `order_line` sorts before `orders`. */
+  const twoTables = postgresFile([
+    table('order_line', { columns: [ID] }),
+    table('orders', { columns: [ID] }),
+  ])
+  /** The same two, each with a column the model on disk does not have. */
+  const bothGrown = postgresFile([
+    table('order_line', { columns: [ID, ADDED] }),
+    table('orders', { columns: [ID, ADDED] }),
+  ])
+
+  /** Refuse exactly one file, and let every other one through to the disk. */
+  function refuse(name: string): void {
+    rename.instead = async (from, to) => {
+      if (!to.endsWith(name)) return renameSync(from, to)
+      throw new Error(`EPERM: operation not permitted, rename '${from}' -> '${to}'`)
+    }
+  }
+
+  async function imported(): Promise<string> {
+    const dir = join(await workspace(), 'db-model')
+    expect((await runWithStdin(['--dir', dir], piped(twoTables))).code).toBe(0)
+    return dir
+  }
+
+  test('says which file it wrote before the one it could not', async () => {
+    const dir = await imported()
+    refuse('orders.md')
+
+    const run = await runWithStdin(['--dir', dir, '--confirm'], piped(bothGrown))
+
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('Could not write')
+    expect(flat(run.err)).toContain('tables/orders.md, and 1 file had already been written')
+    expect(run.err).toContain('  tables/order_line.md')
+    expect(flat(run.err)).toContain(
+      'has some of the changes this run was confirmed to make and not the rest',
+    )
+    expect(flat(run.err)).toContain('the list it makes will be shorter')
+    // And the claim is true of the disk, which is the half a message cannot
+    // assert about itself: the column is in the file that landed and is not in
+    // the file that refused.
+    expect(await readFile(join(dir, 'tables', 'order_line.md'), 'utf8')).toContain('name: note')
+    expect(await readFile(join(dir, 'tables', 'orders.md'), 'utf8')).not.toContain('name: note')
+  })
+
+  test("leads with the reader's own file and explains the temporary one after it", async () => {
+    const dir = await imported()
+    refuse('orders.md')
+
+    const run = await runWithStdin(['--dir', dir, '--confirm'], piped(bothGrown))
+    const words = flat(run.err)
+
+    // ADR 0083: the system's words are kept exactly, temporary file and all,
+    // because the paths are the only part of the message that can say the write
+    // went to a network share. What that record decided is the *order*, and it
+    // is the whole assertion here: the file the developer has open comes first
+    // and the name they have never seen is met with a sentence in front of it.
+    expect(words).toContain('EPERM: operation not permitted')
+    expect(words).toContain(
+      'The write goes through a temporary file in the same directory, which is why the system ' +
+        'names that one first:',
+    )
+    const own = words.indexOf('tables/orders.md')
+    const temporary = words.indexOf('.orders.md.')
+    expect(own).toBeGreaterThan(-1)
+    expect(temporary).toBeGreaterThan(-1)
+    expect(own).toBeLessThan(temporary)
+    // The one thing that is not left behind. The writer deletes it on the way
+    // out, so every name in that message is of a file that is gone.
+    expect((await readdir(join(dir, 'tables'))).filter((entry) => entry.endsWith('.tmp'))).toEqual(
+      [],
+    )
+  })
+
+  test('--json carries the same two facts, so a script is not reading prose', async () => {
+    const dir = await imported()
+    refuse('orders.md')
+
+    const { environment, written } = captureEnvironment()
+    const code = await runImport(
+      ['--dir', dir, '--confirm'],
+      createOutput(environment, { json: true, noColor: true }),
+      piped(bothGrown),
+    )
+
+    expect(code).toBe(1)
+    const report = JSON.parse(written.out) as {
+      ok: boolean
+      files: string[]
+      removed: string[]
+      counts: { changes: number }
+      error: { code: string; message: string; file: string }
+    }
+    expect(report.ok).toBe(false)
+    // `files` means the same thing here as on the run that finished: what is on
+    // disk because this run put it there.
+    expect(report.files).toEqual(['tables/order_line.md'])
+    expect(report.error.code).toBe('write-failed')
+    expect(report.error.file).toBe('tables/orders.md')
+    expect(report.error.message).toContain('EPERM')
+    // The deletions happen after the write, so a run that stopped in the write
+    // deleted nothing, and the payload says that rather than omitting it.
+    expect(report.removed).toEqual([])
+    expect(report.counts.changes).toBe(2)
+  })
+
+  test('a first import that lands nothing says the directory is as it was', async () => {
+    const dir = join(await workspace(), 'db-model')
+    // Every file, so the refusal is the first job and nothing precedes it.
+    rename.instead = async (from, to) => {
+      throw new Error(`EPERM: operation not permitted, rename '${from}' -> '${to}'`)
+    }
+
+    const run = await runWithStdin(['--dir', dir], piped(twoTables))
+
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('nothing had been written before it')
+    expect(flat(run.err)).toContain('is as it was')
+    // Which is the sentence `dbmd export` prints unconditionally and this
+    // command may print only when it is true.
+    expect(flat(run.err)).not.toContain('had already been written')
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  test('a first import that lands some of it says the next run is a re-import', async () => {
+    const dir = join(await workspace(), 'db-model')
+    refuse('orders.md')
+
+    const run = await runWithStdin(['--dir', dir], piped(twoTables))
+
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('2 files had already been written')
+    expect(flat(run.err)).toContain('holds part of this import rather than all of it')
+    expect(flat(run.err)).toContain('is not empty now, so that run is a re-import')
+    expect((await readdir(join(dir, 'tables'))).sort()).toEqual(['order_line.md'])
+
+    // And that sentence is true, which is the only way to know it is worth
+    // printing: the same command again reports what is still missing.
+    rename.instead = undefined
+    const again = await runWithStdin(['--dir', dir], piped(twoTables))
+    expect(again.code).toBe(1)
+    expect(again.err).toContain('tables/orders.md')
+    expect(flat(again.err)).toContain('nothing has been written, because nothing above has been')
+
+    const confirmed = await runWithStdin(['--dir', dir, '--confirm'], piped(twoTables))
+    expect(confirmed.code).toBe(0)
+    expect((await readdir(join(dir, 'tables'))).sort()).toEqual(['order_line.md', 'orders.md'])
   })
 })
 

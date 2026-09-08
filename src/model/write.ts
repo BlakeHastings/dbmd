@@ -342,12 +342,21 @@ export interface WriteResult {
  * only when it is true: a failure at the read-before-write names the real file
  * and no temporary, and explaining a temporary file there would be a sentence
  * about something that is not on the screen. ADR 0083.
+ *
+ * `written` and `skipped` are what the write had done when it stopped, and they
+ * are the same two lists a `WriteResult` returns. A model is many files, the
+ * refused one is rarely the first, and the files before it are already on disk
+ * under their real names: a throw that carried only the refusal would leave the
+ * caller reporting one error about one file and saying nothing about a directory
+ * it has just changed. `dbmd import` printed exactly that. ADR 0087.
  */
 export class WriteFailed extends Error {
   constructor(
     readonly path: string,
     readonly temporary: string | null,
     cause: unknown,
+    readonly written: readonly string[] = [],
+    readonly skipped: readonly WriteSkip[] = [],
   ) {
     super(cause instanceof Error ? cause.message : String(cause), { cause })
     this.name = 'WriteFailed'
@@ -400,6 +409,12 @@ export interface WriteOptions {
  * Unlike `readModel`, this throws: a filesystem that will not accept a write is
  * not a diagnostic about the model, and a caller that carries on regardless has
  * told the user their work is saved when it is not.
+ *
+ * **The throw carries what it had done.** It stops at the first file the
+ * filesystem refuses, exactly as it always has, and the `WriteFailed` names the
+ * files already written and the objects already skipped as well as the one that
+ * refused. Nothing here decides what to do about a part-written directory; that
+ * is the caller's, and until ADR 0087 the caller had nothing to decide it with.
  *
  * The line is between the filesystem and the model, and not between "hard" and
  * "easy". A full disk, a read-only directory and a permission denied are the
@@ -461,12 +476,40 @@ export async function writeModel(
       await mkdir(dirname(target), { recursive: true })
       await writeAtomically(job.path, target, job.text)
     } catch (error) {
-      throw error instanceof WriteFailed ? error : new WriteFailed(job.path, null, error)
+      // The files already landed travel with the refusal, because this is the
+      // only frame that has both. A caller reporting the throw is reporting a
+      // directory that is part written, and it cannot say which part unless the
+      // throw says so. ADR 0087.
+      throw refusal(error, job.path, written, skipped)
     }
     written.push(job.path)
   }
 
   return { written, skipped }
+}
+
+/**
+ * Whatever the write threw, as the refusal a caller reports, carrying progress.
+ *
+ * `writeAtomically` is the only frame that knows the temporary file's name and
+ * this loop is the only one that knows what has landed, so the two facts meet
+ * here: the refusal it raised is rebuilt around the same cause rather than
+ * mutated, so `WriteFailed` stays a value a caller can hold. Its `message` is
+ * the cause's either way, which is why rebuilding it changes nothing a reader
+ * sees.
+ */
+function refusal(
+  error: unknown,
+  path: string,
+  written: readonly string[],
+  skipped: readonly WriteSkip[],
+): WriteFailed {
+  const landed = [...written]
+  const left = [...skipped]
+  if (error instanceof WriteFailed) {
+    return new WriteFailed(error.path, error.temporary, error.cause, landed, left)
+  }
+  return new WriteFailed(path, null, error, landed, left)
 }
 
 async function currentText(target: string): Promise<string | undefined> {
