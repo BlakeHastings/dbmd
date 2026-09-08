@@ -156,3 +156,57 @@ from the length of a page, and it is labelled a floor.
 - **GitHub gains something that reports this natively**, or branch protection on
   this repository gains a "require the merge result to be green" rule. Either
   would make this the older half of two things doing one job.
+
+## The reason for not testing this lapsed seventeen minutes after it was written
+
+Appended rather than edited, in the shape the sweep of 2026-09-07 used on eleven
+other records, so that what was argued at 14:47 is still readable as it was
+argued. **The decision stands unchanged**: this is not a gate, it comments rather
+than files, it goes red when `main` is red, it reads the watched workflows out of
+`.github/workflows/`, an absent run is not a failure, a cancelled run is no
+verdict, and nothing is written without `--post`.
+
+**One consequence above has lapsed.** It says nothing in `npm run check` covers
+this "for the same reason nothing covers `check-main-provenance.mjs`: its body is
+API calls, and a test that mocks them would be a test of the mock". That reason
+was true when it was written and false seventeen minutes later. This record
+landed at 14:47:59 on 2026-09-07. **ADR 0058 landed at 15:04:48 the same
+afternoon**, and it is precisely about `check-main-provenance.mjs`: it splits the
+decision from the network in that script, exports `landedPulls`, `auditCommits`,
+`violationReport` and `accountedReport`, and breaks each of them on purpose in
+`test/guards/broken-on-purpose.test.ts`. The precedent this consequence rests on
+stopped being an example of it before the afternoon was over, and nobody came
+back here for a day.
+
+**The revisit list below could not have caught it, and that is the finding rather
+than an excuse.** All four entries are about the mechanism failing in production:
+a red merge with no comment, comments being ignored, a fourth workflow going
+unwatched, landing moving off pull requests. None of them fires when the *reason*
+for not testing the mechanism stops being true, because that is not an event in
+the mechanism. The sweep of all 263 revisit conditions on 2026-09-07 read this
+record six hours after it landed and correctly ruled out every one of the four. A
+sweep reads the conditions somebody wrote.
+
+**What was done about it is ADR 0082.** The script is now the shape ADR 0058
+describes: the workflow parse, the green and red sets, the verdict, the comment,
+the pull request rule, the retry, the duplicate scan, the local summary and the
+argument rule are exported functions whose facts are arguments, and `gh` and the
+exit codes run only when the file is the entry point. Forty-nine tests break each
+of them on purpose.
+
+**The paragraph after it, about the delivering half, is not lapsed and was not
+touched.** The POST that writes the comment is still deliberately unfired, for
+the reason given above: seeding the channel with a test alarm about a run from
+yesterday is exactly the cry-wolf failure this design avoids. Asking a decision
+function a question and posting on somebody's pull request are different acts,
+and only the first of them is now covered. `deliver()` is called by nothing in
+the suite. The first real red merge is still what proves the delivering half, and
+it still proves it loudly.
+
+**The first question the parse was ever asked found it wrong.** The decision
+above says the parse is generous, so "a push trigger with no branch filter, or
+one this cannot read, is watched rather than dropped". The list form did that.
+The inline form did not: `branches: *the-usual` was compared as text, does not
+contain the word `main`, and the workflow was dropped in silence. That is a
+watcher watching one thing less for a reason nobody would ever see, which is this
+record's own subject one level down. ADR 0082 carries the fix.
