@@ -46,16 +46,55 @@ npm run check
 command CI runs. It is the whole mechanical gate: there is nothing else to
 remember.
 
-Where the change touches the studio, bring it up and drive it:
+Where the change touches the studio, bring it up and drive it. **Point it at a
+copy of the example, and make the copy with `git archive`**, where `$SCRATCH` is
+a directory of your own outside the repository:
 
 ```bash
-npm run studio -- --port 0
+npm run build
+mkdir -p "$SCRATCH/drive"
+git archive HEAD examples/shop | tar -x -C "$SCRATCH/drive"
+node dist/cli.js studio "$SCRATCH/drive/examples/shop" --port 0
 ```
 
-That script builds first and then opens the repository's own
-[`examples/shop`](../../examples/shop), so there is nothing to set up. An edit
-you make in the page is written back to those files and shows in `git status`:
-`git checkout examples/shop` puts it back.
+There is still nothing to set up: `git archive HEAD` writes the committed model
+into an empty directory in one command, and it is the same eight tables, two
+notes and one group a stranger clones. Driving it is driving the product, which
+is the whole reason this paragraph exists and is not what changed about it.
+
+**Do not use `npm run studio` for this.** That script opens the repository's own
+[`examples/shop`](../../examples/shop), which is tracked, and every edit the page
+makes is written straight into those files. That is the owner's command and
+writing to those files is the point of it for them: the layouts committed in
+that model were dragged there through that exact script. It is not a scratch
+model for an agent, and the undo it needs is the part that bites.
+
+**`git checkout examples/shop` reverts every uncommitted change under that path**,
+not the one file your drag wrote, and it reports only how many paths it updated.
+On the morning of 2026-09-07 ten `layout:` files under that directory were the
+owner's uncommitted work, an afternoon of dragging boxes into place, and a
+`git reset --hard` in the main checkout destroyed them. They were searched for
+exhaustively and they are gone; `handoff.md` records that under "What was
+destroyed". `git checkout examples/shop` is the same loss down a narrower path
+and with no more warning, and this page used to close the paragraph by
+recommending it.
+
+A copy costs one command and removes the whole class, the way a throwaway
+worktree does in
+[`orchestrating.md`](orchestrating.md#the-main-checkout-is-read-only-and-this-is-a-state-rather-than-a-judgement):
+there is nothing in it to lose, so there is nothing to be careful about, and it
+holds when the owner starts arranging boxes while you are already driving.
+Requiring `git status --porcelain examples/shop` to be empty before you start
+would be the cheaper fix and was rejected, because it is a rule about care in a
+place where the same rule has already failed twice.
+[ADR 0079](../architecture/decisions/0079-the-studio-an-agent-drives-is-pointed-at-a-copy.md).
+
+**It also makes the measurement about the product rather than about somebody's
+working tree**, which is a second reason and was learned separately.
+`examples/shop` was once measured in a browser with four of the owner's
+uncommitted `layout:` edits in it, reported as two notes covering three tables,
+and filed as the first picture anybody sees. The committed model renders zero
+overlaps. `verified.md` carries both halves.
 
 `--port 0` lets the OS pick a free port and the command prints the URL it bound
 to, **on stderr**, which with the default port is the only way to learn which
