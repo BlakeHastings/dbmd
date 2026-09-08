@@ -100,6 +100,17 @@ Push your branch, open the PR, report back, and stop. The orchestrator reviews
 and merges. This holds even when your checks are green, even when the change is
 trivial, and even when you are confident.
 
+**`scripts/merge-pr.mjs` now refuses to run from a worktree**, which is where you
+are, so this rule is enforced rather than repeated at you. It was repeated at
+people until 2026-09-08, when an agent merged its own pull request by accident:
+it meant to run a read-only harness, typed the wrapper instead with the correct
+sha, and every gate the script had was satisfied because every gate was about
+the branch. Read [ADR 0078](../architecture/decisions/0078-a-merge-runs-in-the-main-checkout-or-not-at-all.md)
+if you meet the refusal. **The command that did it was in a call labelled as a
+placeholder, with a one second timeout, and a timeout ends the wait rather than
+the process**: it was backgrounded, ran to completion and exited 0. A command you
+are not ready to run is not made safe by giving it a short timeout.
+
 ## Merge discipline
 
 CI runs one check, named `check`, and it is `npm run check`. One entry point
@@ -131,10 +142,15 @@ own* pull request, which is why the layers below still exist:
    land a PR. It reads the check rollup, refuses unless every required check is
    green, refuses a branch behind its base, refuses unless the sha you name is
    the head it is about to merge, and always squash merges.
+   It also refuses to run at all from a linked git worktree, which is the one
+   refusal in it that is about whether the caller may merge anything rather than
+   about whether this merge is a good idea.
    *Not covered:* anyone who does not use the command. It is a tool, not a gate.
-   And it cannot make you read the commit you name, only refuse to merge one you
-   did not name.
-   [ADR 0077](../architecture/decisions/0077-the-merge-names-the-commit-the-reviewer-read.md).
+   It cannot make you read the commit you name, only refuse to merge one you
+   did not name. And an agent that changes directory to the main checkout is
+   past the worktree refusal, which catches the accident rather than the intent.
+   [ADR 0077](../architecture/decisions/0077-the-merge-names-the-commit-the-reviewer-read.md),
+   [ADR 0078](../architecture/decisions/0078-a-merge-runs-in-the-main-checkout-or-not-at-all.md).
 2. **`scripts/guard-merge.mjs`**, a PreToolUse hook wired up in
    `.claude/settings.json`. It denies the commands above before they run.
    *Not covered:* sessions that did not load it. A net, not a guarantee.

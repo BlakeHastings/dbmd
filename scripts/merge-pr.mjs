@@ -30,6 +30,19 @@
 // have caught it was between a value it holds and a value nobody said out loud.
 // Now the reviewer says it out loud, as an argument.
 //
+// And it refuses to run at all from a linked git worktree. The three refusals
+// above are about whether this merge is a good idea; this one is about whether
+// the person running it is allowed to merge anything. "You do not merge. Ever."
+// is the oldest rule in docs/process/working-an-issue.md and every brief repeats
+// it, and until now nothing enforced it: a worktree is a full checkout, so this
+// script is present and runnable in every one of them. On 2026-09-08 an agent
+// merged its own pull request from its worktree by accident, in a command it had
+// labelled as a placeholder it did not intend to run. Every gate above was
+// satisfied, because every gate above was satisfied: the branch was green, level
+// with main, and the sha it named was the head. What it violated was an
+// instruction not to merge at all, which no argument to this script encodes. Now
+// the directory encodes it. ADR 0078.
+//
 // Always squash: one issue becomes one commit on main, so `git log --oneline`
 // stays a readable list of changes rather than a wall of "fix lint" noise, and
 // reverting a change means reverting one commit.
@@ -60,6 +73,7 @@
 //
 //   node scripts/merge-pr.mjs 42 a1b2c3d
 import { execFileSync } from 'node:child_process'
+import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 // SETUP: the exact `name:` of each required CI job, as GitHub reports it in
@@ -101,19 +115,71 @@ const REVIEWED_SHA_MIN_LENGTH = 7
 // ---------------------------------------------------------------------------
 
 /**
+ * Which checkout this is running in, from what `git rev-parse` answered.
+ *
+ * `gitDir`, `gitCommonDir` and `topLevel` are the three lines of
+ * `git rev-parse --git-dir --git-common-dir --show-toplevel`, and `cwd` is
+ * where they were asked from. Returns `{ linked, here, main }`, or `null` when
+ * any answer is missing, which is a "could not tell" the decision refuses on
+ * rather than guesses about.
+ *
+ * A linked worktree is the one that has its own git directory inside the
+ * repository's shared one, which is exactly the difference between these two
+ * answers and the reason this reads them rather than matching a path against
+ * `.claude/worktrees/`. A path pattern would name one tool's convention and
+ * miss the orchestrator's own throwaway rebase worktrees, and it would be a
+ * refusal that a rename turns off silently.
+ *
+ * **Both answers are resolved against `cwd` before they are compared**, and
+ * that is the whole subtlety. Measured on this machine: at the root of the main
+ * checkout git answers `.git` twice, but one directory down it answers an
+ * absolute path for `--git-dir` and the relative `../.git` for
+ * `--git-common-dir`. Comparing those two as strings reports every subdirectory
+ * of the main checkout as a worktree, which is a refusal that fires on the one
+ * caller allowed to merge.
+ */
+export function readCheckout({ gitDir, gitCommonDir, topLevel, cwd }) {
+  const said = (value) => (typeof value === 'string' ? value.trim() : '')
+  const dir = said(gitDir)
+  const common = said(gitCommonDir)
+  const top = said(topLevel)
+  const from = said(cwd)
+  if (dir === '' || common === '' || top === '' || from === '') return null
+
+  // Compared case-insensitively and on forward slashes because this runs on
+  // Windows, where `C:/x` and `c:\x` are one directory. Treating them as two
+  // would refuse the main checkout, and a false refusal is the expensive
+  // direction: it is the orchestrator's merge path.
+  const same = (a, b) =>
+    resolve(from, a).replaceAll('\\', '/').toLowerCase() ===
+    resolve(from, b).replaceAll('\\', '/').toLowerCase()
+
+  return {
+    linked: !same(dir, common),
+    here: top,
+    // The directory holding the shared git directory, which is the main
+    // checkout of an ordinary clone. It is printed rather than acted on, so a
+    // layout where that is not true costs a vague sentence and nothing else.
+    main: dirname(resolve(from, common)).replaceAll('\\', '/'),
+  }
+}
+
+/**
  * Whether this pull request may be merged, and what to say either way.
  *
  * `pr` is what `gh pr view --json` answered. `behind` is how many commits the
  * head is behind its base, or `null` when that could not be compared.
  * `reviewed` is the sha the caller says they read, as they typed it, or `null`
- * when they said nothing. The return is `{ merge, why, notes, warnings }`:
- * `why` is the refusal, and the other two are lines a merge prints on its way
- * through.
+ * when they said nothing. `checkout` is what `readCheckout` above made of the
+ * directory this is running in, or `null` when that could not be told. The
+ * return is `{ merge, why, notes, warnings }`: `why` is the refusal, and the
+ * other two are lines a merge prints on its way through.
  */
 export function decideMerge({
   pr,
   behind,
   reviewed = null,
+  checkout = null,
   required = REQUIRED,
   refuseWhenBehind = REFUSE_WHEN_BEHIND,
   waitedSeconds = 0,
@@ -268,6 +334,51 @@ export function decideMerge({
     )
   }
 
+  // Last, and the ordering is the decision rather than a leftover. Everything
+  // above is a refusal somebody may legitimately want to watch fire, and the
+  // orchestrator watches them from an agent's worktree against a live pull
+  // request, which is the cheapest way to see a control work without merging.
+  // Putting this first would make every other refusal unreachable from there
+  // and turn one demonstration into no demonstration. Putting it last means a
+  // run from a worktree still reports the branch's real problem, and reaches
+  // this line only when the alternative was a merge. That is the accident.
+  if (checkout === null) {
+    return refuse(
+      `nothing here could tell whether this is the main checkout or a git worktree,\n` +
+        `  so it cannot tell whether this merge is the one ADR 0078 is about.\n\n` +
+        `  Either git is not on PATH, or this did not run from inside a checkout:\n` +
+        `  \`git rev-parse --git-dir --git-common-dir --show-toplevel\` answered with\n` +
+        `  fewer than three paths. Both are about where you are standing rather than\n` +
+        `  about this pull request.\n\n` +
+        `  Run it again from the main checkout. Refusing here is the safe direction,\n` +
+        `  because the alternative is a control that passes by being unable to run.`,
+    )
+  }
+
+  if (checkout.linked) {
+    return refuse(
+      `this is a linked git worktree rather than the main checkout, and a merge from\n` +
+        `  a worktree is the one that happens by accident.\n\n` +
+        `    running in     ${checkout.here}\n` +
+        `    main checkout  ${checkout.main}\n\n` +
+        `  Nothing above objected, and that is the point: the required check(s) are\n` +
+        `  green, the branch is level with ${pr.baseRefName}, and the sha you named is the head.\n` +
+        `  On 2026-09-08 an agent got exactly this far and squash merged its own pull\n` +
+        `  request, from a command it had labelled as a placeholder it did not mean to\n` +
+        `  run. Every gate was satisfied. The rule it broke was not one of them.\n\n` +
+        `  If you are an agent working an issue, that rule is yours: push the branch,\n` +
+        `  open the pull request, report, and stop. working-an-issue.md, "You do not\n` +
+        `  merge. Ever.". Say in your report that you wanted to merge and did not.\n\n` +
+        `  If you are the orchestrator, run the same command from the main checkout\n` +
+        `  named above. This script only calls the GitHub API, so running it there\n` +
+        `  writes no file and does not touch the read-only rule in orchestrating.md.\n\n` +
+        `  There is no flag that turns this off, and adding one is the change to argue\n` +
+        `  against: a hatch reachable from a brief is a hatch that ends up in briefs.\n` +
+        `  Every refusal above still fires from a worktree, so watching one fire needs\n` +
+        `  nothing turned off. ADR 0078.`,
+    )
+  }
+
   const notes = [`Head ${head}, which is the commit you named as reviewed.`]
   const warnings = []
 
@@ -382,6 +493,24 @@ function commitsBehindBase(pr) {
   }
 }
 
+// The one fact this script needs about the machine rather than about the pull
+// request, and the only call here that is not `gh`. Wrapped whole: a git that
+// cannot answer produces null, and `decideMerge` is where null means something,
+// because a branch in main() that decides something is the defect ADR 0058
+// removed from this file.
+function checkoutHere() {
+  try {
+    const [gitDir, gitCommonDir, topLevel] = execFileSync(
+      'git',
+      ['rev-parse', '--git-dir', '--git-common-dir', '--show-toplevel'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    ).split('\n')
+    return readCheckout({ gitDir, gitCommonDir, topLevel, cwd: process.cwd() })
+  } catch {
+    return null
+  }
+}
+
 // The second API call, wrapped whole. A failure here returns null and the merge
 // goes on without the line: this is information, not a gate, and a merge that
 // worked yesterday does not start depending on it.
@@ -432,6 +561,7 @@ async function main() {
     pr,
     behind: commitsBehindBase(pr),
     reviewed,
+    checkout: checkoutHere(),
     waitedSeconds: (polls * MERGE_STATE_WAIT_MS) / 1000,
   })
 
