@@ -1391,8 +1391,8 @@ the exact list of what that agent is holding, including files it has created and
 not yet committed. `scripts/held.mjs` walks them and prints it, by file, marking
 any file two worktrees hold.
 
-Two things it has to get right, and both were found by running it rather than by
-designing it:
+Three things it has to get right, and every one was found by running it rather
+than by designing it:
 
 - **A leftover directory is not a worktree.** Thirty-one of the fifty-one
   directories under `.claude/worktrees` are no longer registered, so `git status`
@@ -1404,6 +1404,13 @@ designing it:
   distinguishes an agent that is working from one that stopped an hour ago, so
   the live ids are passed in rather than guessed. That is the one fact the script
   cannot derive and the orchestrator always has.
+- **An agent that has committed its work looks exactly like one that has not
+  started.** The first version read only `git status`, so a branch with ten files
+  committed on it reported nothing at all, and both states were true here at the
+  same moment: one agent had pushed a pull request and two had not yet written a
+  line, and the tool said the same thing about all three. It now reads
+  `origin/main...HEAD` as well and marks those rows `committed`, because a file
+  already committed on somebody's branch is a conflict just the same.
 
 **Run it before writing the "do not touch" list in a brief, not after.** The cost
 of not running it is not a conflict, which git would catch. It is an agent given

@@ -83,10 +83,32 @@ for (const name of existsSync(worktrees) ? readdirSync(worktrees) : []) {
     continue
   }
   read.push(id)
+
+  const hold = (path, status) =>
+    byFile.set(path, [...(byFile.get(path) ?? []), { agent: id, status }])
+
+  // Uncommitted: what the agent has open right now.
   for (const line of git(['status', '--short', '--untracked-files=all'], dir).split('\n')) {
     if (line.trim() === '') continue
-    const path = line.slice(3).trim()
-    byFile.set(path, [...(byFile.get(path) ?? []), { agent: id, status: line.slice(0, 2).trim() }])
+    hold(line.slice(3).trim(), line.slice(0, 2).trim())
+  }
+
+  // Committed on the branch and not on main: what it will touch when it lands.
+  //
+  // The first version reported only the first of these, and an agent that has
+  // committed its work looks exactly like one that has not started. Both were
+  // true here at once, and the difference matters to a brief: a file already
+  // committed on somebody's branch is a conflict just the same.
+  try {
+    for (const path of git(['diff', '--name-only', 'origin/main...HEAD'], dir).split('\n')) {
+      if (path.trim() === '') continue
+      const already = byFile.get(path.trim())
+      if (already?.some((h) => h.agent === id)) continue
+      hold(path.trim(), 'committed')
+    }
+  } catch {
+    // A detached worktree with no merge base is not an agent branch. Say
+    // nothing rather than guessing: its uncommitted rows are already counted.
   }
 }
 
