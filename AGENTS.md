@@ -77,7 +77,8 @@ npm run check
 ```
 
 `npm run check` is typecheck, format check, decision-record numbering, the
-reviewable-diff check, the check that every command named in this tree exists,
+reviewable-diff check, the check that no page holds a long run of its own lines
+twice, the check that every command named in this tree exists,
 the check that the studio's two scenes do not reach into each other's class
 names, tests, a build, a smoke test over the packed tarball, and
 one deliberate break of that smoke test, in that order. It is the only mechanical
@@ -172,6 +173,20 @@ assigns the number, checked against `main` and every open branch.
 that the model is markdown so the diff is the review, and a file git treats as
 binary produces no diff at all. `scripts/check-reviewable.mjs` fails on a NUL
 byte in a tracked file, and it runs in `npm run check`. See Gotchas.
+
+**No page holds a long run of its own lines twice.**
+`scripts/check-duplication.mjs` finds, in each tracked markdown file, the
+longest run of consecutive lines that appears at two disjoint places in it, and
+fails at 40 or more. It runs in `npm run check`. `docs/process/verified.md` held
+its own body three times over for two days in September 2026, from a pull request
+whose diff was `+3688` and whose description said it was a sweep, and nothing in
+the review or the gate was looking at it: a duplicated markdown file has no tests
+to fail and Prettier formats a repeated paragraph as happily as a unique one. The
+limit is three times the largest legitimate repeated run measured across this
+tree, which is 12 lines, and the summary line prints the current margin on every
+green run so raising it can be judged. It reads one file at a time and only
+`.md`, so a page pasted into a second page is not a finding, and one edited word
+inside a pasted block hides the whole of it. ADR 0091.
 
 **A command written in backticks is a claim that it exists.**
 `scripts/check-commands.mjs` resolves every `dbmd <command>`, `npm run <script>`,
