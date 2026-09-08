@@ -3158,7 +3158,7 @@ corrected by whoever fixed the thing and the other was nobody's job.
   | --- | --- |
   | landed in #237 | the group placement paragraph naming a stale suggestion; the rename case clash that could not fire for the rename that needs it; a last-member warning describing a group file that is not there; the same warning missing after a join; "Fix the file and reload" |
   | landed in #238 | "clearing whatever the system is refusing is enough", which was not; a healthy file told it did not parse, with advice to delete it; a stopped rename under-reporting what it wrote, with an undo that exited 1 |
-  | in #240 | Fit saying nothing fitted while everything was on screen; the placement mode outliving its explanation; the conflicts list announced by the wording fixed above it; an edge blaming a parse failure for a locked file; "Could not read the model" overwritten one statement later |
+  | landed in #240 | Fit saying nothing fitted while everything was on screen; the placement mode outliving its explanation; the conflicts list announced by the wording fixed above it; an edge blaming a parse failure for a locked file; "Could not read the model" overwritten one statement later |
   | dispatched last | "The page is re-reading the model" when it is not; "The diagnostics below say what the reader saw" after they have gone; a conflict entry whose "just now" ages and whose path is printed twice |
   | **held on purpose** | the sentence saying a group move writes table files and not the group file, which is on screen for 13 milliseconds |
 
@@ -3180,3 +3180,20 @@ corrected by whoever fixed the thing and the other was nobody's job.
   case both import with their keys, a key naming a real column still writes
   `pk: true`, and two schemas holding one table name still print the older
   collision message unchanged.
+
+- **"A clean rebase is not the same as untouched", and the branch that said it
+  acted on it.** #240 rebased onto a `main` carrying #238, git raised no
+  conflict, and it went and read what #238 had changed in the three functions its
+  own work calls. `conflictSummary` unchanged, which is the one that mattered
+  because its new list name and its ADR 0019 amendment both rest on what that
+  function says about a mixed list. `writeFailureNotice` and `RenameStopped`
+  reworded, both called rather than quoted, so neither moved under it. And #238's
+  retry is server-side, which is why `main.ts` is absent from that diff at all.
+
+  Three specific facts about somebody else's change, each chosen because its own
+  work depends on it. **A green suite would not have told it any of them**, and a
+  clean merge is the moment the question stops being asked.
+
+  It then re-drove all five findings for the third time, on a rebase that turned
+  out to have changed nothing, and got identical numbers. That is what makes the
+  first two drives worth anything.
