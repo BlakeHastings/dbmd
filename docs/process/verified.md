@@ -1334,3 +1334,49 @@ select where the keyboard does, and a resize checked against the wrong file whil
 the status line was naming the right one. Each was cheap because it was caught
 before anything was filed. That ratio is the argument for reading the source
 before believing the page, which `orchestrating.md` now carries as a rule.
+
+## 2026-09-07, night: the re-import, which is the owner's own words
+
+The one feature on this project specified by the owner in their own sentence:
+*"it sounds like you are asking about a delta. When we import, we warn the user
+about the changes 'database table removed' in an itemized list for them to
+scroll through. Then they can confirm the change."* Driven end to end against a
+real payload rather than a fixture-shaped one, because it is the feature they
+care most about and nothing had run it as a person would.
+
+A first import wrote two tables. A sentence was then added to
+`tables/orders.md` by hand, to stand in for a person's documentation. The
+payload was edited to drop one table and add one column, and re-imported:
+
+```
+Re-importing ... from postgres would make 2 changes:
+
+tables/order_line.md
+  database table removed
+      `order_line` is in the model and not in this import, so
+      tables/order_line.md is deleted.
+      Its prose goes with it, and the last commit is where that survives.
+      A table nobody dropped on this list usually means an import over fewer
+      schemas than the last one.
+
+tables/orders.md
+  database column added
+      `orders.cancelled_at` is text in the database and is not in the file, so
+      it is added at the end of `columns:`.
+
+dbmd: nothing has been written, because nothing above has been confirmed.
+```
+
+**The owner's phrase is the literal heading**, the list names the file each
+change is about, and the removal says both what is lost and what usually causes
+it. Nothing was written until `--confirm`, and with it: `order_line.md` gone,
+`cancelled_at` added at line 26, exit 0.
+
+**The sentence written by hand survived.** That is the property the whole design
+turns on, and it is why the promise at the foot of the list, that prose bodies,
+layout and group membership are not touched either way, is worth more than the
+list above it.
+
+**An unchanged re-import is one line and exit 0**, as the help claims, so it is
+safe in CI: *"already says what this postgres import says: 1 table, nothing to
+change."* `dbmd check` on the result reports no problems.
