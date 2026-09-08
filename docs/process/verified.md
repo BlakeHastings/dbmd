@@ -1101,3 +1101,38 @@ makes them evidence rather than a rule to remember.
   Nothing above changes that. It stays unobserved on purpose: settling it needs a
   tag push, that is the one act no agent here may take, and the failure is safe
   and names the checkout rather than the tag.
+
+## 2026-09-07, later: the feedback loop was run rather than assumed
+
+- **An annotation written to the studio's session comes back over MCP.** One was
+  posted to `POST /sessions/mtrxatwq-nia6dq/annotations`, read back through
+  `agentation_get_pending`, and then deleted through
+  `DELETE /annotations/:id`. The session is empty again and holds nothing that
+  was not the owner's. What came back carried the comment, the element label and
+  `elementPath`, with `intent`, `severity`, `nearbyText` and `reactComponents`
+  all null. **So the half of the loop this project depends on is proved**, and
+  the only unproved link left is whether the toolbar opens under a real mouse.
+- **The server has a plain REST surface as well as the MCP one.**
+  `GET /health`, `GET /sessions/:id`, `POST /sessions/:id/annotations`,
+  `PATCH /annotations/:id` and `DELETE /annotations/:id`. `GET /sessions/:id`
+  returns a session with its annotations and needs no handshake, which makes it
+  a smaller thing for a script to depend on than nine tools behind a session id.
+- **A write is rejected three times before it is accepted**, each time with a
+  raw SQLite message. `comment`, `element` and `elementPath` are named together;
+  then `NOT NULL constraint failed: annotations.x`; then the same for
+  `timestamp`. Recorded because it is an argument for a reader that never
+  writes.
+- **A scripted click did not open the toolbar and that is not evidence it is
+  broken.** Playwright's actionability check refused, and a raw mouse click at
+  the launcher changed no DOM and sent no request. Headless Chromium driving
+  somebody else's React portal is a weak instrument, so this is recorded as an
+  open question for the owner rather than as a defect.
+
+- **The keyboard work was driven and every clause of its help text is true.**
+  Tab reaches `article#table-addresses`; ArrowRight moves to `table-order_items`
+  and then `table-products`; ArrowDown reaches a note; ArrowLeft comes back;
+  Home and End reach the first and the last object; Enter opens
+  `aside#inspector` with `stock_movements` as its heading. No page errors
+  throughout. **What the help text does not say is how to reach the panel it
+  opens**, and that takes nine presses of Tab, which is the one thing recorded
+  as owed rather than done.
