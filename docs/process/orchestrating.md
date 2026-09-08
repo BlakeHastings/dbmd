@@ -1335,3 +1335,138 @@ throwaway worktree with `--no-commit --no-ff`, read the `CONFLICT` lines, and
 `--abort`. That answers which files and costs nothing, and it leaves the rebase
 where it belongs, with the agent that owns the branch. Resolving somebody's
 conflict makes you the author of a change you are about to review.
+
+## Land the agent's branch first, and yours last
+
+Twice in one hour I sent a pull request back to be rebased, and then made it
+stale again myself before it could land.
+
+The shape both times: an agent reports a branch, the merge script refuses it
+because main has moved, I send it back, the agent rebases and re-verifies and
+reports a new sha, and in the meantime I have merged one of my own process-doc
+branches on top. The agent pays a full gate run, about ninety seconds plus its
+own re-verification, for a rebase that was clean and that I caused.
+
+**The ordering is not symmetric, and that is the whole fix.** A branch of mine
+is a process document, which is the narrow exception to not reviewing your own
+work, so I can rebase it in a worktree myself in one command. An agent's branch
+costs a round trip: a message, a rebase, a gate, a report. So when both are
+green, the agent's goes first and mine goes last, and the count of round trips
+is zero rather than one per branch of mine that was queued in front of it.
+
+**The merge script already prints the information this needs and I was not
+reading it.** It names every other open branch the merge is about to make stale,
+by number, before it merges. That list is the sequencing decision, sitting in the
+output of the command that is about to make the decision for you.
+
+What it cannot know is which of those branches is cheap for you to rebase. That
+is the part to hold: **read its list, and merge in cheapest-to-rebase-last
+order.**
+
+## I told an agent a file was free, and another agent had forty-five lines in it
+
+Four times in one session I have told an agent something about a decision record
+without checking it. Three were numbers: I handed out 0091 as free when it was
+taken, and 0092 to two agents at once. The fourth was ownership. I briefed an
+agent to append a note to ADR 0084 and told it in writing that the branch which
+had been editing that record was finished with it. That branch had forty-five
+uncommitted lines in the file at the moment I wrote the sentence.
+
+**The numbers already had a fix and the files did not.** `scripts/freeadr.mjs`
+reads `origin/main` and every open pull request and reports which numbers are
+free, and it has not been wrong since. It lands here alongside `scripts/held.mjs`
+because until now it had been living in a scratch directory, which is a fix that
+leaves with the session that wrote it. Nothing did the same for files, so every
+brief naming a file to leave alone was written from memory of what I had
+dispatched.
+
+**Neither is a gate and neither is in `npm run check`.** A gate answers at merge
+time. Both of these answer a question asked before a brief is written, which is
+the only moment at which the answer can still prevent anything. A check that
+tells you afterwards that you misled an agent is not worth the second it costs.
+
+**The information was always one command away.** Every agent works in a worktree
+under `.claude/worktrees/agent-<id>`, and `git status --short` in one of those is
+the exact list of what that agent is holding, including files it has created and
+not yet committed. `scripts/held.mjs` walks them and prints it, by file, marking
+any file two worktrees hold.
+
+Three things it has to get right, and every one was found by running it rather
+than by designing it:
+
+- **A leftover directory is not a worktree.** Thirty-one of the fifty-one
+  directories under `.claude/worktrees` are no longer registered, so `git status`
+  in one of them walks up to the main checkout and answers about that instead.
+  The first run reported thirty-one agents all holding the owner's uncommitted
+  `README.md`, which is a file none of them had ever opened. It asks each
+  directory whether it is its own git top level before believing it.
+- **A finished agent's worktree still holds its files.** Nothing on disk
+  distinguishes an agent that is working from one that stopped an hour ago, so
+  the live ids are passed in rather than guessed. That is the one fact the script
+  cannot derive and the orchestrator always has.
+- **An agent that has committed its work looks exactly like one that has not
+  started.** The first version read only `git status`, so a branch with ten files
+  committed on it reported nothing at all, and both states were true here at the
+  same moment: one agent had pushed a pull request and two had not yet written a
+  line, and the tool said the same thing about all three. It now reads
+  `origin/main...HEAD` as well and marks those rows `committed`, because a file
+  already committed on somebody's branch is a conflict just the same.
+
+**Run it before writing the "do not touch" list in a brief, not after.** The cost
+of not running it is not a conflict, which git would catch. It is an agent given
+a false statement in writing, which it has no reason to doubt and every reason to
+act on.
+## I typed a commit sha I had not read, and the merge script knew
+
+`gh pr list` prints a seven-character head sha. `merge-pr.mjs` wants the whole
+forty, because naming the sha you reviewed is the one thing in the merge path
+that a person has to supply rather than a machine. So I extended the seven I had
+into forty by taking the rest from a different commit's sha, which is a thing I
+did without noticing I was doing it.
+
+**It refused, and it refused for the right reason rather than by luck.** The
+message is not "that is not a valid sha". It is that the head moved after I read
+it, that the checks are green against the real head, and that a moved head is an
+unreviewed pull request. Then it prints the two commands in order, `gh pr diff`
+before the merge, and says that copying the second without running the first
+satisfies the script and nothing else.
+
+**The lesson is not about shas.** It is that the guard was built for a
+force-push, caught a fabrication instead, and its message was right about both,
+because both are the same fact: the thing about to land is not the thing that was
+read. A guard written against the general fact catches the case nobody thought
+of. One written against "detect a truncated sha" would have said something
+useless here.
+
+What I did next is what the message said: read the diff at the real head, then
+name that head. That is not ceremony when the reason you are there is that you
+just made something up.
+
+## A PowerShell loop that kept the last file's contents
+
+A three-file loop normalising line endings. `[System.IO.File]::ReadAllText`
+resolves a relative path against .NET's own working directory, which
+`Set-Location` does not change, so two of the three reads threw. The loop kept
+going, `$t` still held the first file's text, and `WriteAllText` put
+`orchestrating.md` into `scripts/held.mjs` and `scripts/freeadr.mjs` in the main
+checkout.
+
+**Nothing failed.** The exit code was zero, the guards that ran afterwards passed
+because they ran in the worktree where the real files were, and the only reason I
+found it was a routine `git status` that showed two untracked files in a
+directory I had not meant to write to.
+
+Three things to take from it, in order of how much they cost:
+
+- **`git status` on the main checkout after any batch of file writes.** It is one
+  command and it is the only thing that noticed. The main checkout is supposed to
+  hold exactly one modification, the owner's `README.md`, so anything else in
+  that output is a mistake by definition, which makes it the cheapest check
+  available.
+- **Never write a loop that continues past a failed read.** A `$t` that survives
+  an exception is a variable holding the previous iteration's answer, and the
+  write after it is confident and wrong.
+- **In PowerShell, pass absolute paths to .NET methods**, or the file you
+  operate on is not the file you named. This is the seventh false step from
+  tooling in this session and the fourth from a shell rather than from the
+  product.
