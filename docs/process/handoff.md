@@ -421,3 +421,27 @@ reader and a longer life than "where did the work stop".
 
 **The owner asked whether the studio was validated by interacting with it rather
 than by testing it.** It was, repeatedly, and that page is the answer.
+
+## One thing worth deciding after the first publish, not before
+
+**npm can attach build provenance and this package does not ask for it.**
+`release.yml` publishes with `--access public` and nothing else; it declares
+`permissions: contents: read` and does not mention `id-token`. npm on this
+machine is 11.17.0, the repository is public and the publish runs from GitHub
+Actions, which is the whole of what provenance needs. Adding it is two lines:
+`id-token: write` in the job's permissions and `--provenance` on the publish
+command. What it buys is a verifiable link on the package page from the tarball
+back to the commit and the workflow run that built it, which is the same
+argument `docs/ci.md` already makes when it refuses `npx dbmd@latest` in a CI
+job.
+
+**Do it after the first release rather than as part of it, and the reason is in
+this file already.** `release.yml` has never run. Its own comments record one
+step whose behaviour is unobserved: whether `actions/checkout@v7` populates
+`refs/remotes/origin/main` on a tag push. Adding an untested flag to an untested
+workflow doubles the number of things that can be wrong on the one run that
+cannot be taken back, and a failed first publish burns a tag.
+
+So: publish, watch it work, then add provenance and watch that work on 0.1.1.
+Recorded rather than done, because the release path is the owner's and because
+nothing here should touch it on a hunch.
