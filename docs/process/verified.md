@@ -1181,7 +1181,15 @@ directory, because four of these write files. Nothing tracked was touched.
   `Creating tables/cupping_notes.md.` and never stops saying it.** Measured at 3
   seconds and again at 15, unchanged; a drag of an unrelated box then replaced it
   with `Wrote tables/customers.md at 8:09:11 PM.` The write is right and only the
-  sentence is wrong. Dispatched.
+  sentence is wrong. Dispatched, and **fixed the same night by ADR 0074**, which
+  is why this entry is corrected rather than left standing: a create, a note and
+  a rename now each end by saying what they did, measured the same way at 3
+  seconds and at 15. Driving it also found two more paths with the same hole that
+  this entry did not reach. `createNote` had it. So did a rename of a table
+  nothing points at, which reaches the writer for nothing, while a rename of a
+  referenced table clears the sentence part-way through and ends by showing
+  `Wrote tables/<some referrer>.md`, a true sentence about the least interesting
+  file the act touched.
 - **A rename does everything it says it will do.** It shows the plan first:
   *"This writes tables/buyers.md and deletes tables/customers.md. 3 refs point
   here and will be moved with it, which edits 3 other files."* Confirmed, and the
