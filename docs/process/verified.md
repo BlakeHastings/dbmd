@@ -2019,3 +2019,31 @@ duplicate id anywhere on the page:
   through writing one, where telling them their primary key is missing would be
   telling them their table is empty in the least useful available words. I went
   looking for an inconsistency against `group-empty` and found a decision.
+
+## 2026-09-08: a stranger clones it and builds it
+
+The tarball has been packed, installed elsewhere and rendered in a browser. The
+repository itself had never been cloned fresh and built, which is the other thing
+a person does with a public project.
+
+Cloned from GitHub into a temporary directory, at `6e167c7`:
+
+```
+npm ci        8.3s
+npm run check 56.6s, exit 0
+```
+
+Every step green, including both deliberate breaks of the pack guard. The gate
+time matches the four measurements taken on this machine tonight, which stand at
+54.9, 60.2, 55.1 and 55.6 seconds.
+
+**The one warning a newcomer sees is already explained and the explanation is
+right.** `npm ci` on npm 11.17.0 ends with `npm warn allow-scripts esbuild@0.28.2
+(postinstall: node install.js)` and an invitation to approve it. `CONTRIBUTING.md`
+says to ignore it, because esbuild ships its platform binary as an optional
+dependency that npm installs either way. **That claim is now measured rather than
+asserted:** the postinstall did not run, and the build, the client bundle and the
+packed tarball are all fine.
+
+So the answer to "can somebody else pick this up" is yes, in about a minute, with
+one warning that the guide already tells them to ignore for the right reason.
