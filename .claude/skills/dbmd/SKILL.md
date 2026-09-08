@@ -281,6 +281,16 @@ console.log(JSON.stringify(result, null, 2))
   all, so `only` matches nothing and the answer is
   `{ "written": [], "skipped": [] }`. That reads like a clean no-op and it is
   your edit not being seen. Check the list against the paths you passed.
+- **A disk that refuses the write throws, and takes the result with it.**
+  `writeModel` rejects with a `WriteFailed`, exported beside it, carrying `path`,
+  the model file spelled the way `written` spells one; `temporary`, the writer's
+  own scratch file; and the system's words as `message`, with the original on
+  `cause`. **Report `error.path` rather than `error.message`**: the message opens
+  with the temporary file, which is absolute and which the writer has already
+  deleted, and reaches the file you care about only after an arrow. Files sorted
+  before the one that failed were written, and the throw took the `written` array
+  with them, so `git status` is the only record of what landed. The script above
+  prints nothing at all in that case. ADR 0083.
 - **`pathToFileURL` is not decoration.** A bare Windows path in an `import`
   fails with `ERR_UNSUPPORTED_ESM_URL_SCHEME` because `C:` reads as a protocol.
 - This step is not optional and `dbmd check` will not do it for you. A
@@ -382,9 +392,12 @@ answer the studio gives, in the same words: undo is `git checkout`, and the
 model is files in a repository, so git is the undo that was always there.
 
 So: leave the tree as it is, and report the `code`, the file, and the line if
-the diagnostic carries one. Say which part landed and which did not. Let whoever
-asked decide whether to fix forward or throw it away. The one thing to do
-yourself is fix the diagnostic you caused, when you know what it is.
+the diagnostic carries one. Say which part landed and which did not. **When the
+canonicalise step threw rather than reporting, `git status` is where that second
+answer is**: a `WriteFailed` names the one file that did not land and says
+nothing about the ones that did. Let whoever asked decide whether to fix forward
+or throw it away. The one thing to do yourself is fix the diagnostic you caused,
+when you know what it is.
 
 `error` means something did not make it into the model. **Not every error blocks
 the canonicalise step, and the line number is what tells the two halves apart.**
