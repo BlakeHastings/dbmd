@@ -251,11 +251,32 @@ That step is now driven as far as it can be without pushing a tag, and
 [`verified.md`](verified.md) carries the detail. The short version: **the name is
 free**, the tarball holds what it should, the version comparison was run against
 five tag shapes, and the ancestry check was run against three repository states.
-**What cannot be observed from here** is whether the checkout populates
-`origin/main` on a tag push. It is the only thing in CI that reads a
-remote-tracking ref and no tag has ever been pushed. The failure is safe either
-way, and since #147 the message says whether the tag or the checkout is the
-problem rather than blaming the tag for both.
+**One thing could not be observed from here and now can be, with a tag that
+cannot publish.** Whether the checkout populates `origin/main` on a tag push is
+the only thing in CI that reads a remote-tracking ref, and no tag had ever been
+pushed, so the owner's first release would also be that step's first execution.
+The failure is safe either way, and since #147 the message says whether the tag
+or the checkout is the problem rather than blaming the tag for both. But finding
+out on the afternoon you are trying to ship is the expensive way to find out.
+
+**#255 built a rehearsal, and answering it costs one throwaway tag:**
+
+```bash
+git tag rehearsal-1 <a commit on main>
+git push origin rehearsal-1
+# read the job summary, then:
+git push origin :refs/tags/rehearsal-1 && git tag -d rehearsal-1
+```
+
+`release.yml` triggers on `v*` and cannot match that name, and the rehearsal has
+no publish step, no token, no secret reference and no registry URL.
+`scripts/check-release-rehearsal.mjs` refuses if any of that stops being true, or
+if the rehearsal's checkout or its copy of the shell drifts from the release's.
+Five deliberate breaks were driven against it and every one was refused by name.
+
+**It is still a tag push, so it is still the owner's.** No agent here pushes one,
+including that one. What it buys is that the first execution of the unobserved
+step happens on a tag that cannot reach a registry.
 
 **Two things are genuinely theirs and neither blocks anything:**
 
@@ -453,7 +474,13 @@ against it.
   judgement because the orchestrator is not the only writer here.
 - **Never junction an agent's `node_modules` to this checkout.** Tell them
   `npm ci`. The shared copy has been out of date once already and the failure it
-  produces is a TypeScript error in a file the agent never touched.
+  produces is a TypeScript error in a file the agent never touched. **Thirty
+  directories under `.claude/worktrees` still hold exactly that junction and
+  nothing else**, left from before this rule; every live worktree has its own
+  copy, checked. They are the old arrangement rather than a current breach, they
+  cost no disk, and `held.mjs` already ignores them because they are not
+  registered worktrees. Leave them or delete them, but do not read them as
+  evidence that the rule is being broken.
 - **Wait for checks by the commit, never by the pull request.** Ask the run
   listing for runs whose `headSha` starts with what you pushed, and treat "no run
   yet" as keep waiting. For a minute after a force-push the pull request answers
