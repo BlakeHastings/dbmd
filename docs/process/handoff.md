@@ -4,8 +4,8 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-08, with two agents out on the CLI, nothing open on GitHub and
-every epic closed.**
+**As of 2026-09-08, late, with four agents out, two pull requests open and every
+epic closed.**
 
 ## Where the work is
 
@@ -17,11 +17,11 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 214 |
-| decision records | 83 |
-| tests | 1219 passing, 1 skipped, across 44 files |
-| backlog | 123 closed, 3 open |
-| the gate | 55 to 63 seconds across five runs |
+| merged pull requests | 226 |
+| decision records | 86 |
+| tests | 1309 passing, 1 skipped, across 46 files |
+| backlog | 123 closed, 3 open, and it still cannot be written to |
+| the gate | 58, 58 and 60 seconds, timed three times on 2026-09-08 |
 
 **Three items are open and only two are the owner's.** An earlier version of this
 paragraph said all three were. It was wrong within an hour of being written,

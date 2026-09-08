@@ -6343,3 +6343,24 @@ corrected by whoever fixed the thing and the other was nobody's job.
   `model-file-not-a-file`, was verified by doing what it says on the broken
   directory itself and reaching `no problems`. The ADR 0086 summary line was
   right in all five shapes it can take.
+
+- **PR #229 was verified by running the script the page ships, extracted from the
+  branch's own copy of the file.** Clean, it reports both files skipped as
+  unchanged and exits 0. With both files edited into non-canonical form and the
+  second given the Windows read-only attribute, it prints
+  `{"written":["tables/accounts.md"],"skipped":[],"refused":"tables/api_keys.md","message":"EPERM: ..."}`,
+  exits 1 and puts nothing on stderr. That is the block on the page, byte for
+  byte, producing the output the page claims for it.
+
+  **The sentence I sent it to check was wrong in a way I had not guessed.** The
+  page said the script "prints nothing at all in that case". It printed, as an
+  unhandled rejection, and since #227 that dump carries `written` too. So the
+  claim was wrong about the mechanism and not only stale, and the page now says
+  what happens without the `catch` rather than quietly gaining one.
+
+  The same false claim had a second home two hundred lines away, which is the
+  failure the sweep was sent after: a targeted edit leaves the rest standing.
+
+- **Measured on 2026-09-08, late, and none of it derived:** 226 merged pull
+  requests, 86 decision records, 1309 tests passing and 1 skipped across 46
+  files, and the gate at 58, 58 and 60 seconds over three consecutive runs.
