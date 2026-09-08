@@ -62,8 +62,11 @@ numbers and carries the commands that produce them.
 
 ```bash
 # What is open, whose it is, and whether it can land.
+# The whole sha, never a prefix. Merging wants all forty and a prefix in front
+# of you is an invitation to supply the rest from memory, which was done twice
+# in one session and refused twice by the merge script.
 gh pr list --state open --json number,title,headRefOid,mergeStateStatus \
-  --jq '.[] | "#\(.number) \(.mergeStateStatus) \(.headRefOid[0:7])  \(.title)"'
+  --jq '.[] | "#\(.number) \(.mergeStateStatus) \(.headRefOid)  \(.title)"'
 
 # What a running agent is holding, so a brief does not tell one a lie.
 # The live ids are the one fact this cannot derive, so pass them.

@@ -1591,3 +1591,39 @@ would have answered it. The agent has no way to doubt it and every reason to act
 on it. So the rule is not "be careful": it is that **a sentence in a brief that
 states a fact about the repository is a sentence that should have a command
 behind it**, and three of those commands now live in `scripts/`.
+
+## I typed a sha from memory twice, and the second time I had already written the lesson
+
+`merge-pr.mjs` wants the whole forty-character sha of the commit you reviewed.
+Twice in one session I gave it a sha whose first seven characters were right and
+whose remaining thirty-three I had supplied from somewhere else. It refused both
+times, correctly, and said the head had moved.
+
+**Between the two, I wrote a section in this file about the first one.** Writing
+it changed nothing, which is the useful part of the story. An instruction is not
+a control, and the instruction I had written was aimed at the wrong thing: it
+said read the diff before naming the head, and I was reading the diff. What I was
+not doing was reading the sha.
+
+**The cause was in my own tooling and was one expression long.** The command I
+had been polling with, and which I had put into this repository's own handoff as
+the way to see what is open, ended:
+
+```
+--jq '.[] | "#\(.number) \(.mergeStateStatus) \(.headRefOid[0:7])  \(.title)"'
+```
+
+`[0:7]` is the whole bug. A seven-character prefix on screen, forty characters
+wanted by the next command, and a gap that gets filled by whatever is nearby.
+The prefix is there because a prefix is what a person likes to read, and this is
+not a place with a person reading.
+
+**So the fix is to stop truncating**, in the handoff and in every poll, and the
+general form of it is worth more than the instance: **do not display a shortened
+version of a value that a later step needs in full.** The convenience is one
+line of screen width and the cost is a value reconstructed from memory at the
+exact moment that is most expensive.
+
+The guard caught it both times, which is the fourth constraint doing its job:
+whatever prevention you have, add detection, because detection runs on the
+result and the result is the one thing a mistake cannot avoid producing.
