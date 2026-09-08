@@ -4,42 +4,50 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with one pull request in flight and every epic closed.**
+**As of 2026-09-07, late, with two agents running and every epic closed.**
 
 ## Where the work is
 
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
 `gh pr list --state merged` said 158. Every pull request has merged through
 `merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
-for the number, run the command. As of the last measurement: **189 merged, 123
-items closed, 3 open, and no P1s.**
+for the number, run the command. As of the last measurement: **198 merged, 123
+items closed, 3 open, no P1s, and 74 decision records.**
 
-**All three open items need the owner rather than an agent.** The visuals epic,
-which is taste and now has a picture attached to one of its two questions. One
-recoverable layout they have not said whether to restore. And the epic's own
-parent question about box weight, whose recorded recommendation is to do nothing
-without a reason.
+**All three open items need the owner and all three now have what they need to
+decide.** The visuals epic's two questions each have a picture rendered on the
+live diagram and sent to them: four options for how an edge could say what a
+delete does, one of which was ruled out after the fact because a dash already
+means an unanchored end, and two options for making a box carry more weight than
+its neighbours, both of which argue for doing nothing. The third item is one
+recoverable layout from the morning they have not said whether to restore.
 
-**Everything dispatchable was dispatched and landed.** `dbmd-v6c`, the reading
-half of the feedback loop, is done and closed in spirit though not in the
-tracker, which cannot be written to. Three more pieces of work were found by
-driving the studio rather than by reading the backlog, and none of them has an
-item because of the same tracker problem: the edge tooltip, the edge ids and the
-panel key, and the status line that lied after a create.
+**The backlog stopped being where work comes from.** Everything in it that an
+agent could do was done. What followed came from driving the product and from
+sweeping its own records: the edge tooltip, edge identities and the panel key,
+the status line that lied after a create and the rename that lied worse, the
+import grid that laid six hundred tables in a ribbon no zoom could fit, and
+sixteen decision records whose revisit conditions had fired unread. **None of
+those has a backlog item, because the tracker has been blocked since the
+afternoon.** The list of what is owed to it is below.
 
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 ## In flight, and what is actually left
 
-**One pull request is in flight**, the status line that stopped saying it was
-creating a file it had created. Everything else has landed.
+**Two agents are running.** One is bringing the last two unguarded blocks in
+`README.md` under the mechanism ADR 0069 built. The other is closing the gap that
+let a pull request be merged unread: `merge-pr.mjs` judges its refusals against
+the head commit and nothing tells it which commit the reviewer read.
 
-**The studio is running for the owner** at whatever port `npm run studio:dev`
-last bound, with the feedback overlay on it and `npm run annotations` able to
-read what they write. That command finds the studio's own page among the
-hundreds of sessions on the annotation server, most of which belong to a
-different project on this machine.
+**The studio is running for the owner** at `http://127.0.0.1:49192/`, started at
+20:37 with `npm run studio:dev`, with the feedback overlay on it. `npm run
+annotations` reads what they write there, finding that page among the two hundred
+odd sessions on the annotation server, most of which belong to a different
+project on this machine. **Nothing has been annotated yet.** The address moved
+four times before that one and then stopped moving on purpose; do not restart it
+without saying so, because they were given that number.
 
 **The annotation server is reachable and the way it is reachable is not the way
 this file used to say.** The earlier version of this paragraph claimed the
@@ -335,6 +343,33 @@ answer should be chosen once, and written into ADR 0002 as an appended section
 either way.
 
 ## What a successor would otherwise have to reconstruct
+**SETTLED, and my framing of it was wrong.** I recorded here that my briefs and
+`docs/process/working-an-issue.md` disagreed about the example model, mine saying
+copy it and the document saying drive the tracked one and undo with
+`git checkout examples/shop`. ADR 0079 settled it in favour of the copy on
+2026-09-07, and the argument is better than the one I offered: `orchestrating.md`
+had already reached the identical fork one directory up and concluded that a rule
+about care cannot work, because a refusal names one file and a reset destroys
+every uncommitted one. The answer there was to make the rule about which
+directory a command runs in, and this is that answer one level down.
+
+**It was never two voices.** Ten merged decision records already named a copy and
+this evidence log named one in eleven places, both counted. Nothing anywhere
+recorded an agent deliberately driving the tracked example. That document was the
+only thing saying it.
+
+Measured before accepting the change, in a throwaway worktree: eight table files
+given an uncommitted edit, then `git checkout examples/shop` answers
+`Updated 8 paths from the index` and leaves nothing. It names a count rather than
+the files, asks nothing, and nothing is recoverable. **`npm run studio:dev` has
+the same default and the same hazard**, and is left alone because no document
+sends an agent at it; if one ever does, it needs the same treatment.
+
+Same document, same paragraph: *"Stop the server you started, by its own process,
+before your worktree is removed."* I left twenty two studios running across one
+session, which is that rule broken by the person who reviews everyone else
+against it.
+
 
 - **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
   again after every harness restart, alone on the command line.

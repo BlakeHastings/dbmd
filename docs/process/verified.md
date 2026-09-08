@@ -1829,3 +1829,123 @@ block was in this morning before its count drifted by 2576 characters. The
 machinery to fix it exists and is one table entry each in
 `test/docs/readme.test.ts`, which is a smaller change than lifting a parser
 four ways.
+
+- **A third run of the gate, and the owner's uncommitted edit passes it.** 55.1s
+  on `6cf5b36`, with 1137 tests rather than the 1124 the second run measured, so
+  it did not grow when the last three changes added tests to it. Three runs now
+  stand at 54.9s, 60.2s and 55.1s against the 26.5s ADR 0034 recorded, which
+  settles the question the second run raised: the five seconds between the first
+  two were variance, and the doubling is not.
+
+  **The run included the owner's uncommitted `README.md` edit**, which had never
+  been put through the gate. It passes, so the shortened attribution paragraph
+  they are part way through writing is safe to commit whenever they want it.
+
+## 2026-09-07, night: the publish path, checked from the parts nobody looks at
+
+- **The claim `release.yml` rests on is true.** Its header says there is no
+  separate test step because *"`npm publish` runs `prepublishOnly`, which is
+  `npm run check`"*. Read off `package.json`: `prepublishOnly` is
+  `npm run check` and `prepack` is `npm run build`. So the tarball is only
+  uploaded if the whole gate is green on the tagged commit, which is what that
+  argument claims and nothing had confirmed.
+- **Workflow token permissions are already the safe setting.** `release.yml`
+  declares `contents: read` and `provenance.yml` and `aftermath.yml` declare
+  theirs per job. `check.yml` and `model.yml` declare none, which would matter if
+  the repository default were write. It is not: the API reports
+  `default_workflow_permissions=read` and pull request approval off. So the two
+  undeclared workflows inherit read-only and there is nothing to harden.
+- **`model.yml` writes nothing to the repository.** It runs `check` and
+  `export --stdout` into the runner's temporary directory and uploads the result
+  as an artifact, so the workflow that draws the picture cannot touch the model
+  it drew it from.
+- **`npm publish --dry-run` was deliberately not run.** It would add almost
+  nothing over the `npm pack --dry-run` already recorded above, which is where
+  the file list came from, and the cost of one mistyped flag is a publish that
+  cannot be undone. On the night an agent merged a pull request from a command it
+  had labelled a placeholder, that trade is not close.
+
+## 2026-09-07, night: the shape of the thing, measured and not judged
+
+Entropy accounting is one of the three lenses this project reviews against and
+nobody had put a number on the tree itself. These are measurements, with no
+proposal attached, so that whoever next thinks about the shape argues against
+figures rather than against an impression.
+
+| | lines | files |
+| --- | --- | --- |
+| `src` | 20229 | 50 |
+| `test` | 19466 | 46 |
+| `docs` | 16822 | 82 |
+
+**Test lines and source lines are within four per cent of each other**, and the
+documentation is not far behind either.
+
+The eight largest source files:
+
+```
+1854  src/studio/client/canvas.ts
+1740  src/studio/client/inspector.ts
+1497  src/model/read.ts
+1108  src/import/contract.ts
+1080  src/studio/edits.ts
+ 966  src/studio/client/main.ts
+ 875  src/cli/import.ts
+ 683  src/import/delta.ts
+```
+
+**Thirty five per cent of `src` is comment**, 7135 lines against 11624 of code.
+That is the habit this project is built on rather than a smell: the comments here
+carry decisions and their reasons, and several of tonight's findings came from
+reading one rather than from reading code. It also means the two largest files
+are closer to 1200 lines of code apiece than to 1800.
+
+**Nothing is proposed.** Two files above a thousand lines of code is worth
+noticing and is not worth churning working, tested, heavily explained code over
+with no defect driving it. The number is here so that the question, when somebody
+asks it, starts from a fact.
+
+
+## 2026-09-07, night: which guards have been seen to fail, and one that lies about itself
+
+ADR 0034 says a guard is not believed until it has been seen to fail, and nothing
+checks that the rule was applied to every guard. Checked by hand: **eight of the
+nine scripts under `scripts/` that guard something are exercised by
+`test/guards/broken-on-purpose.test.ts`**, which is 98 cases. The two that are not
+are `report-merge-aftermath.mjs`, a detector built the same day that has never
+fired because nothing has gone red, and `check-setup.mjs`, which ADR 0057
+explicitly declines to extend because it is a portable asset from the plugin.
+
+**The second of those turned out to report coverage it does not have, and tonight
+proved it.** `check-setup.mjs` prints of the guard hook:
+
+```
+[ ok      ] 2. The guard hook
+             covers an agent merging its own PR. Does not cover a session that
+             never loaded it, or a human at a terminal
+```
+
+The hook is real and was working: `.claude/settings.json` is tracked, so it loads
+in agent worktrees too, and `guard-merge.mjs` denies `gh pr merge`, a merge
+through `gh api`, and eleven prefixed spellings of the same command. **What it
+permits, by name and on purpose, is `node scripts/merge-pr.mjs`**, which is the
+route the project tells everybody to use and therefore the only one an agent
+would reach for. The agent that merged its own pull request was never refused,
+because it never typed the refused thing.
+
+So the first clause of that line is wrong for the path an agent actually takes,
+and the two exceptions it names are not the one that bit. What layer 2 covers is
+an agent merging **around** the wrapper. What it does not cover is an agent
+merging **through** it, and ADR 0078 is what closes that.
+
+Filed upstream as a comment on `b-fac` issue 189, because the text is the
+plugin’s rather than this repository’s.
+
+
+- **The format reference documents every diagnostic, and something already
+  keeps that true.** All 34 codes declared in `src/diagnostics.ts` appear in
+  `docs/format.md`, and `test/docs/format.test.ts` imports the type and reads the
+  page, so a new code with no entry fails the build. **I went looking for that
+  guard expecting it to be missing and was wrong**, which is the tenth time in one
+  night an assumption of mine was the defect rather than the product, and the
+  first time I checked before dispatching an agent at it.

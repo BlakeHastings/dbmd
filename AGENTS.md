@@ -113,7 +113,19 @@ bd comment dbmd-4 --file review.md
 bd blocked            # and why
 ```
 
-ADR 0002 says why. Items are `dbmd-N`; branches are `<area>/<N>-<slug>`.
+ADR 0002 says why.
+
+**Both halves of the naming convention this used to state have lapsed, and the
+file said otherwise until 2026-09-08.** It read: _Items are `dbmd-N`; branches
+are `<area>/<N>-<slug>`._ Measured against the tracked export and the merged
+pull requests: **62 of 126 items are numeric and 64 carry a random suffix**
+(`dbmd-v6c`, `dbmd-53w`), because `bd create` hands out a suffix unless it is
+given `--id`, and nobody has been giving it one. Branch names stopped carrying a
+number too: the last dozen to merge are `docs/two-blocks-nothing-checked`,
+`tooling/the-merge-names-the-commit-reviewed`, `import/grid-shaped-like-the-window`
+and the like. **A branch says what it does.** Neither drift caused a problem, and
+the example `bd show dbmd-4` still resolves, but a reader following the sentence
+would have written an id that does not exist.
 
 `.beads/issues.jsonl` is the tracked file and the thing that survives a clone.
 The database under `.beads/embeddeddolt/` is local, derived and untracked, so a
@@ -123,8 +135,9 @@ file when it does not, and do not treat a missing tool as a missing backlog.
 
 Use beads **v1.2.2 or later**. v1.2.0 and v1.2.1 were published by accident
 without release testing and migrate a local database to a schema later binaries
-refuse. Creating items with an explicit `--id dbmd-N` keeps the numbering the
-branch convention above depends on; without it `bd` will hand out a suffixed id.
+refuse. Creating items with an explicit `--id dbmd-N` gives a numeric id; without it
+`bd` hands out a suffixed one, which is what has happened for the last sixty four
+items and is fine.
 
 ## Invariants
 
@@ -138,6 +151,17 @@ the branch, and stop. The orchestrator reviews and merges. This holds when the
 checks are green and when the change is one line.
 `docs/process/working-an-issue.md` has the prohibited commands, and
 `scripts/guard-merge.mjs` refuses several of them.
+
+**As of 2026-09-08 that sentence understates it, and the reason is worth knowing.**
+`guard-merge.mjs` denies `gh pr merge`, a merge through `gh api` and eleven
+prefixed spellings of the same command, and it deliberately permits
+`node scripts/merge-pr.mjs`, which is the route this repository tells everybody
+to use. So the layer that was meant to stop an agent merging allowed the only
+command an agent would reach for, and on 2026-09-08 an agent merged its own pull
+request through it by accident from a call it had labelled a placeholder. Every
+other gate was satisfied: the checks were green, the branch was level with `main`
+and the sha it named was the head. `merge-pr.mjs` now refuses when it is run from
+a linked worktree, which is where every agent stands. ADR 0078.
 
 **Decision record numbers are handed out, never taken.** The orchestrator
 assigns the number, checked against `main` and every open branch.
@@ -199,6 +223,18 @@ that shows only part of a value says so inside itself, the way
 
 An entry goes in when something has bitten twice, and comes out, deleted rather
 than annotated, when the cause is fixed.
+
+**Amended 2026-09-08, because the practice below is right and the sentence above
+was not.** The only entry here has a fixed cause and is kept on purpose, saying
+so in its own last line. Read literally, the rule says it should be gone. What
+the rule is actually protecting against is a trap that is no longer real sending
+the next reader looking for something that is not there, and an entry saying
+_a check now catches this and here is what it was_ does not do that. **So an
+entry stays only when it explains a check that exists, and it goes when the trap
+simply stopped being one.** The entry below is the first kind. Whether it earns
+its place even so is a fair question: `scripts/check-reviewable.mjs` opens with
+the same two incidents and the same argument, at more length, and it is what a
+reader meets when the check refuses them.
 
 **A NUL byte makes a source file binary to git, and a binary file has no diff.**
 Bitten twice: a test fixture in wave one, from a stray byte in something pasted,
