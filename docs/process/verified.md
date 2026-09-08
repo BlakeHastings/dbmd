@@ -6433,3 +6433,23 @@ corrected by whoever fixed the thing and the other was nobody's job.
   It also matters for what comes next: the same guard is being taught to resolve
   flags, so a passage quoting a flag no command declares would break that branch
   the day it lands. Those are now described too.
+
+- **Three entries above quote a command line that was deliberately wrong, and
+  they are marked rather than reworded.** `dbmd query --engine postgres --bogus`,
+  `dbmd init --force` and `dbmd check --fix` are each the input that produced an
+  error message worth recording, so the message cannot be recorded without them.
+  ADR 0036's marker is the sanctioned way to write a reference that does not
+  resolve, and although it was built for one that does not exist **yet**, its
+  behaviour is exactly right here: it fails on the day the thing exists, and if
+  `dbmd query` ever grows a `--bogus` then the paragraph calling it an unknown
+  flag has become false and somebody should be told.
+
+  The markers are below. Each holds for this whole file and names a command and
+  the one flag, which is the pair the guard checks. **A marker naming the longer
+  command line does not work**: measured, `dbmd query --engine postgres --bogus`
+  as a marker leaves the flag unmarked and is then itself reported as stale,
+  because the reference it parses out is `dbmd query --engine`, which exists.
+
+<!-- hypothetical: dbmd query --bogus -->
+<!-- hypothetical: dbmd init --force -->
+<!-- hypothetical: dbmd check --fix -->
