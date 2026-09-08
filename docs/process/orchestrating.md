@@ -855,3 +855,54 @@ comes back correct and annoyed, which has happened here.
 argument against the method: the fifth was real, nothing else had found it, and
 two more defects came out of the one brief it produced. The cost of the four was
 about twenty minutes and no agent was dispatched at any of them.
+
+## The help text is the list of claims, and reading it as one found four defects
+
+The section above says how to check a finding. This one says where to get the
+list of things to check, because "drive the product" is not a plan and an
+orchestrator with an hour and no list drives whatever is on screen.
+
+**In this repository the list already exists, and it is `--help`.** These
+commands do not print a synopsis and a flag table. They print exit codes with a
+sentence explaining why each one is separate, the shape of the file they write,
+what they refuse and what they leave alone. `dbmd refs` states that a name
+nothing has heard of exits 1 while a table nothing defines but a ref still names
+exits 0, and gives the reason: the answer to a typo must not read as permission
+to delete.
+
+Every one of those sentences is an assertion about behaviour, so a pass over one
+command is: print the help, turn each sentence into a state to construct, build
+that state, run the command in it, and read the exit code and the message
+against what the sentence promised.
+
+**Four defects came out of one evening of that, across three commands.** Two of
+them are in `dbmd export`, one in `dbmd refs`, and the fourth is not a message at
+all: an import that fails part way writes files and reports none of them. That
+one was reached only because the help promised an exit code for a write failure,
+which is a promise that a write failure is reported, which is a state worth
+constructing.
+
+**What made it cheap is that the claims are written down by the author.** A pass
+over a surface with no such text is a pass over whatever the person driving
+thought of, and the two are not the same activity. Where a command has no help
+text worth reading, the honest move is to say the pass covered what you thought
+of rather than to imply it covered the surface.
+
+**The counterfactual is part of the method and it is not optional.** For each
+suspected false sentence, construct the state in which it would be true. The
+`refs` banner explains an error as a file that failed to load, which is wrong for
+a dangling ref and right for a file with broken frontmatter. Running the second
+one is what turned "this message is wrong" into "this message is right for one of
+the two kinds it is printed for", which is a different fix and a smaller one. A
+finding filed without its counterfactual sends an agent to delete a warning that
+was doing its job.
+
+**And read the workflow before filing anything about CI.** Three suspicions came
+up in the same pass, all of them about the merge gate accepting less than it
+appears to: a four-second required job beside two fifty-second ones, and two more
+jobs that are not required at all. All three were answered by the files
+themselves. The fast job exists to assert the slow matrix passed, `model.yml`
+opens by saying it is not the merge gate and why, and `merge-pr.mjs` prints a
+note saying it is proceeding with something outside the required set red. Reading
+those cost a few minutes; filing any of them would have cost an agent an hour and
+come back saying the repository was already right.
