@@ -6364,3 +6364,24 @@ corrected by whoever fixed the thing and the other was nobody's job.
 - **Measured on 2026-09-08, late, and none of it derived:** 226 merged pull
   requests, 86 decision records, 1309 tests passing and 1 skipped across 46
   files, and the gate at 58, 58 and 60 seconds over three consecutive runs.
+
+- **`kind-mismatch` on `_model.md` has three false clauses and I reproduced all
+  three.** A `_model.md` carrying `kind: table` gets:
+
+  ```
+  _model.md
+    2  error  `kind: table` in a directory of models; the directory decides, so this file is not loaded (kind-mismatch)
+  ```
+
+  There is no directory of models anywhere in the format: `_model.md` sits at the
+  model root. The directory does not decide either; the file name does, and
+  `readModelFile` passes the literal `'model'`. And the file **is** loaded, which
+  is not an inference: reading the same directory through the library gives
+  `model.name` of `"shop"` and `model.engine` of `"postgres"`, both taken out of
+  the file the message says was not loaded. `checkKind`'s return value is
+  discarded and the reader carries straight on.
+
+  Every clause is true one level down. `tables/orders.md` carrying `kind: note`
+  really is in a directory of tables, the directory really does decide, and the
+  table really does not load. `docs/format.md` repeats the false clause in that
+  code's row.

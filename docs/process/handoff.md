@@ -501,6 +501,51 @@ instead, and `dbmd import` names a temporary file that no longer exists. That is
 a decision that was made and then not carried to the surfaces it was about, which
 is a different failure from a decision nobody made.
 
+## Six diagnostic messages are queued and the queue is the point
+
+**A sweep triggered all 35 model diagnostic codes and read each message against
+the state that produced it.** Nine came back suspect. Three are out with an agent
+on `model/what-the-model-knows-is-not-what-the-disk-says`. **The other six are
+held only because two agents cannot both be in `src/model/read.ts`**, and they
+are written out here so that a successor can dispatch them without re-running the
+sweep.
+
+- **`kind-mismatch` on `_model.md` has three false clauses.** Reproduced twice.
+  A `_model.md` carrying `kind: table` is told it is "in a directory of models",
+  that "the directory decides", and "so this file is not loaded". There is no
+  directory of models in the format; the file name decides and `readModelFile`
+  passes the literal `'model'`; and the file loads, which was measured by reading
+  `model.name` and `model.engine` back out of it through the library. Every
+  clause is true one level down, on `tables/orders.md` with `kind: note`.
+  `docs/format.md` repeats the false clause in that code's row.
+- **`kind-missing` on `_model.md`** says "the directory says this is a model".
+  The model root says nothing about kinds. This is the case the format page ships
+  as its worked example.
+- **`unknown-key` offers keys the same reader refuses.** One run says `w` and
+  `h` belong to a note and not to a table, then three lines later lists
+  `h, w, x, y` as that layout's known keys. Following the second produces the
+  first. A group's message lists `layout` as known while a group's `layout` is
+  separately refused. `reportUnknown` builds its list from every key passed to
+  `take()`, and both of these are taken in order to be refused; the `reject()`
+  path exists for exactly this and its own comment says so.
+- **`frontmatter-empty`** fires on frontmatter holding a comment, where both the
+  code's own doc and the format page describe delimiters with nothing between
+  them.
+- **`duplicate-key`'s documented input is unreachable**, since two identical
+  keys are refused by the YAML parser first. It is only reached when two keys
+  YAML sees as different resolve to one dbmd name. In one of its two live cases
+  its "the first one is used" clause is false, because `reject()` deleted it.
+- **`superseded-key`** tells a nameless column to write `columns: [this column]`,
+  which is not writable YAML. Only reachable beside a `field-missing`, so low.
+
+**One code is unreachable by `dbmd check` and that is correct.**
+`duplicate-table` cannot happen there because a table's name comes from its
+file's basename, and both `src/diagnostics.ts` and `docs/format.md` already say
+it is import-only.
+
+**Eighteen remedies were followed literally and every one cleared its
+diagnostic**, which is the half of that sweep worth as much as the suspects.
+
 ## What a successor would otherwise have to reconstruct
 **SETTLED, and my framing of it was wrong.** I recorded here that my briefs and
 `docs/process/working-an-issue.md` disagreed about the example model, mine saying
