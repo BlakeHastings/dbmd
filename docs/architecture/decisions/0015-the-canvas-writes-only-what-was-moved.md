@@ -138,3 +138,35 @@ reported a drag slow enough to feel: the hundred and twenty table run in
 exactly one file on a drag, and it did not time the drag itself, so what stands
 is the absence of a complaint rather than a measurement. The rerouting is still
 every edge on every animation frame.
+
+## The second entry still has not fired, and the reason given for that has
+
+Appended on 2026-09-08. Nothing above changes: the drag is still not narrowed and
+the condition is still open. What has lapsed is the reason the section above gives
+for saying so, which is a different thing and is exactly the shape ADR 0082 exists
+to name. A reason not to do something is a claim with a date on it, and this one
+had a date on it from the moment it was written.
+
+**The reason was "it did not time the drag itself", and somebody has since timed
+it.** That sentence was written on 2026-09-07 in #197. `docs/process/verified.md`
+now carries a section headed "2026-09-08: dragging a box with six hundred of them
+on the page", at its line 2134. Six hundred boxes and two hundred edges, Chromium
+at 1600 by 1000, real mouse input: press to selected 87ms, twelve pointer moves in
+355ms which is about 30ms each, the write on disk inside a second, and no console
+or page errors. `tables/t0157.md` went from `layout: { x: 1840, y: 1340 }` to
+`{ x: 1840, y: 1628 }`.
+
+**The verdict is unchanged and now rests on something better.** The log's own
+words are that a drag on a six hundred table model is "usable rather than fast",
+about thirty frames a second while the pointer is down. Thirty frames a second on
+six hundred tables is not slow enough to feel in the sense this entry means, and
+six hundred tables is already past what the entry calls "hundreds". So the entry
+has not fired, and the sentence that supports it is now a measurement rather than
+the absence of a complaint.
+
+**What the entry should be read as watching for now.** Not "somebody measures
+it", which has happened. The rerouting is still every edge on every animation
+frame, and the number that would fire this is a frame time somebody minds at a
+model size somebody actually has. Thirty milliseconds at six hundred tables is the
+current mark to beat, and the next reason written here should carry its own date
+the same way.

@@ -303,6 +303,145 @@ describe('check:adr, broken on purpose', () => {
 })
 
 // ---------------------------------------------------------------------------
+// check-adr-backlinks.mjs: a record answers another's revisit condition and the
+// record it answered never hears about it
+// ---------------------------------------------------------------------------
+
+describe('check:backlinks, broken on purpose', () => {
+  /**
+   * The same scratch shape as the numbering check above, because this script
+   * reads the same directory. It reads no git index and no `node_modules`: two
+   * `.md` files and a regular expression are the whole of it.
+   */
+  async function decisions(files: Record<string, string>): Promise<string> {
+    const root = await scratchWith('check-adr-backlinks.mjs')
+    const dir = join(root, 'docs', 'architecture', 'decisions')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'README.md'), '# Decision records\n')
+    for (const [name, body] of Object.entries(files)) await writeFile(join(dir, name), body)
+    return root
+  }
+
+  /**
+   * The real shape, cut down. ADR 0076 line 85 is the sentence this is modelled
+   * on, and ADR 0069 is the record that had no idea about it for forty pull
+   * requests.
+   */
+  const ANSWERING =
+    '# 0002. The second thing\n\n' +
+    "**This answers ADR 0001's first revisit entry, and does not do what it says.**\n"
+
+  const ANSWERED_WITH_BACKLINK =
+    '# 0001. The first thing\n\n' +
+    '## Revisit when\n\n' +
+    '- **A second command earns an entry in the table.**\n\n' +
+    '## The first revisit entry fired, and ADR 0002 is what fired it\n\n' +
+    'Appended rather than edited.\n'
+
+  const ANSWERED_WITHOUT =
+    '# 0001. The first thing\n\n' +
+    '## Revisit when\n\n' +
+    '- **A second command earns an entry in the table.**\n'
+
+  test('a record answered without being told fails, and both records are named', async () => {
+    const root = await decisions({
+      '0001-the-first-thing.md': ANSWERED_WITHOUT,
+      '0002-the-second-thing.md': ANSWERING,
+    })
+
+    const ran = await runScript(root, 'check-adr-backlinks.mjs')
+
+    expect(ran.code).toBe(1)
+    // The claiming file and the line, so the author can read the sentence back.
+    expect(ran.err).toContain('0002-the-second-thing.md:3')
+    expect(ran.err).toContain("This answers ADR 0001's first revisit entry")
+    // The record that owes the section, and the reason it is worth a red build:
+    // its condition still reads as open work after the work was done.
+    expect(ran.err).toContain('0001-the-first-thing.md never names 0002')
+    expect(ran.err).toContain('still reads as open')
+    // And what to do, which for this directory is never an edit.
+    expect(ran.err).toContain('Append rather than edit')
+  })
+
+  test('the same pair with the backlink appended passes, so the failure was the backlink', async () => {
+    const root = await decisions({
+      '0001-the-first-thing.md': ANSWERED_WITH_BACKLINK,
+      '0002-the-second-thing.md': ANSWERING,
+    })
+
+    const ran = await runScript(root, 'check-adr-backlinks.mjs')
+
+    expect(ran.code).toBe(0)
+    // Two claims, because the appended heading names 0002 beside the words
+    // "revisit entry" and is therefore itself a sentence this check reads. That
+    // is the intended shape: the answer and the acknowledgement both hold.
+    expect(ran.out).toContain('2 sentences claim to act')
+    expect(ran.out).toContain('every one is named back')
+  })
+
+  test('it says in its own summary what it cannot see', async () => {
+    const root = await decisions({
+      '0001-the-first-thing.md': ANSWERED_WITHOUT,
+      // The 0092 shape: it answers 0001's condition and never uses the words, so
+      // this check is blind to it. Asserted rather than left implicit, because a
+      // guard people credit for more than it does is worse than no guard.
+      '0002-the-second-thing.md':
+        '# 0002. The second thing\n\nAnswers a condition ADR 0001 wrote down for itself.\n',
+    })
+
+    const ran = await runScript(root, 'check-adr-backlinks.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('0 sentences claim to act')
+    expect(ran.out).toContain('invisible to it')
+  })
+
+  test('a record naming another record beside its own revisit entry is not a finding', async () => {
+    const root = await decisions({
+      // ADR 0063 pointing at ADR 0006's list is the real case: context for a
+      // decision nobody has taken, not a claim to have answered anything. It
+      // says "Revisit when" rather than "revisit entry", which is exactly why
+      // that third spelling was measured and left out of the phrase set.
+      '0001-the-first-thing.md':
+        '# 0001. The first thing\n\n## Revisit when\n\n' +
+        '- **`Output` grows a writer.** ADR 0002\'s own "Revisit when" already names it.\n',
+      '0002-the-second-thing.md': '# 0002. The second thing\n\nNothing to say here.\n',
+    })
+
+    const ran = await runScript(root, 'check-adr-backlinks.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('0 sentences claim to act')
+  })
+
+  test('a record quoting somebody else’s sentence is not making the claim itself', async () => {
+    const root = await decisions({
+      '0001-the-first-thing.md': ANSWERED_WITHOUT,
+      '0002-the-second-thing.md': ANSWERING,
+      // ADR 0096 quotes all three of the sentences this check was built from and
+      // was refused by its own first run. A fence and a blockquote are somebody
+      // else's words, so neither is read.
+      '0003-the-third-thing.md':
+        '# 0003. The third thing\n\n' +
+        '```\n' +
+        "**This answers ADR 0001's first revisit entry.**\n" +
+        '```\n\n' +
+        "> This answers ADR 0001's first revisit entry.\n",
+    })
+
+    const ran = await runScript(root, 'check-adr-backlinks.mjs')
+
+    // 0002 is still the one claim and it is still unanswered, so the fence rule
+    // has not turned the check off: it has only stopped 0003 being read as a
+    // second claimant.
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('1 record acts')
+    expect(ran.err).toContain('0002-the-second-thing.md:3')
+    expect(ran.err).not.toContain('0003-the-third-thing.md')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // check-duplication.mjs: a page holding a long run of its own lines twice
 // ---------------------------------------------------------------------------
 

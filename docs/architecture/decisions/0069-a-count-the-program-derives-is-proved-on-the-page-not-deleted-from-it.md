@@ -129,3 +129,51 @@ outside the walkthrough needs one of those.
 - **The narration stops carrying the count.** If `dbmd query` ever stops saying
   how long its query is, this guard should go with it rather than be pointed at
   the sentence that replaced it.
+
+## The first revisit entry is answered by ADR 0076, and the second is answered on a branch
+
+Appended rather than edited, the way `README.md` in this directory asks. The
+decision stands: the count is still printed on the page and still proved by
+running the command, rather than deleted from the page to stop it drifting.
+
+**"A second command earns an entry in the table" fired, and the answer is ADR
+0076.**
+[ADR 0076](0076-a-block-a-sweep-found-exact-is-held-by-the-table-that-already-reads-the-page.md)
+landed in #202 and says so in its own words at its line 85: "This answers ADR
+0069's first revisit entry, and does not do what that entry says." This record
+named it nowhere, which is why the entry has read as open work since #202 while
+the work sat in the tree. The short version of what 0076 decided, for a reader
+who does not need the argument: there are three rows and **one** sandbox rather
+than the three this entry predicted, so the two mechanisms did not have to become
+one. The reasoning is at 0076.
+
+**"A block on this page outside the walkthrough goes stale again" fired, and the
+answer is on a branch rather than on `main`.** This is the precise state as of
+2026-09-08 and the distinction matters, because a note here saying the block is
+fixed would be false until the branch lands.
+
+- The block is the `dbmd refs addresses shop` sketch on `README.md`, around line
+  471. It prints `shop has 2 errors in it. A file that did not load is missing
+  from the model along with every ref written in it, so what follows may be
+  short.`
+- That is the wrong half of a choice the command stopped making that way in #223.
+  `errorBanner` in `src/cli/refs.ts` now has three states, and the sketch's model
+  is in the third: both of its errors are dangling refs, every file loaded, so
+  the command prints `and every file in it loaded. Nothing is missing from what
+  follows: the model disagrees with itself rather than failing to read.` The page
+  shows a reader the opposite sentence to the one they will get.
+- **Pull request #241, `docs/the-one-readme-block-that-went-stale`, is open and
+  changes exactly those two lines and nothing else.** It is held on the owner's
+  word rather than on anything mechanical.
+
+So the entry has fired twice over: once because a block outside the walkthrough
+did go stale, and once because the failure was found by a person reading the page
+rather than by the gate. That second half is the argument this entry said a
+second failure would be, and it is now available to whoever picks it up. Nothing
+is claimed here about what should be built; the entry asked for the argument and
+the argument now exists.
+
+**The other two entries have not fired.** `characters` still has no caller:
+`src/cli/query.ts` is the only place that writes it, at its line 164, and nothing
+in `src/` reads it back. And the narration still carries the count, at
+`src/cli/query.ts:157`, so the guard is still pointed at a sentence that exists.

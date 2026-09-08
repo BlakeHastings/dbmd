@@ -179,3 +179,49 @@ the scratch copy, `orders.md` read-only, one drag.
 - **The status line gets a second one of these at the same time.** Nothing here
   reasons about a write failure standing beside a conflict list; the failure wins
   outright in `showStatus` and always has.
+
+## The second revisit entry fired, ADR 0092 is what fired it, and the wording it quotes is gone
+
+Appended rather than edited, the way `README.md` in this directory asks. The
+decision stands in every part: the message still leads with the file the person
+was editing, still keeps the operating system's words verbatim and last, still
+says the edit is not lost, and still explains the temporary file only when the
+write got as far as making one.
+
+**"Somebody asks the studio to retry on its own" fired, and the answer is ADR
+0092.**
+[ADR 0092](0092-a-refused-write-is-retried-on-the-beat-the-page-already-keeps.md)
+landed in #238 and its first sentence is "Answers a condition ADR 0083 wrote
+down for itself". It quotes this entry verbatim in its Context and names this
+record seven times, at its lines 3, 8, 26, 60, 84, 113 and 145. This record named
+it nowhere, which is the whole reason this section exists: somebody arriving here
+would have read a condition that still looks like open work, with the work
+already done and recorded. What the beat costs, and why a timer of its own was
+rejected, is argued at 0092 and is not restated here.
+
+**The larger half is that this entry describes a sentence that no longer
+exists.** It reads "The sentence says the edit rides out with the next write".
+Nothing in `src/` says that any more. `src/studio/client/write.ts:311` writes
+"The edit is still here and this page keeps retrying it", and
+`test/studio/inspector.test.ts` holds both halves of the change in one
+assertion: the notice contains `this page keeps retrying it` and does not contain
+`rides out with the next write`. An entry that quotes wording sends the next
+reader looking for that wording, and this one sends them somewhere there is
+nothing to find.
+
+**What that means for the decision.** The Decision above has three clauses and
+only the third moved. "Which file" and "the system's words, verbatim, at the end"
+are unchanged. "The edit is not lost" is unchanged as a claim and changed as a
+promise: it was a statement about the next write a person happened to make, and
+it is now a statement about a retry the page performs on its own. The entry is
+spent, and where it is read it should be read as a description of the message
+this record shipped rather than of the one the studio says.
+
+**The other three entries were read at the same time and none has fired.** The
+status line still builds exactly one sentence out of a system message, and it is
+this one: `statusLine` in `src/studio/client/main.ts` is the only place a
+`writeError` reaches the line, and none of the sentences beside it quotes an
+errno. A failure is still about one file, because `src/studio/edits.ts` holds
+`failureFile` as a single `WireWriteErrorFile | null` rather than a list. And a
+write failure still wins outright over a conflict list in `statusLine`, so
+nothing there reasons about the two standing together.

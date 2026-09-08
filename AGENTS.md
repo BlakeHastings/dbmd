@@ -76,8 +76,9 @@ npm ci
 npm run check
 ```
 
-`npm run check` is typecheck, format check, decision-record numbering, the
-reviewable-diff check, the check that no page holds a long run of its own lines
+`npm run check` is typecheck, format check, decision-record numbering, the check
+that a record answering another record's revisit condition is named back in it,
+the reviewable-diff check, the check that no page holds a long run of its own lines
 twice, the check that every command named in this tree exists,
 the check that the studio's two scenes do not reach into each other's class
 names, tests, a build, a smoke test over the packed tarball, and
@@ -168,6 +169,25 @@ a linked worktree, which is where every agent stands. ADR 0078.
 assigns the number, checked against `main` and every open branch.
 `scripts/check-adr-numbers.mjs` fails a collision, and it runs in
 `npm run check`.
+
+**A record that says it answers another record's revisit condition is named back
+in that record.** Not because records should cite each other: they should not. A
+record declares its lineage in the lines above its first heading, and on `main`
+at c5e95a5 there are **27 such declarations, of which 20 are never named back**.
+A sweep on 2026-09-08 judged 19 of those 20 harmless, and they are: a record is
+history, it cites what came before it, and an earlier record has no reason to
+grow a link every time a later one leans on it. It is one situation. When a later
+record answers an earlier one's `Revisit when` condition and the earlier record
+never hears about it, that condition goes on reading as open work and the next
+sweep re-judges finished work as unfinished. That happened three times and was
+found by hand. **Only one of those three is inside the 27**, which is why three
+does not fit inside one: the other two declare no lineage above their first
+heading and name the record they answer further down the page.
+`scripts/check-adr-backlinks.mjs` reads one line at a time for the words
+"revisit entry" and "revisit condition" beside another record's number, and it
+runs in `npm run check`. It is narrow on purpose and says so in its own summary
+line: a record that answers a condition without using those words is invisible to
+it, which is most of them. ADR 0096.
 
 **Every tracked source file has to be readable as a diff.** This project argues
 that the model is markdown so the diff is the review, and a file git treats as
