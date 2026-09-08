@@ -78,10 +78,13 @@ breaks, the documented one is the better bet, and the handshake it costs is thre
 requests made once.
 
 The REST surface is also how an annotation gets written, and this script does not
-write one. A write needs `comment`, `element` and `elementPath`, and then `x`,
-`y` and `timestamp`, each refused in turn as a raw `NOT NULL constraint failed`
-from SQLite. Creating annotations is the browser's job and the toolbar does it
-properly; nothing here should be a second, worse writer.
+write one. A write is refused three times before it is accepted, each time with a
+raw `NOT NULL constraint failed` from SQLite; the sequence is in
+[docs/process/verified.md](../../process/verified.md), measured by the
+orchestrator on 2026-09-07 rather than here, and it is not repeated in this
+record because a fact with two homes is a fact that can disagree with itself.
+Creating annotations is the browser's job and the toolbar does it properly;
+nothing here should be a second, worse writer.
 
 **The read is `agentation_list_sessions` and `agentation_get_session`, not
 `agentation_get_all_pending`.** The measurement above is the reason. Every status
