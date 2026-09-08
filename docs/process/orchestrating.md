@@ -1752,3 +1752,43 @@ present cannot be answered from a shape left behind by the past.** Which
 directory is a worktree, which studio is listening, which branch is still wanted.
 Every one of them was got wrong first by inspecting an artifact and got right by
 asking the thing that currently holds the state.
+
+## One record number to three agents, with the script that prevents it running
+
+`freeadr.mjs` exists because I handed 0092 to two agents in one night. It reads
+the default branch and every open pull request and it has been right every time
+it was asked. Tonight I handed **0098 to three agents inside an hour**, ran the
+script between the second and the third, and it reported 0098 free.
+
+**It was right.** None of the three had pushed anything, so no branch and no pull
+request carried the number. The claim was in three dispatch messages and nowhere
+else. A tool that reads the repository cannot see a promise, and I had been
+treating its answer as the whole answer for a week.
+
+**Two of the three places it was missing are now readable, and one is not.** A
+number an agent has written into a file and not pushed is on this machine, in its
+worktree, so the script reads those too and it found the first agent's 0098
+immediately. The fourth place is the one that produced this: a number promised in
+a brief to an agent that has not yet written a file. Nothing on disk holds it.
+
+So the script now ends by saying what it cannot see:
+
+```
+free to hand out: 0099, 0100, 0101
+It cannot see a number you promised in a brief before the agent wrote a file.
+Check what you have already handed out this session first.
+```
+
+**That closing line is the whole fix and it is not a mechanism.** There was a
+temptation to build one, a file recording each handout, and it is the wrong
+shape: it is state that has to be written at exactly the moment I am already
+failing to keep state, and a stale one would be worse than none. The honest
+answer is that the last hop is the orchestrator's memory, and the script's job is
+to say so rather than to imply otherwise by answering confidently.
+
+**The general form has now appeared four times in this file.** A tool answers a
+question adjacent to the one you care about. Which directory is a worktree, which
+studio is listening, which branch is still wanted, which number is free. Every
+one was got wrong first by trusting a reading of an artifact, and every one got
+better by naming what the reading does not cover **in the tool's own output**,
+where the next person meets it, rather than in a document beside it.
