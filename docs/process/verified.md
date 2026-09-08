@@ -6052,8 +6052,8 @@ corrected by whoever fixed the thing and the other was nobody's job.
   are not allowed`. A brief that hands an agent a branch name is handing it a
   thing that can be invalid; this one cost an agent a push and a rename.
 
-- **The studio flushes a pending write on demand, proven; whether an interrupt
-  reaches that flush is untested and cannot be tested from here.** `dbmd studio
+- **The studio flushes a pending write on demand, and an interrupt does reach
+  that flush, which I first recorded here as untestable.** `dbmd studio
   --help` promises that "Ctrl-C flushes any edit still waiting to be written and
   then stops listening", and the claim has two halves. The second half was
   driven: a `PATCH` to a table's layout, then `POST /api/flush` inside the 250ms
@@ -6385,3 +6385,31 @@ corrected by whoever fixed the thing and the other was nobody's job.
   really is in a directory of tables, the directory really does decide, and the
   table really does not load. `docs/format.md` repeats the false clause in that
   code's row.
+
+- **`docs/process/verified.md` on `main` contains its own body three times over,
+  and #220 is where it happened.** That pull request was called "The evidence
+  log, swept for entries its own work overtook". It took the file from 2197 lines
+  to 5885. Measured across the history: every commit before it grows the file by
+  tens of lines, and that one nearly tripled it.
+
+  **It is not three clean copies.** The body restarts mid-sentence: the first
+  run of the file ends inside the words "The `refs` fence opens at
+  `README.md:439` with its", and the next line is the file's own opening again.
+  So it is a truncate-and-restart rather than an append, twice.
+
+  **And the copies are not identical, so a naive dedup would lose evidence.** The
+  first copy carries a paragraph beginning "Corrected within the day: they are
+  guarded now, and two of the line numbers above are wrong", about ADR 0076
+  adding two fences to the `NARRATED` table, and the third copy does not have it
+  at all. The third has 313 substantial lines the first does not. Whichever copy
+  a reader lands in, they are reading a version of the record that somebody else
+  is not.
+
+  1356 distinct long lines appear more than once and 1354 of them appear three
+  times or more. **Every entry written into this file tonight went after the
+  third copy**, so nothing recorded today is duplicated; the damage is entirely
+  from #220 and is entirely in what came before it.
+
+  Not fixed here. Reconstructing one copy needs the differences between the three
+  reconciled rather than discarded, and it wants a reviewable diff of its own
+  rather than being buried in a documentation branch.

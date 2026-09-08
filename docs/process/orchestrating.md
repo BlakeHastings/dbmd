@@ -1143,3 +1143,41 @@ The fix is small and mechanical: **in an evidence log, write what you ran and wh
 happened, and let "cannot" be a conclusion somebody else is free to overturn.**
 Every entry in `verified.md` that says a thing is impossible should name the
 attempts that led there, and this one now does.
+
+## I merged a pull request that tripled the file it was sweeping
+
+`docs/process/verified.md` is the evidence log, and PR #220 was called "The
+evidence log, swept for entries its own work overtook". It took the file from
+2197 lines to 5885. The body is in there three times, restarting mid-sentence,
+and the three copies are not identical, so a paragraph correcting an earlier
+entry survives in the first copy and is absent from the third.
+
+It was found hours later, by accident, while checking a documentation branch for
+internal contradictions.
+
+**Nothing in the review caught it and the review was not careless.** The diff was
+large because the change was large. The gate was green because a duplicated
+markdown file passes every check this repository has: it is not code, it has no
+tests, and `prettier` formats a repeated paragraph exactly as happily as a
+unique one. The pull request body described the sweep accurately. The one thing
+that would have caught it is a number, and nobody asked for it.
+
+**So the rule is a number, and it is cheap.** For a change to a prose file, the
+line count before and the line count after belong in the pull request body, and
+a review should look at whether the delta matches the description. "Removed
+eleven stale entries" and "+3688 lines" cannot both be true, and neither figure
+is hard to produce.
+
+**The deeper reason this one got through is that the file has no reader.** Code
+gets read because it runs. Decision records get read because agents are pointed
+at them. An evidence log is written far more often than it is read, and its whole
+value is that somebody can trust it later, which is exactly the property that
+decays without anybody noticing. Three sessions appended to a file whose first
+two thirds were a duplicate, and every one of them added to the end, where the
+duplication is invisible.
+
+**A file nobody reads end to end needs a check that does.** Not prose review: a
+count, a duplicate-line scan, something mechanical that runs in the gate. This
+repository already checks the README's examples, the format page's error blocks,
+every pinned version and every command name. The one file it keeps specifically
+so that work is not redone was the one thing nothing looked at.
