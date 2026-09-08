@@ -376,7 +376,11 @@ export class Edits {
       // path asks the same question again.
       const said = saidAbout(this.diagnostics, current.path)
       if (said !== undefined) {
-        throw new EditRefused(409, 'unreadable', couldNotBeRead(current.path, 'editing it', said))
+        throw new EditRefused(
+          409,
+          'unreadable',
+          about(current.path, couldNotBeRead('editing it', said)),
+        )
       }
       throw new EditRefused(
         409,
@@ -489,10 +493,10 @@ export class Edits {
     if (changed) await this.serialise(() => this.absorb(disk))
     // Which of the two it is, in the reader's own words. See `saidAbout`.
     if (said !== undefined) {
-      throw new EditRefused(409, 'unreadable', couldNotBeRead(path, 'deleting it', said))
+      throw new EditRefused(409, 'unreadable', about(path, couldNotBeRead('deleting it', said)))
     }
     if (changed) {
-      throw new EditRefused(409, 'conflicted', changedUnderneath(path, 'deleting it'))
+      throw new EditRefused(409, 'conflicted', about(path, changedUnderneath('deleting it')))
     }
     // Anything already queued is written first, in order, so a pending edit to
     // this table cannot land after the file is gone and recreate it.
@@ -642,11 +646,13 @@ export class Edits {
         this.refusals.set(path, {
           path,
           at: new Date().toISOString(),
+          // The message is the clause without the path, because `path` is right
+          // there beside it and the page renders it as its own element.
           ...(said === undefined
-            ? { reason: 'changed' as const, message: changedUnderneath(path, 'writing over it') }
+            ? { reason: 'changed' as const, message: changedUnderneath('writing over it') }
             : {
                 reason: 'unreadable' as const,
-                message: couldNotBeRead(path, 'writing over it', said),
+                message: couldNotBeRead('writing over it', said),
               }),
         })
         this.log(
@@ -1039,12 +1045,34 @@ function fingerprint(model: Model, diagnostics: readonly Diagnostic[]): string {
   return JSON.stringify([shapeOf(model), diagnostics])
 }
 
-/** One sentence, in one place, because the status and the refusal have to agree. */
-function changedUnderneath(path: string, action: string): string {
+/**
+ * One sentence, in one place, because the status and the refusal have to agree.
+ *
+ * **It opens with what happened rather than with the file**, and that is the
+ * whole of the difference between it and the sentence it replaced. The two
+ * places that say it name the file differently: a refusal is a sentence on its
+ * own in a 409 body and has to say which file it is about, and a `conflicts`
+ * entry is a list item beside `conflict.path`, which the page renders as its
+ * own element. Both were built from a sentence that opened with the path, so
+ * every entry in that list printed it twice, once bare and once in backticks
+ * that nothing there renders. Measured on 2026-09-08, both reasons:
+ * `tables/orders.md `tables/orders.md` changed on disk after ...`.
+ */
+function changedUnderneath(action: string): string {
   return (
-    `\`${path}\` changed on disk after the studio read it, so ${action} would lose that change. ` +
+    `changed on disk after the studio read it, so ${action} would lose that change. ` +
     `The studio has reloaded the file and dropped its own edit to it; make the edit again if you still want it`
   )
+}
+
+/**
+ * The same clause as a refusal, which is read on its own and names its file.
+ *
+ * The backticks are what the page's other refusals use for a path and what a
+ * `curl` reader gets in the `error` field of the 409.
+ */
+function about(path: string, clause: string): string {
+  return `\`${path}\` ${clause}`
 }
 
 /**
@@ -1063,10 +1091,24 @@ function changedUnderneath(path: string, action: string): string {
  * answer to a change on disk, because the change is there to edit on top of.
  * Here there is nothing to make the edit on top of until the file can be read,
  * so that is what it says.
+ *
+ * **It used to open "could not be read just now", and those are the two words
+ * that could not stay.** A refusal is answered to a request and read in the
+ * moment it is written, so they were true there; a `conflicts` entry stands
+ * until the studio writes that file again, which is deliberate (ADR 0019), so
+ * they were a claim about the present tense that went false a second after a
+ * lock cleared and went on being made. Measured on 2026-09-08: the entry said
+ * it four seconds after the handle was released. The entry is a record of a
+ * moment and nothing else here dates itself, so what went is the time rather
+ * than the standing. `conflict.at` carries the moment for anyone who wants it.
+ *
+ * `couldNotBeReadNow` in `unreadable.ts` keeps its "just now" and is not this
+ * defect: the scenes ask the reader for it at the moment they write it, so it
+ * is gone from the panel and the box on the read where the file opens again.
  */
-function couldNotBeRead(path: string, action: string, said: string): string {
+function couldNotBeRead(action: string, said: string): string {
   return (
-    `\`${path}\` could not be read just now, so the studio did not go through with ${action}: ${said}. ` +
+    `could not be read, so the studio did not go through with ${action}: ${said}. ` +
     `Nothing was written and the file is exactly as it was; try it again once the file can be read`
   )
 }

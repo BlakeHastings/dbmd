@@ -162,12 +162,49 @@ export class RequestFailed extends Error {
  *
  * `what` is the noun phrase for the thing that was refused, because the page
  * knows what it was doing and the server does not.
+ *
+ * **It used to say the page was re-reading the model, and in the case that
+ * produces this refusal most often it was not.** The page adopts a change from
+ * disk only when it is between things (ADR 0025), and a cursor in a field of
+ * the panel is one of the things it waits for; typing in that field is what
+ * sends the patch that gets refused. Measured on 2026-09-08: the sentence
+ * stood, and six seconds later the textarea still held the body the outside
+ * save had replaced. So the page said it was re-reading directly underneath
+ * the sentence that says it is deliberately not, and the advice, to make the
+ * change again on top of what it then shows, could not be taken either.
+ *
+ * What it says now is what happens, in the words the deferred-adoption line
+ * above it already uses, and `caughtUpNotice` is the other half: the page says
+ * so when it has caught up, which is at the pointerup for a drag and at the
+ * blur for a field.
  */
 export function staleNotice(what: string): string {
   return (
     `${what} was refused because the files changed on disk after this page read them. ` +
-    `Nothing was written and the change on disk is intact. The page is re-reading the model; ` +
-    `make the change again on top of what it then shows.`
+    `Nothing was written and the change on disk is intact. This page catches up with the disk ` +
+    `as soon as you are between edits and says so; make the change again on top of what it shows then.`
+  )
+}
+
+/**
+ * The end of that sentence, said when the page has caught up.
+ *
+ * A refusal outranks everything else on the status line and is cleared only by
+ * an edit that lands (`showStatus` in `main.ts`), which is right while it is
+ * true and is how a sentence written about one moment ends up standing over a
+ * different one. The state each of these two refusals waits on clears without
+ * the page being told, so the page holds what it was refused and says this when
+ * the waiting is over.
+ *
+ * It is not "the model was re-read", which is the page talking about itself.
+ * What the person needs is whether the picture in front of them is the one to
+ * redo the edit on top of.
+ */
+export function caughtUpNotice(what: string): string {
+  return (
+    `${what} was refused because the files changed on disk after this page read them, ` +
+    `and this page has caught up since: what is on screen is what the files say. ` +
+    `Nothing was written, so make the change again on top of it.`
   )
 }
 
@@ -191,6 +228,28 @@ export function unreadableNotice(what: string): string {
     `${what} was refused because this page could not read the file just now. ` +
     `Nothing was written and the file is exactly as it was. The diagnostics below say what the ` +
     `reader saw; make the change again once the file can be read.`
+  )
+}
+
+/**
+ * The end of that sentence, said when the file can be read again.
+ *
+ * "The diagnostics below say what the reader saw" is true while the reader is
+ * still saying it and false a moment later: the studio re-reads while anything
+ * is unreadable (ADR 0061), so releasing the lock empties that list on the next
+ * beat, and the refusal above it goes on pointing at it. Measured on
+ * 2026-09-08 with a real exclusive handle: the list was empty two seconds after
+ * the release and the status line said the same sentence at two, four and six.
+ *
+ * That is the state where a person has done the one thing the sentence asked of
+ * them and wants to know whether it worked, so this is the sentence that tells
+ * them, and it is the same shape as `caughtUpNotice`: what changed, and what to
+ * do now.
+ */
+export function readableAgainNotice(what: string): string {
+  return (
+    `${what} was refused because this page could not read the file, and it can be read again now. ` +
+    `Nothing was written, so make the change again.`
   )
 }
 

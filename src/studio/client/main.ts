@@ -60,8 +60,10 @@ import {
   renameTable,
   RenameStopped,
   RequestFailed,
+  caughtUpNotice,
   conflictSummary,
   createdNotice,
+  readableAgainNotice,
   staleNotice,
   unreadableNotice,
   writeFailureNotice,
@@ -149,15 +151,40 @@ let stale = false
 let standing: { readonly text: string; readonly tone: 'plain' | 'bad' } | null = null
 
 /**
+ * What a standing refusal is waiting for, and what it was about.
+ *
+ * A refusal outranks everything else on the status line and is cleared only by
+ * an edit that lands, which is what makes it readable at all. Both of the
+ * refusals a developer meets here name a state that clears without this page
+ * being told: the model gets re-read, or the file becomes readable again. So
+ * the sentence goes on standing after the thing it describes has gone, and the
+ * person reading it has already done the one thing it asked of them.
+ *
+ * Holding the noun phrase the refusal was about is the whole of what is needed
+ * to say something truer when that happens. `on` is what has to happen, not
+ * what went wrong: a `stale` refusal and an `unreadable` one wait for different
+ * things and neither of them waits for this page.
+ */
+let waitingOn:
+  | { readonly on: 'model'; readonly what: string }
+  | { readonly on: 'file'; readonly what: string; readonly path: string }
+  | null = null
+
+/**
  * Say something that has to outlive the next status render.
  *
  * Through the same gate `showStatus` goes through, so that "the line says what
  * the crosshair is for, for as long as there is a crosshair" is one rule rather
  * than one rule and an exception. The sentence is still held, and it is still
  * what comes back the moment the mode ends.
+ *
+ * Anything said here replaces the standing refusal, so it drops what that
+ * refusal was waiting for with it: a follow-up sentence that arrived after some
+ * other act had spoken would be answering a sentence nobody is reading.
  */
 function say(text: string, tone: 'plain' | 'bad' = 'plain'): void {
   standing = { text, tone }
+  waitingOn = null
   showLine({ text, tone })
 }
 
@@ -199,13 +226,46 @@ function sayCreated(path: string, readFailed: string | null): void {
  *
  * The asking is `saidAbout`, shared with the server rather than written again
  * here, which is also how this came to count the directory that would not list.
+ *
+ * Both sentences end in what will make them stop being true, so both are held
+ * as well as said: `waitingOn` is what the follow-up is owed to, and the two
+ * places that learn the waiting is over are `adopt` and `takeDiagnostics`.
  */
-function sayStale(what: string, failure: RequestFailed, path?: string): void {
+function sayStale(what: string, failure: RequestFailed, path: string): void {
   console.warn(`dbmd studio: ${failure.code}: ${failure.message}`)
-  const unreadable =
-    failure.wasUnreadable ||
-    (path !== undefined && saidAbout(readerDiagnostics, path) !== undefined)
+  const unreadable = failure.wasUnreadable || saidAbout(readerDiagnostics, path) !== undefined
   say(unreadable ? unreadableNotice(what) : staleNotice(what), 'bad')
+  // After the `say`, which clears whatever the last sentence was waiting for.
+  waitingOn = unreadable ? { on: 'file', what, path } : { on: 'model', what }
+}
+
+/**
+ * The page has re-read the model: a refusal that was waiting for that says so.
+ *
+ * Said from `adopt` rather than from the places that decide to re-read, because
+ * what the refusal promised is that the picture would catch up, and adopting is
+ * where that becomes true.
+ */
+function sayCaughtUp(): void {
+  if (waitingOn?.on !== 'model') return
+  say(caughtUpNotice(waitingOn.what), 'bad')
+}
+
+/**
+ * Take the reader's half of the diagnostics from a read, and answer a refusal
+ * that was waiting on the file it could not open.
+ *
+ * One function for the three reads that take them, so that the answer cannot
+ * arrive from one of them and not from another: the beat, the poll that follows
+ * a write, and an adoption are all reads that can be the one where the lock has
+ * gone.
+ */
+function takeDiagnostics(diagnostics: readonly Diagnostic[]): void {
+  readerDiagnostics = diagnostics
+  if (waitingOn?.on === 'file' && saidAbout(readerDiagnostics, waitingOn.path) === undefined) {
+    say(readableAgainNotice(waitingOn.what), 'bad')
+  }
+  showDiagnostics()
 }
 
 /**
@@ -227,8 +287,11 @@ function unreadableSays(path: string): string | undefined {
 const writer = new ObjectWriter({
   revision: () => drawn,
   onStatus: (status) => {
-    // An edit that landed is the answer to whatever was refused before it.
+    // An edit that landed is the answer to whatever was refused before it, and
+    // to whatever that refusal was waiting for: the developer has made the
+    // change again, which is what both follow-up sentences ask them to do.
     standing = null
+    waitingOn = null
     notice(status)
     showStatus(status)
     if (status.pendingWrite) pollStatus()
@@ -367,6 +430,21 @@ async function start(): Promise<void> {
  * say nothing, so the next render is the read that worked. Holding it would
  * mean deciding when to let go of it, and the answer is already this: it goes
  * when a read comes back.
+ *
+ * **And a read that did not answer leaves this page owing itself one**, which
+ * is what `stale` is and is why it is set here. Saying so is the half above;
+ * this is the half that makes the sentence stop being true. Nothing else would
+ * set it: the revision counts changes made underneath the session (ADR 0025),
+ * so a create or a delete this page made itself deliberately does not move it,
+ * and the re-read that follows one of those is the only thing that puts the new
+ * model on screen. Measured on 2026-09-08 by refusing the page's reads for the
+ * length of one delete: the server went from eight tables to seven with the
+ * revision on 0 either side, and the box for the deleted table was still on the
+ * canvas ten seconds after the reads were being answered again. Only an
+ * unrelated save cleared it.
+ *
+ * Owing it is the whole of the fix, because `peek` already asks `catchUp` about
+ * a debt it is holding on every beat and on every focus. ADR 0095.
  */
 async function reload(): Promise<string | null> {
   let response: WireModelResponse
@@ -374,6 +452,7 @@ async function reload(): Promise<string | null> {
     response = await fetchModel()
   } catch (error) {
     showLine({ text: `Could not read the model: ${messageOf(error)}`, tone: 'bad' })
+    stale = true
     return messageOf(error)
   }
   adopt(response)
@@ -425,9 +504,15 @@ let saidOverAStaleCanvas: { readonly said: string; readonly did: string } | null
 function adopt(response: WireModelResponse): void {
   const first = !drawnOnce
   model = response.model
-  readerDiagnostics = response.diagnostics
+  // Before the two scenes draw, because both of them ask what the reader said
+  // about a file they are holding from memory (dbmd-c7q), and after `model`,
+  // because the validator's half runs over the copy this page holds.
+  takeDiagnostics(response.diagnostics)
   drawn = response.revision
   stale = false
+  // The picture has caught up, which is what a `stale` refusal said would
+  // happen and could not say had happened.
+  sayCaughtUp()
   canvas.show(
     { tables: model.tables, notes: model.notes, groups: model.groups },
     placeTables(model.tables),
@@ -438,10 +523,13 @@ function adopt(response: WireModelResponse): void {
   // model would send that old list back with a fresh revision on it, which is
   // this item's defect with the guard passed rather than failed.
   inspector.show(canvas.selection)
-  showDiagnostics()
   // This is the read that makes "the canvas is still showing what it drew
   // before" false, so it is the read that takes that clause back. The act's own
   // sentence stays: it is still true, and it is what the person did.
+  //
+  // After `sayCaughtUp` above, so a refusal that was waiting for this read wins
+  // the line: that one is the news that an edit did not happen, and this one is
+  // a clause coming off a sentence that says the edit did.
   if (saidOverAStaleCanvas !== null) {
     if (standing?.text === saidOverAStaleCanvas.said) {
       standing = { text: saidOverAStaleCanvas.did, tone: 'plain' }
@@ -561,9 +649,10 @@ async function peek(): Promise<void> {
   // warning and no object at all, and this is what puts it in the footer. They
   // are a fact about the bytes rather than about the page's own edits, so
   // taking them without adopting the model is the same trade `pollStatus`
-  // already makes.
-  readerDiagnostics = response.diagnostics
-  showDiagnostics()
+  // already makes. It is also the read where a lock most often turns out to
+  // have gone, which is why the answer to a refusal that was waiting on one
+  // hangs off taking them rather than off adopting.
+  takeDiagnostics(response.diagnostics)
   showStatus(response)
 }
 
@@ -986,8 +1075,7 @@ function pollStatus(): void {
         // `notice` and lets that decide. The reader's diagnostics are taken,
         // because they are what the last write made true and the page cannot
         // compute them for itself.
-        readerDiagnostics = response.diagnostics
-        showDiagnostics()
+        takeDiagnostics(response.diagnostics)
         notice(response)
         showStatus(response)
         if (response.pendingWrite) pollStatus()

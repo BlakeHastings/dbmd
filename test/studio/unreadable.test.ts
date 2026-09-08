@@ -245,9 +245,19 @@ describe('an edit to a file the studio cannot read', () => {
       // The reader's own clause, quoted rather than reworded, because the
       // studio does not know why the file would not open and must not guess.
       expect(conflict.message).toContain('cannot read the file: the file is in use (EBUSY)')
-      expect(conflict.message).toContain('could not be read just now')
+      expect(conflict.message).toContain('could not be read')
       expect(conflict.message).toContain('Nothing was written and the file is exactly as it was')
       expect(conflict.message).toContain('try it again once the file can be read')
+      // **And no "just now".** An entry stands until the studio writes that
+      // file again, which is deliberate, so a clause in the present tense goes
+      // false a second after the handle is released and goes on being said.
+      // Measured in a browser on 2026-09-08, four seconds after the release.
+      expect(conflict.message).not.toContain('just now')
+      // The path is `conflict.path`, once. The page's list renders that as an
+      // element of its own and puts the message after it, so a message that
+      // named the file printed it twice, the second time in backticks nothing
+      // there renders.
+      expect(conflict.message).not.toContain(conflict.path)
       // The sentence that was wrong, and the advice that looped.
       expect(conflict.message).not.toContain('changed on disk')
       expect(conflict.message).not.toContain('make the edit again if you still want it')
@@ -569,7 +579,7 @@ describe('an edit to an object the session is holding because the file would not
       expect(refused.body['error']).toBe(
         `\`${ORDERS}\` did not parse, so this server is holding less than the file does; writing it back would delete the part it could not read. Fix the file and reload`,
       )
-      expect(refused.body['error']).not.toContain('could not be read just now')
+      expect(refused.body['error']).not.toContain('could not be read')
     })
   })
 })
@@ -594,6 +604,9 @@ describe('a file somebody really did edit still says so', () => {
       expect(conflict.message).toContain('changed on disk after the studio read it')
       expect(conflict.message).toContain('make the edit again if you still want it')
       expect(conflict.message).not.toContain('could not be read')
+      // The other reason's entry, and the same rule about the path: this one
+      // opens with what happened, because the file is beside it already.
+      expect(conflict.message).not.toContain(conflict.path)
     })
   })
 
@@ -611,6 +624,70 @@ describe('a file somebody really did edit still says so', () => {
 
       expect(conflict.reason).toBe('changed')
       expect(conflict.message).toContain('changed on disk after the studio read it')
+    })
+  })
+})
+
+/**
+ * The same fact, said to a request and said in a list, naming its file once
+ * each.
+ *
+ * A refusal is a sentence on its own in a 409 body and has to say which file it
+ * is about; an entry in `conflicts` is read beside `conflict.path`, which the
+ * page renders as an element of its own. One function wrote both and it opened
+ * with the path, so the list printed the file twice and the second one was in
+ * backticks that nothing there renders. This is the pair, so that closing the
+ * duplication by taking the path out of the refusal as well would fail here.
+ */
+describe('where the file is named', () => {
+  it('is in the refusal and not in the entry, for a file that could not be read', async () => {
+    await withStudio(async ({ studio }) => {
+      await patch(studio, 'orders', MOVED)
+      fail.readFile = only('orders.md', errno('EBUSY', 'C:\\model\\tables\\orders.md'))
+
+      const conflict = theConflict(await flush(studio))
+      const refused = await remove(studio, 'orders')
+
+      expect(conflict.path).toBe(ORDERS)
+      expect(conflict.message).not.toContain(ORDERS)
+      expect(refused.body['code']).toBe('unreadable')
+      expect(refused.body['error']).toContain(`\`${ORDERS}\``)
+    })
+  })
+
+  it('is in the refusal and not in the entry, for a file somebody changed', async () => {
+    await withStudio(async ({ studio, dir }) => {
+      await patch(studio, 'orders', MOVED)
+      const target = join(dir, 'tables', 'orders.md')
+      await writeFile(
+        target,
+        (await readFile(target, 'utf8')).replace('columns:', 'columns:\n  - name: hand_edit'),
+        'utf8',
+      )
+
+      const conflict = theConflict(await flush(studio))
+
+      expect(conflict.path).toBe(ORDERS)
+      expect(conflict.message).not.toContain(ORDERS)
+    })
+  })
+
+  it('is in the refusal when a delete meets the change', async () => {
+    // The other half of the pair, and a delete rather than a write because a
+    // refusal a request is answered with is the reader that needs the file
+    // named: nothing beside it says which one it is about.
+    await withStudio(async ({ studio, dir }) => {
+      const target = join(dir, 'tables', 'orders.md')
+      await writeFile(
+        target,
+        (await readFile(target, 'utf8')).replace('columns:', 'columns:\n  - name: hand_edit'),
+        'utf8',
+      )
+
+      const refused = await remove(studio, 'orders')
+
+      expect(refused.body['code']).toBe('conflicted')
+      expect(refused.body['error']).toContain(`\`${ORDERS}\``)
     })
   })
 })
