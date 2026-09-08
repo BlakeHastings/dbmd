@@ -114,6 +114,19 @@ describe('absent, empty and unterminated frontmatter are three different things'
     ])
   })
 
+  test('frontmatter that is only comments is not called empty', async () => {
+    // The same code and a different sentence, because the file above has
+    // nothing between its delimiters and this one has a line of English. The
+    // consequence is the same and is the half the code is named for.
+    const { diagnostics } = await withModel({
+      'tables/orders.md': '---\n# nothing here yet, but I mean to write it\n---\n\nProse.\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md error frontmatter-empty: every line of the frontmatter is a comment, so the file declares nothing',
+    ])
+  })
+
   test('frontmatter that is a list rather than a mapping', async () => {
     const { diagnostics } = await withModel({ 'tables/orders.md': '---\n- orders\n---\n' })
 

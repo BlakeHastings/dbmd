@@ -103,7 +103,14 @@ export type ModelDiagnosticCode =
   | 'frontmatter-absent'
   /** `---` on the first line and no closing `---` anywhere after it. */
   | 'frontmatter-unterminated'
-  /** The delimiters are there with nothing but whitespace between them. */
+  /**
+   * The delimiters are there and nothing between them declares anything: only
+   * whitespace, or only comments.
+   *
+   * Two states and two messages, because a file whose frontmatter holds a
+   * sentence is not one a reader will accept being called empty. What they
+   * share is the consequence, which is the half the code is named for.
+   */
   | 'frontmatter-empty'
   /** The YAML parser rejected the frontmatter. */
   | 'frontmatter-invalid'

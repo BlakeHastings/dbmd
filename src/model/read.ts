@@ -647,11 +647,17 @@ function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
   }
 
   if (doc.contents === null) {
+    // Not the same state as `splitFrontmatter`'s `empty`, and it never was:
+    // that one is delimiters with nothing but whitespace between them, and it
+    // returns before this function is called. What is left to arrive here is
+    // frontmatter with characters in it that YAML made no node out of, which
+    // is comments. Saying "the frontmatter is empty" over a file with a
+    // sentence in it was the reader denying what the reader was looking at.
     push(ctx.out, {
       code: 'frontmatter-empty',
       severity: 'error',
       at: inFile(ctx.path),
-      message: 'the frontmatter is empty, so the file declares nothing',
+      message: 'every line of the frontmatter is a comment, so the file declares nothing',
     })
     return undefined
   }

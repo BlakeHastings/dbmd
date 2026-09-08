@@ -1167,7 +1167,7 @@ leaves the line off.
 | `object-in-subdirectory` | error | A directory inside `tables/`, `notes/` or `groups/` with markdown under it. dbmd reads one level of directories, so those files are on disk and not in the model. One error per directory, naming the first file found as evidence. | Move the markdown up into the kind directory. A directory that is meant to stay out of the model belongs under a name starting with `.`, or outside the model root. |
 | `frontmatter-absent` | error | The file does not start with a `---` line. | Add the frontmatter. Check for a blank first line. |
 | `frontmatter-unterminated` | error | An opening `---` with no closing one. | Add the closing `---`. |
-| `frontmatter-empty` | error | Two delimiters with nothing between them. | Say what the file is. |
+| `frontmatter-empty` | error | Nothing between the two delimiters declares anything: either whitespace only, or comments only. The message says which, because a file holding a `#` line is not empty. | Say what the file is. |
 | `frontmatter-invalid` | error | YAML would not parse it. At most one per file: [see below](#one-parse-error-per-file). | The message is YAML's, and the line is where the parse first went wrong. Usually a tab, indentation, or a stray `:`. |
 | `frontmatter-not-a-map` | error | The frontmatter parsed to a list or a scalar. | It has to be `key: value` lines. |
 | `duplicate-key` | error | The same key twice in one mapping. | Delete one. The first is used. |
