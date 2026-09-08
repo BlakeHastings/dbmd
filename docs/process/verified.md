@@ -2953,3 +2953,67 @@ corrected by whoever fixed the thing and the other was nobody's job.
   a reader most likely wants it. That is a sentence the command could gain, not a
   sentence it gets wrong, so it is the owner's call rather than a defect to
   dispatch.
+
+- **Every sentence the studio page can show was enumerated, driven and read
+  against the state that produced it.** Roughly ninety of them across the status
+  line, the footer lists, the canvas and the inspector. **Fifteen are suspect**
+  and the rest hold, including all seven promises the canvas makes to a screen
+  reader about Tab, the arrow keys, Home, End and Enter, and every "Writes
+  tables/X.md with ..." sentence checked against the file that appeared.
+
+  **The three that would cost a person something:**
+
+  - **A healthy table file is told it did not parse, with advice to delete it.**
+    On Windows, naming a new table `Orders` while `orders` exists offers the
+    case-clash confirmation it was designed for, and pressing it answers
+    ``Could not create Orders: `tables/Orders.md` is already a file, and it is
+    not in the model, which means it did not parse. Fix or delete it rather than
+    writing over it``. It is one file, it is in the model as `orders`, it parses,
+    and the page is drawing its box at that moment. `addObject` checks the model
+    case-sensitively and misses, then checks the disk case-insensitively and
+    hits, and the second check's message assumes the first ruled that out. The
+    rename path says it too.
+  - **A rename that stops half way under-reports what it wrote, and its undo
+    instruction errors out.** Measured on a rename with two referrers: the page
+    listed two files written, the server log listed three, and `git status`
+    agreed with the server. `await check()` runs before `landed.push(...)`, so
+    the write that triggers the detection is on disk and absent from the list.
+    Then `git checkout` on the message's own list exits 1, because the first file
+    in it is untracked and git refuses the whole pathspec, so even the files it
+    could have restored were left modified. ADR 0074 settled this exact point for
+    the create sentence and the successful rename honours it.
+  - **"Clearing whatever the system is refusing is enough" is not enough.**
+    Followed literally: the attribute was cleared and six seconds later the file
+    still held its pre-drag coordinates and the failure was still on screen. The
+    catch puts the files back in the edited set and never re-arms the timer, so
+    nothing flushes until the developer makes an unrelated edit. Then both landed
+    at once. "Nothing is lost yet" is true and the "yet" is load-bearing.
+
+  **The rest, in one line each.** The refusal sentence says "The page is
+  re-reading the model" in the one case where it deliberately is not, back to
+  back with a true sentence saying it will catch up later. "The diagnostics below
+  say what the reader saw" stands after the list has emptied. Fit says "11 of the
+  11 objects are on screen and the rest are past the edges" when there is no
+  rest, because `clamped` asks whether the scale was capped rather than whether
+  anything is off screen. The placement mode lasts indefinitely and the sentence
+  explaining it lasts under two seconds. The conflicts list's accessible name is
+  the phrasing that was already fixed above it. An edge still says a table "did
+  not parse" about a file that is merely locked, which is the fourth surface that
+  defect has been found on. The group placement paragraph keeps naming
+  `new-group` after the name field has changed. The rename's case-clash warning
+  cannot fire for the one rename that needs it, because the only clashing name is
+  filtered out as the table's own. A last-member warning describes a group file
+  that does not exist, down to keeping a label and prose it does not have. The
+  same warning is missing when you join a group and delete in the same panel
+  visit, which is the natural order. And "Fix the file and reload" asks for a
+  reload the watcher makes unnecessary, verified by fixing the file and touching
+  nothing.
+
+- **The partial write ADR 0087 pinned was measured in a browser, which is what
+  its revisit list asked for.** Dragging a two-member group with the second file
+  read-only: the first file landed on disk and **nothing on the page names it**.
+  The status line shows only the refusal, because `lastWrite` stays null and the
+  write-error branch wins over everything below it. On the next edit the studio
+  reports a conflict against that same file, saying it changed on disk after the
+  studio read it. Nobody changed it. The studio wrote it, thirty seconds earlier,
+  in the drag the message is about.
