@@ -634,3 +634,138 @@ The name is now `Edits dropped rather than written`, which says what the list is
 and leaves the why to the entries, because there are two whys and a list can
 hold both at once. `conflictSummary` was rewritten for exactly that reason and
 this is the same fix one element over.
+
+## Amended a sixth time: the two refusals say what they are waiting for, and say when it has happened
+
+Three sentences this record and its amendments shaped were driven against the
+states that produce them on 2026-09-08, in Chromium at 1600 by 947, against a
+throwaway copy of `examples/shop` outside the repository (ADR 0079). All three
+were true at the moment they were written and false a few seconds later, which
+is one defect wearing three faces and is why they are amended together.
+
+The amendment above landed the same day and is the same shape from a third
+direction: an act that said the page had re-read when the read had failed. This
+one is about a refusal, which is the other half of the same status line, and the
+two meet in `reload`. Neither changes the other's sentences.
+
+### "The page is re-reading the model" in the one case where it deliberately is not
+
+The stale refusal ended with _"The page is re-reading the model; make the change
+again on top of what it then shows."_ Select a table, put the cursor in its
+prose textarea, let a save land on that file from outside, and type one
+character:
+
+    [+2.5s] The model changed on disk. This page is still showing what you were
+            working on, and will catch up when you are between edits.
+    [refusal] The edit to table `orders` was refused ... The page is re-reading
+            the model; make the change again on top of what it then shows.
+    [+2s, +4s, +6s] textarea holds the outside line: false
+
+Two sentences about the same moment, back to back, saying opposite things, and
+the second is the false one. **The page is not re-reading, because a cursor in a
+field of the panel is one of the four things ADR 0025 defers adoption for, and
+typing in that field is what sent the patch that was refused.** The advice could
+not be taken either: what the page then shows is the model the edit was refused
+against. Everything else was correct, including the adoption, which happened on
+the blur.
+
+### "The diagnostics below say what the reader saw" after they have gone
+
+The unreadable refusal points at the diagnostics list, which is right while the
+reader is still saying it. Hold a table file open with an exclusive handle,
+press Delete, then release the handle:
+
+    [delete refused] diagnostics: ["tables/customers.md cannot read the file:
+            the file is in use (EBUSY)"]
+    --- the lock was released
+    [+2s] diagnostics: []
+    [+2s] The delete of tables/customers.md was refused ... The diagnostics
+            below say what the reader saw; make the change again once the file
+            can be read.
+    [+4s, +6s] the same
+
+ADR 0061 is why that list empties on its own, and a standing failure sentence
+wins in `showStatus` over everything until an edit lands, so the reader is
+pointed at an empty list in exactly the state where they have done what they
+were told and want to know whether it worked.
+
+### What changed for both
+
+**Each refusal now says what will happen rather than what is happening, and the
+page says so when it has.** The stale one ends _"This page catches up with the
+disk as soon as you are between edits and says so; make the change again on top
+of what it shows then"_, which is true of a drag and of a cursor in a field and
+does not need the page to predict which it is. `caughtUpNotice` and
+`readableAgainNotice` in `src/studio/client/write.ts` are the sentences that
+replace them, beside the other prose the page says out loud so that the wording
+is provable without a browser.
+
+**The mechanism is one variable.** `main.ts` holds `waitingOn`, which is the
+noun phrase the refusal was about and which of the two states it is waiting on,
+and it is cleared by anything else the page says, because a follow-up to a
+sentence nobody is reading is noise. The model half is answered in `adopt`,
+which is where catching up becomes true. The file half is answered in
+`takeDiagnostics`, which is now the one place the reader's diagnostics are taken
+from a read: the beat, the poll that follows a write and an adoption are all
+reads that can be the one where the lock has gone, and three call sites each
+remembering to check would be three chances for one of them not to.
+
+Measured after the change, same machine, same copy, same two gestures:
+
+    [after leaving the field] The edit to table `orders` was refused ... and
+            this page has caught up since: what is on screen is what the files
+            say. Nothing was written, so make the change again on top of it.
+    [after leaving the field] textarea holds the outside line: true
+
+    [+2s after the release] diagnostics: []
+    [+2s after the release] The delete of tables/customers.md was refused
+            because this page could not read the file, and it can be read again
+            now. Nothing was written, so make the change again.
+
+**The drag keeps working and is where this was checked from the other side.** A
+refusal met mid-drag says the same waiting sentence while the pointer is down
+and the caught-up one two seconds after the pointerup, which is the beat rather
+than the pointerup itself: the last write of a drag is still in flight when the
+pointer is released, and `busy` blocks the adoption that `catchUp` would
+otherwise do there. `wireHeartbeat` already says that in a comment, and this is
+the measurement of it.
+
+### A conflicts entry ages differently from a refusal, and printed its path twice
+
+The same read of the same sentences found the list under them saying:
+
+    tables/customers.md `tables/customers.md` could not be read just now, so the
+    studio did not go through with writing over it: cannot read the file: the
+    file is in use (EBUSY). ...
+    tables/orders.md `tables/orders.md` changed on disk after the studio read
+    it, ...
+
+**The path is in the entry twice**, once as the element the page renders from
+`conflict.path` and once inside the message, in backticks that nothing there
+renders. Both reasons did it, because `changedUnderneath` and `couldNotBeRead`
+each wrote a sentence that opened with the file, and each of those sentences has
+a second reader: a 409 body, where the file has to be named because nothing
+beside it says which one this is about. So the two functions now write the
+clause without the path and the three refusals put it in front, which is one
+line at each of them and leaves the list saying each file once.
+
+**And "just now" went.** An entry stands until the studio writes that file
+again, which this record decided on purpose and which is not what changed: what
+changed is that a clause in the present tense goes false a second after a handle
+is released and then goes on being said, measured four seconds after the
+release. The moment is on `conflict.at` for anyone who wants it. The refusals
+keep their own wording, because a 409 is written and read in the same instant,
+and `couldNotBeReadNow` in `src/studio/unreadable.ts` keeps its "just now" for
+the reason it always had: the scenes ask the reader for it at the moment they
+write it, so it is gone from the box and the panel on the read where the file
+opens again.
+
+### What did not change
+
+The refusals, their codes, and the rule about naming a cause. An edit refused
+because the file could not be read is still refused, still `unreadable`, and
+still repeats the reader's clause and guesses nothing. The entries still stand
+until the studio writes that file again, which is how the list clears itself by
+being resolved rather than by being dismissed. And the status line still lets a
+refusal outrank everything else, which is the reason all three of these
+sentences were readable long enough to be wrong.

@@ -20,8 +20,10 @@ import {
   type RenamePlan,
 } from '../../src/studio/client/model.js'
 import {
+  caughtUpNotice,
   conflictSummary,
   createdNotice,
+  readableAgainNotice,
   RenameStopped,
   staleNotice,
   unreadableNotice,
@@ -587,6 +589,77 @@ describe('what the page says when the model moved underneath it', () => {
     expect(edit.replace('The edit to table `orders`', '')).toBe(
       removal.replace('The delete of tables/orders.md', ''),
     )
+  })
+
+  it('does not say the page is re-reading, because the commonest way here it is not', () => {
+    // The refusal this sentence is most often read after is a keystroke in the
+    // panel, and a cursor in a field is one of the things adoption waits for
+    // (ADR 0025). So the page said it was re-reading two lines under the
+    // sentence that says it is deliberately not. Measured in Chromium on
+    // 2026-09-08: six seconds later the textarea still held the body the
+    // outside save had replaced.
+    const notice = staleNotice('The edit to table `orders`')
+    expect(notice).not.toContain('re-reading')
+    expect(notice).toContain('as soon as you are between edits')
+  })
+})
+
+/**
+ * The other end of those two sentences, said when what they are waiting for has
+ * happened.
+ *
+ * A refusal outranks everything else on the status line and is cleared by an
+ * edit that lands, which is right while it is true and is how a sentence about
+ * one moment ends up standing over a different one. Both refusals name a state
+ * that clears without the page being told: the model gets re-read, and the file
+ * becomes readable again. Measured in a browser on 2026-09-08, both of them:
+ * the panel had adopted the outside change and the line still said the page
+ * would catch up, and the diagnostics list was empty two seconds after a lock
+ * was released while the line went on pointing at it.
+ *
+ * These are the sentences that replace them. The assertions are about what each
+ * one says has changed, because that is the half a person is reading for.
+ */
+describe('what the page says once the refusal is over', () => {
+  it('says the picture has caught up, and to make the change on top of it', () => {
+    const notice = caughtUpNotice('The edit to table `orders`')
+    expect(notice).toContain('The edit to table `orders` was refused')
+    expect(notice).toContain('has caught up')
+    expect(notice).toContain('what is on screen is what the files say')
+    expect(notice).toContain('make the change again')
+    // Not the future tense of the sentence it replaces, which is the whole
+    // point of there being two of them.
+    expect(notice).not.toContain('as soon as you are between edits')
+  })
+
+  it('says the file can be read again, and does not point at an empty list', () => {
+    const notice = readableAgainNotice('The delete of tables/customers.md')
+    expect(notice).toContain('The delete of tables/customers.md was refused')
+    expect(notice).toContain('can be read again')
+    expect(notice).toContain('make the change again')
+    // The clause that went false: the reader's diagnostics are gone by the time
+    // this is said, because the read that removed them is the read that says
+    // this.
+    expect(notice).not.toContain('The diagnostics below')
+    expect(notice).not.toContain('once the file can be read')
+  })
+
+  it('names no cause for the file, exactly as the refusal it follows does not', () => {
+    expect(readableAgainNotice('The edit to table `orders`')).not.toMatch(
+      /lock|another program|antivirus|OneDrive/i,
+    )
+  })
+
+  it('gives the instruction once, in both of them', () => {
+    // The same rule the refusals follow: the advice is said once, by whoever
+    // owns the sentence. Two copies of it is what the page did before the
+    // server's prose stopped being concatenated onto its own.
+    for (const notice of [
+      caughtUpNotice('The edit to table `orders`'),
+      readableAgainNotice('The edit to table `orders`'),
+    ]) {
+      expect(notice.match(/make the change again/g)).toHaveLength(1)
+    }
   })
 })
 

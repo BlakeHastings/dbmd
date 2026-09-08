@@ -81,7 +81,13 @@ export interface WireConflict {
    * prose.
    */
   readonly reason: 'changed' | 'unreadable'
-  /** What happened and what to do about it, in words meant for a person. */
+  /**
+   * What happened and what to do about it, in words meant for a person.
+   *
+   * It is a clause about `path` and does not name it: a reader of this entry
+   * has the field, and the page's list puts it in an element of its own, so a
+   * message that opened with the path printed it twice.
+   */
   readonly message: string
 }
 
