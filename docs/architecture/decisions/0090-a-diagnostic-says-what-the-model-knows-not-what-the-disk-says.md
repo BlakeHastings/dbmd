@@ -214,6 +214,24 @@ the same defect wearing a smaller hat. The cost is stated below and it is real.
   time and points away from the truth the rest of it is worse than none.
   `test/cli/check.test.ts` had a four-problem fixture whose broken file was a
   table, which is now a note, and the comment there says why.
+
+  **The cost is bounded by something structural, and that is what makes it
+  payable: a warning waits behind an error rather than being lost.** Every path
+  that fills `refused` raises an error in the same run. There are eight and not
+  one of them is a warning: `object-not-a-file`, `file-unreadable`,
+  `frontmatter-absent`, `frontmatter-unterminated`, `frontmatter-empty`,
+  `frontmatter-invalid`, `frontmatter-not-a-map` and `kind-mismatch`.
+  `kind-missing` is an error too and is deliberately *not* one of them, because
+  that file still loads. The other half holds by definition rather than by
+  enumeration: `complete` is `!raised.some(d => d.severity === 'error')`, so an
+  incomplete table has an error beside it by construction. A model that
+  `group-empty` stands down in therefore exits 1 already, and the developer is
+  being told to fix the file that is hiding the warning.
+  `test/model/read.test.ts` asserts it over the seven a directory can produce,
+  one per line, plus the incomplete case, so a refusal added later without an
+  error beside it is a red build rather than a silence. `file-unreadable` is the
+  eighth and is asserted in `test/model/unreadable.test.ts`, at both of the
+  reader's filesystem calls.
 - **`Model` gains a required field**, so every constructor of one says out loud
   that it refused nothing. That is `complete`'s argument and it is why the field
   is not optional: an importer builds tables out of a catalogue and refuses no

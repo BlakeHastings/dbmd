@@ -215,6 +215,47 @@ describe('the object files that are there and are not objects', () => {
 
     expect(model.refused).toEqual([])
   })
+
+  // Every way a `tables/*.md` fails to become a table, one per line, so that a
+  // new one added without an error beside it is a red build rather than a
+  // silence. `file-unreadable` is the seventh and is not here: it needs a
+  // permission or a dangling link, which `test/model/unreadable.test.ts` builds
+  // and asserts is an error, at both of the reader's filesystem calls.
+  const refusals: readonly (readonly [string, Record<string, string>])[] = [
+    ['no frontmatter', { 'tables/orders.md': 'just prose\n' }],
+    ['frontmatter never closed', { 'tables/orders.md': '---\nkind: table\n' }],
+    ['frontmatter with nothing in it', { 'tables/orders.md': '---\n---\n' }],
+    ['YAML that will not parse', { 'tables/orders.md': '---\nkind: table\n\tpk: true\n---\n' }],
+    ['frontmatter that is a list', { 'tables/orders.md': '---\n- kind: table\n---\n' }],
+    ['a kind the directory disagrees with', { 'tables/orders.md': '---\nkind: note\n---\n' }],
+    ['a directory wearing the name', { 'tables/orders.md/README.txt': 'not a table\n' }],
+  ]
+
+  test.each(refusals)(
+    'a table refused for %s is refused with an error beside it, never a warning alone',
+    async (_why, files) => {
+      const { model, diagnostics } = await withModel(files)
+
+      // The claim ADR 0090 rests its `group-empty` cost on: a model with a
+      // refused object exits 1 anyway, so the warning that stands down is
+      // deferred behind an error rather than lost from a passing run.
+      expect(model.refused).toHaveLength(1)
+      expect(diagnostics.some((d) => d.severity === 'error')).toBe(true)
+    },
+  )
+
+  test('and an incomplete table carries one too, which is the other half of that claim', async () => {
+    // `complete` is `!raised.some(d => d.severity === 'error')`, so this holds
+    // by construction. It is asserted because `emptyGroups` stands down for an
+    // incomplete table as well as for a refused file, and the two halves have
+    // to be true together for the cost to be a deferral rather than a loss.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ncolumns:\n  - name: id\n---\n',
+    })
+
+    expect(model.tables[0]?.complete).toBe(false)
+    expect(diagnostics.some((d) => d.severity === 'error')).toBe(true)
+  })
 })
 
 describe('a kind name that is not a directory', () => {

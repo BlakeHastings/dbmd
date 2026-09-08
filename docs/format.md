@@ -1238,8 +1238,13 @@ file, and the other means fixing one.
 `group-empty` pays for this more widely than the other two, and deliberately.
 Membership is declared by the member, so *any* table file that did not load may
 be the missing member, and one of them is enough to make dbmd stand down on
-every group in the model until it is fixed. [ADR 0090][adr90] has the argument
-and what was rejected.
+every group in the model until it is fixed.
+
+**The warning waits rather than disappears.** Every way a file fails to load is
+an error, so a model that has one exits 1 anyway and you are already being told
+to fix it. Fix that file and the next run says what it thinks about your groups.
+No `group-empty` is ever dropped from a model that otherwise passes.
+[ADR 0090][adr90] has the argument and what was rejected.
 
 ### One parse error per file
 
