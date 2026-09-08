@@ -147,9 +147,13 @@ other command and is the one thing to remember about it.
   not the same fact as `no action` and is not printed as one. ADR 0049.
 - **It answers a model with errors in it**, which `dbmd export` refuses. That is
   the state you are in half way through a rename, so you can ask during rather
-  than only before. It says the model has errors first, because a file that did
-  not load is missing from the model along with every ref written in it, and the
-  answer may therefore be short.
+  than only before. It says so first, in one of two sentences, and they mean
+  opposite things. A file that did not load takes every ref written in it out of
+  the model, so "what follows may be short". A model whose files all loaded and
+  disagree with each other is complete, so "nothing is missing from what
+  follows". The number that tells them apart is `model.readErrors` on `--json`,
+  beside `model.errors`: a dangling `ref-table-unknown` is 1 error and 0 read
+  errors.
 - **A table that is gone and still pointed at is an answer, not an error.** The
   run says there is no `tables/<name>.md` and then lists what still points at
   the name. That is exactly the middle of a rename.
@@ -163,6 +167,8 @@ other command and is the one thing to remember about it.
   omitted rather than written false, for the reason the format omits them on
   disk. **Test whether the key is there rather than reading its value**: a
   missing `onDelete` is a ref that wrote no clause, which is not `no action`.
+  `model` carries `errors`, `warnings` and `readErrors`, which is how a script
+  reads the banner above.
 
 ## Editing: the canonical form
 
@@ -247,9 +253,9 @@ nested ignore file does nothing and looks like protection.
 
 ## Canonicalise what you edited
 
-Nine lines, so that rule 3 costs nothing. This is the canonical writer, the same
-one the studio and `dbmd import` write through, pointed at exactly the files you
-touched.
+Short enough to paste, so that rule 3 costs nothing. This is the canonical
+writer, the same one the studio and `dbmd import` write through, pointed at
+exactly the files you touched.
 
 ```javascript
 // canonicalise.mjs <dbmd checkout> <model dir> <path> [path...]
@@ -260,13 +266,37 @@ const [checkout, dir, ...paths] = process.argv.slice(2)
 const dbmd = await import(new URL('dist/index.js', pathToFileURL(`${checkout}/`)).href)
 
 const { model } = await dbmd.readModel(dir)
-const result = await dbmd.writeModel(dir, model, { only: new Set(paths) })
-console.log(JSON.stringify(result, null, 2))
+try {
+  console.log(JSON.stringify(await dbmd.writeModel(dir, model, { only: new Set(paths) }), null, 2))
+} catch (error) {
+  if (!(error instanceof dbmd.WriteFailed)) throw error
+  const { written, skipped, path, message } = error
+  console.log(JSON.stringify({ written, skipped, refused: path, message }, null, 2))
+  process.exitCode = 1
+}
 ```
 
 ```
 { "written": ["tables/products.md"], "skipped": [] }
 ```
+
+The `catch` is there because a write can be refused half way and the throw is
+the only thing that knows what landed. Measured, with the second of two files
+given the Windows read-only attribute, absolute paths elided:
+
+```
+{
+  "written": ["tables/accounts.md"],
+  "skipped": [],
+  "refused": "tables/api_keys.md",
+  "message": "EPERM: operation not permitted, rename '...\\.api_keys.md.608ce92a-....tmp' -> '...\\api_keys.md'"
+}
+```
+
+Without the `catch` that run is an unhandled rejection: node dumps the error, the
+script's own `console.log` never runs, and the exit code is 1. The dump does
+carry `written`, so nothing is hidden, but it arrives as a stack trace rather
+than as the answer you were going to report.
 
 - **`only` is what makes it safe.** Without it the whole directory is
   canonicalised, and three files nobody touched land in somebody's `git status`
@@ -281,16 +311,18 @@ console.log(JSON.stringify(result, null, 2))
   all, so `only` matches nothing and the answer is
   `{ "written": [], "skipped": [] }`. That reads like a clean no-op and it is
   your edit not being seen. Check the list against the paths you passed.
-- **A disk that refuses the write throws, and takes the result with it.**
-  `writeModel` rejects with a `WriteFailed`, exported beside it, carrying `path`,
-  the model file spelled the way `written` spells one; `temporary`, the writer's
+- **A disk that refuses the write throws, and the throw carries what it had
+  already done.** `writeModel` rejects with a `WriteFailed`, exported beside it,
+  carrying `path`, the model file spelled the way `written` spells one; `written`
+  and `skipped`, which are the two lists the result would have had, holding
+  everything the writer got through before it stopped; `temporary`, the writer's
   own scratch file; and the system's words as `message`, with the original on
   `cause`. **Report `error.path` rather than `error.message`**: the message opens
   with the temporary file, which is absolute and which the writer has already
   deleted, and reaches the file you care about only after an arrow. Files sorted
-  before the one that failed were written, and the throw took the `written` array
-  with them, so `git status` is the only record of what landed. The script above
-  prints nothing at all in that case. ADR 0083.
+  before the one that refused were written, and `error.written` names them, so
+  what landed is something to report rather than something to reconstruct from
+  `git status`. ADR 0083 shaped the message, ADR 0087 added the two lists.
 - **`pathToFileURL` is not decoration.** A bare Windows path in an `import`
   fails with `ERR_UNSUPPORTED_ESM_URL_SCHEME` because `C:` reads as a protocol.
 - This step is not optional and `dbmd check` will not do it for you. A
@@ -393,11 +425,20 @@ model is files in a repository, so git is the undo that was always there.
 
 So: leave the tree as it is, and report the `code`, the file, and the line if
 the diagnostic carries one. Say which part landed and which did not. **When the
-canonicalise step threw rather than reporting, `git status` is where that second
-answer is**: a `WriteFailed` names the one file that did not land and says
-nothing about the ones that did. Let whoever asked decide whether to fix forward
-or throw it away. The one thing to do yourself is fix the diagnostic you caused,
-when you know what it is.
+canonicalise step threw rather than reporting, the throw is where that second
+answer is**: a `WriteFailed` names the file the disk refused on `path` and the
+ones that landed before it on `written`. Let whoever asked decide whether to fix
+forward or throw it away. The one thing to do yourself is fix the diagnostic you
+caused, when you know what it is.
+
+**A diagnostic says what it is at, and from `dbmd check` that is a file or a
+directory.** `at` is `{ "in": "file", "path", "line" }`, where `line` is there
+only where it is honestly derivable, or `{ "in": "directory", "path" }`, which
+never carries one, because a directory has nowhere to put a cursor. `.` is the
+model directory itself. The summary line counts the two separately and names
+what it counted, so `1 error and 1 warning across 1 file and 1 directory` is a
+sentence you will see. (`{ "in": "document", "jsonPath" }` is the third variant
+and belongs to `dbmd import`, which points into the JSON it was handed.) ADR 0086.
 
 `error` means something did not make it into the model. **Not every error blocks
 the canonicalise step, and the line number is what tells the two halves apart.**
@@ -407,7 +448,9 @@ back would delete the line it could not understand. An error about the whole
 model carries a path and no line, and does not block anything: a dangling
 `ref-table-unknown` is a disagreement between two files and both of them still
 write. That is why the rename recipe canonicalises in the middle of a rename and
-it works.
+it works. An error at a directory blocks nothing either, for a third reason:
+`object-not-a-file` on `tables/ghost.md` is about a table that does not exist, so
+there is no file of yours it could be protecting.
 
 `warning` means it loaded and is probably still wrong: an unnamed column, a
 keyless table, an empty group. Half-written models are full of warnings on
@@ -437,7 +480,11 @@ Every table gets the one-line placeholder body. **Replacing those is the work**,
 and it is the part of this that is worth doing carefully rather than quickly.
 
 `dbmd init` writes a small example model with its prose, meant to be read once
-and replaced. That one does refuse a directory that exists and is not empty,
+and replaced. That one refuses rather than writes into two states, and they are
+two refusals because the fix is different: a directory that exists and is not
+empty is `directory-not-empty` and says to empty it, move it aside or name
+another; a path that is a plain file is `not-a-directory` and says only the last
+two, because emptying a file leaves a file. Both exit 1. It refuses at all
 because it writes files named after common tables.
 
 ### Running import again is a re-import, and it is a delta somebody confirms
