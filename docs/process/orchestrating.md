@@ -1261,3 +1261,47 @@ survive are the ones somebody turned into something that answers a question.**
 Worth saying plainly: the agent that caught my first mistake did it by following
 the instruction I gave it, and my second mistake broke the instruction I was
 giving. The briefs were more careful than the person writing them.
+
+## Six false readings in one session, every one from my own tooling
+
+Two sections above cover two of these. Here is the whole set, because the count
+is the finding: **six times in one night a measurement said the product was
+broken and the measurement was broken instead**, and not once was it the other
+way round.
+
+| what it seemed to say | what was actually wrong |
+| --- | --- |
+| the export drops all 64 columns from all 8 tables | a quoted heredoc halved the backslashes, so every regex escape was gone |
+| `dbmd import` drops a foreign key in silence | `head -4` cut the warning, which is the fifth line |
+| a table is drawn as `a` instead of `a{b}` | the pattern pulling entity names out stopped at the brace |
+| a table is missing from the diagram entirely | the shell had made an NTFS alternate data stream, not a file |
+| the import fix prints no warning at all | the runner returned stdout only, and the warning is on stderr |
+| a counterfactual behaves like the case before it | two fixture directories collided on a truncated name |
+
+**Five of the six are the same failure wearing different clothes: something
+between the command and my eyes dropped part of the answer.** A heredoc, a pipe,
+a regex, a return value, a directory name. The sixth is the environment quietly
+doing something other than what was asked.
+
+Three things follow that are worth more than "be careful".
+
+**A false reading is always the alarming one.** Every entry in that table looked
+like a serious defect. None of them looked like a working tool, because a
+truncated answer reads as an absence and an absence reads as a fault. So the
+prior is not symmetric: **an instrument that reports a problem is more likely to
+be broken than one that reports nothing**, which is the opposite of how it feels.
+
+**The tell was the same every time and it is worth naming.** Software does not
+usually fail totally and silently. All 64 columns missing, a warning entirely
+absent, a table simply not there: these are shapes real defects rarely take,
+especially in a codebase with this much reasoning written into its comments. **A
+result too clean to be a bug is a result to distrust first.**
+
+**And write the tool so it cannot drop things.** Capture both streams, never
+pipe a run being read for what it says, use the Write tool for anything with a
+backslash in it, and give fixtures names that cannot collide. Each of those is a
+line of code. Together they would have saved most of an evening.
+
+Worth keeping in proportion: the same passes that produced these six found
+around thirty real defects. The tooling was wrong six times and useful
+throughout, and the answer is better tooling rather than less of it.
