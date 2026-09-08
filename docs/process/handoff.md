@@ -4,50 +4,57 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, late, with two agents running and every epic closed.**
+**As of 2026-09-08, early, with nothing running, nothing open and every epic
+closed.**
 
 ## Where the work is
 
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
-`gh pr list --state merged` said 158. Every pull request has merged through
-`merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
-for the number, run the command. As of the last measurement: **198 merged, 123
-items closed, 3 open, no P1s, and 74 decision records.**
+`gh pr list --state merged` said 158. I then did the same thing four more times
+in one night, telling four agents how far behind their branch was without running
+`git rev-list --count`, and being wrong three times. Every number below was
+measured just now.
 
-**All three open items need the owner and all three now have what they need to
-decide.** The visuals epic's two questions each have a picture rendered on the
-live diagram and sent to them: four options for how an edge could say what a
-delete does, one of which was ruled out after the fact because a dash already
-means an unanchored end, and two options for making a box carry more weight than
-its neighbours, both of which argue for doing nothing. The third item is one
-recoverable layout from the morning they have not said whether to restore.
+| | |
+| --- | --- |
+| merged pull requests | 214 |
+| decision records | 83 |
+| tests | 1219 passing, 1 skipped, across 44 files |
+| backlog | 123 closed, 3 open |
+| the gate | 55 to 63 seconds across five runs |
 
-**The backlog stopped being where work comes from.** Everything in it that an
-agent could do was done. What followed came from driving the product and from
-sweeping its own records: the edge tooltip, edge identities and the panel key,
-the status line that lied after a create and the rename that lied worse, the
-import grid that laid six hundred tables in a ribbon no zoom could fit, and
-sixteen decision records whose revisit conditions had fired unread. **None of
-those has a backlog item, because the tracker has been blocked since the
-afternoon.** The list of what is owed to it is below.
+**All three open items are the owner's and all three have what they need.** The
+visuals epic's two questions each have a picture rendered on the live diagram and
+sent to them: four options for how an edge could say what a delete does, one of
+which was ruled out afterwards because a dash already means an unanchored end,
+and two options for making a box carry more weight, both of which argue for doing
+nothing. The third is one recoverable layout from the morning of 2026-09-07 they
+have not said whether to restore.
+
+**The backlog stopped being where work comes from at about midday.** Everything
+in it an agent could do was done. What followed came from driving the product and
+from making the project's own records audit themselves, and none of it has an
+item because the tracker has been blocked since the afternoon. The owed writes
+are listed below.
 
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 ## In flight, and what is actually left
 
-**Two agents are running.** One is bringing the last two unguarded blocks in
-`README.md` under the mechanism ADR 0069 built. The other is closing the gap that
-let a pull request be merged unread: `merge-pr.mjs` judges its refusals against
-the head commit and nothing tells it which commit the reviewer read.
+**Nothing is running and nothing is open.** Fourteen agents worked between the
+afternoon and the small hours and every branch landed.
 
 **The studio is running for the owner** at `http://127.0.0.1:49192/`, started at
-20:37 with `npm run studio:dev`, with the feedback overlay on it. `npm run
-annotations` reads what they write there, finding that page among the two hundred
-odd sessions on the annotation server, most of which belong to a different
-project on this machine. **Nothing has been annotated yet.** The address moved
-four times before that one and then stopped moving on purpose; do not restart it
-without saying so, because they were given that number.
+20:37 on 2026-09-07 with `npm run studio:dev`, with the feedback overlay on it.
+`npm run annotations` reads what they write there. **Nothing has been annotated
+yet.** The address moved five times before that one and then stopped on purpose;
+do not restart it without saying so, because they were given that number.
+
+**The loop they asked for is proved in both directions.** An annotation written
+to that page's session comes back through `npm run annotations` with the comment,
+the element and the selector, and `--reply` and `--resolve` answer in the thread
+they will see. Verified by writing one, reading it, answering it and deleting it.
 
 **The annotation server is reachable and the way it is reachable is not the way
 this file used to say.** The earlier version of this paragraph claimed the
@@ -445,3 +452,35 @@ cannot be taken back, and a failed first publish burns a tag.
 So: publish, watch it work, then add provenance and watch that work on 0.1.1.
 Recorded rather than done, because the release path is the owner's and because
 nothing here should touch it on a hunch.
+
+## What the night actually found, for somebody deciding where to look next
+
+Four defects, and the shape they share is worth more than the list.
+
+- **A status line that said it was creating a file it had created**, which turned
+  out to be true of a rename as well, and worse there: renaming a referenced
+  table ended by naming the least interesting file it touched.
+- **An import grid five tables wide whatever the schema's size**, which laid six
+  hundred tables in a ribbon no zoom could fit, with a Fit button that silently
+  did not fit.
+- **A watcher that dropped a workflow** whose branch filter it could not read,
+  which is a watcher watching one thing less for a reason nobody would see. Found
+  by the first question anybody ever asked that parse.
+- **A write refusal written in the operating system's words**, leading with a
+  temporary file the person never created and which no longer exists by the time
+  they read about it.
+
+**Every one is about what the tool says rather than what it does.** Where this
+tool could lose somebody's work it is careful: a rename moves the references and
+says so first, a delete names what it will leave dangling, two writers on one
+model refuse rather than overwrite, an unreadable file keeps the last good
+drawing, and a locked file keeps the edit and retries. Nothing found tonight
+threatened anybody's data.
+
+**And the records were less reliable than the code.** Sixteen revisit conditions
+had fired unread. Two records were born describing a future nobody re-read them
+against, one of them seventeen minutes before the record that dissolved its
+reasoning. A skill shipped with the repository carried five false claims, two of
+which were never true. **A guard nobody had run found a real bug on the first
+question it was asked.** If you are deciding where to look next, look at what
+this project says about itself rather than at what it does.
