@@ -6194,3 +6194,21 @@ corrected by whoever fixed the thing and the other was nobody's job.
   a heredoc.** This is the third quoting failure in one session, after a
   `node -e` that could not carry an apostrophe and an argv order that wrote a
   directory into the main checkout.
+
+- **PR #226 was verified by building its sha and driving both sides of the rule
+  it settles.** A `_model.md` that is a directory now reports `1 warning across 1
+  directory`; a `_model.md` that is absent still reports `1 warning across 1
+  file`; two directory diagnostics report `2 directories`; two broken files
+  report `2 files`; and a model with both reports `2 errors and 1 warning across
+  2 files and 1 directory`. Both `dbmd init` refusals are distinct and correct.
+  The seam with #225 was checked rather than assumed: `dbmd init --force` and
+  `dbmd check --fix` each name the flag that was wrong, after a rebase past the
+  branch that changed how that sentence is built.
+
+- **The agent's argument for the rule was better than mine.** I said the location
+  follows what is at the path. It noticed that the reasoning being corrected
+  proves too much: "a file that has to exist" would have given
+  `object-not-a-file` a file location too, leaving the new variant with almost no
+  members. That is the sharper form, it is in ADR 0086, and the record also says
+  where its own author went wrong first, which is worth more than a rejected-
+  alternatives list written from outside.

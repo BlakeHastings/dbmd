@@ -82,12 +82,16 @@ have now worked between the afternoon of 2026-09-07 and here.
   lets it tell a mistyped short flag from an option's value. Sent back once,
   because the first version traded away a case that had been correct. Verified by
   building the sha and driving twelve command lines.
-- **`cli/three-sentences-that-are-false-about-the-thing-in-front-of-them`.**
-  `dbmd init` tells a plain file it is a directory that is not empty and offers
-  a remedy that provably fails; `dbmd check` counts diagnostic headings and calls
-  them files, including headings that are directories or nothing at all; and
-  `dbmd check` says there is no `_model.md` on the line above the one that names
-  `_model.md/`.
+- **LANDED as #226**, the largest change of the night. `dbmd init` told a plain
+  file it was a directory that is not empty and offered a remedy that provably
+  failed; `dbmd check` counted diagnostic headings and called them files,
+  including headings that were directories or nothing at all; and `dbmd check`
+  said there was no `_model.md` on the line above the one that named
+  `_model.md/`. `DiagnosticLocation` gained a third variant,
+  `{ in: 'directory', path }`, with no `line`, and ADR 0086 is the argument.
+  Sent back once, because the one code the branch added broke the rule its own
+  record states. Verified by building the sha and driving both sides of the rule,
+  every counterfactual, and the seam with #225.
 
 **The held import finding is now out.** It was held until the export branch
 settled the wording, and #222 settled it: a refused write leads with the
