@@ -1168,3 +1168,61 @@ here so nobody rediscovers it as a bug.
 complete**: name, description, seven keywords, MIT, repository, homepage, bugs,
 `engines.node >=22`, the `dbmd` binary and three export paths, with `LICENSE` and
 `README.md` both in the tarball. 77 files, 236 kB packed.
+
+## 2026-09-07, night: five paths driven in a browser, and the one that lies
+
+Driven against a studio pointed at a **copy** of `examples/shop` in a temporary
+directory, because four of these write files. Nothing tracked was touched.
+
+- **Creating a table works and the status line then lies about it.** Arm with
+  `Add table`, click the canvas, type a name, press `Create`: the box appears,
+  the panel follows it, and `tables/roast_batches.md` lands on disk carrying
+  `layout: { x: 835, y: 915 }` and one `id` column. **The status line says
+  `Creating tables/cupping_notes.md.` and never stops saying it.** Measured at 3
+  seconds and again at 15, unchanged; a drag of an unrelated box then replaced it
+  with `Wrote tables/customers.md at 8:09:11 PM.` The write is right and only the
+  sentence is wrong. Dispatched.
+- **A rename does everything it says it will do.** It shows the plan first:
+  *"This writes tables/buyers.md and deletes tables/customers.md. 3 refs point
+  here and will be moved with it, which edits 3 other files."* Confirmed, and the
+  requests were exactly that plan in order: `POST /api/table`, then a `PATCH` and
+  a flush for each of the three referrers, then `DELETE /api/table/customers`. On
+  disk afterwards: `buyers.md` present, `customers.md` gone, three files saying
+  `ref: buyers.id`.
+- **A delete says what it will leave broken.** *"This deletes
+  tables/customers.md and edits no other file. 3 refs in 3 other files will be
+  left pointing at nothing: addresses.customer_id, orders.customer_id,
+  subscriptions.customer_id."* The asymmetry with rename is deliberate and both
+  sentences say which one they are.
+- **An edit made in another program reaches the page.** A column added to
+  `customers.md` on disk appeared within 3 seconds, the row count going 6 to 7.
+  That is ADR 0004's promise and it holds.
+- **A file that becomes unreadable is named within 3 seconds**, on an open page
+  as well as a fresh one, while the last good version of that table stays drawn.
+
+**Four of the five were nearly reported as defects and were not.** `Add table`
+appearing to do nothing is an arm-then-place interaction. `Rename` appearing to
+do nothing is arm-then-confirm, like delete. The unreadable file appearing to go
+unnoticed was a break condition in the test that fired on diagnostics which were
+already there. Each was settled by reading the source or fixing the instrument
+rather than by filing. **The one that survived that treatment is the one worth
+having**, and the difference between the four and the one is that the one was
+checked against what the code says it does: `standing` is cleared in exactly one
+place, and the create path does not go through it.
+
+- **A sixth path, and the one that would matter most if it were wrong.** Two
+  writers, one model: a box was held mid-drag while `tables/orders.md` gained a
+  column from outside, and the drag was then released, which is when the page
+  asks to write the layout it is holding. The write was **refused**, in these
+  words:
+
+  ```
+  1 edit was dropped rather than written over a change on disk.
+  tables/orders.md `tables/orders.md` changed on disk after the studio read it,
+  so writing over it would lose that change.
+  ```
+
+  The column written from outside survived on disk and the page then showed it.
+  So the thing that was lost was a layout nudge and the thing that was kept was
+  somebody's column, which is the right way round. Tone `bad`, named file, and
+  no page errors.
