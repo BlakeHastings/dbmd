@@ -271,48 +271,127 @@ describe('a block in README.md that quotes a committed file is that file', () =>
  * costs the page nothing, so the block stays a plain shell session and reads as
  * one.
  *
- * The `$` line is written out beside the argument list rather than parsed into
- * it, because it ends in `> introspect.sql` and `sessionIn` below would hand
- * `>` to `parseArgs` as a directory. The page shows that redirect on purpose:
- * stdout is the SQL, and this block is the narration that went the other way.
+ * WHAT A ROW SAYS, AND WHY THERE ARE THREE OF THEM
+ * ADR 0069 covered one block and drew its boundary at a command that reads and
+ * writes nothing. It also recorded that the rest of the page's runnable blocks
+ * had been swept by hand that night and were exact, which is a date rather than
+ * a guard. Two of them were one edit away from being wrong with nobody to
+ * notice: `dbmd refs orders examples/shop` and the `dbmd export` pair.
+ * ADR 0076 is the argument for holding them here, including why they do not go
+ * into the walkthrough's sandbox below.
  *
- * WHY ONLY A COMMAND THAT READS AND WRITES NOTHING
- * `dbmd query` takes no directory, opens no file and binds no socket, so
- * running it needs neither a sandbox nor a working directory. The other blocks
- * on this page outside the walkthrough each need one: `dbmd init` and
- * `dbmd check` want a directory in a known state, and `dbmd studio` prints a
- * port the kernel chose, which is the reason ADR 0056 already gives for leaving
- * that one alone. All four were read against a run by hand on 2026-09-07 and
- * were exact to the byte. Widening to them is a sandbox, and the sandbox is
- * what the walkthrough below already owns.
+ * `argv` is given only when the `$` line cannot be parsed into an argument
+ * list. The `dbmd query` line ends in `> introspect.sql` and `sessionIn` would
+ * hand `>` to `parseArgs` as a directory. The page shows that redirect on
+ * purpose: stdout is the SQL, and the block is the narration that went the
+ * other way. Every other row is read as the shell session it is, by the same
+ * `sessionIn` the walkthrough uses, so a fence holding two commands is two
+ * runs. The `dbmd export` pair needs exactly that: the second command answers
+ * "already up to date" only because the first one wrote.
+ *
+ * `setup` is what the page's prose says happened before the block, run in a
+ * fresh empty directory that the block then runs from. `dbmd export` with no
+ * argument writes `db-model/README.md`, so it needs one, and the model it
+ * writes about is the one `dbmd init` makes. A row without `setup` runs from
+ * the repository root: `dbmd refs` takes a directory and writes nothing, and
+ * the directory the page hands it is committed here.
+ *
+ * `stdout` is the half of the terminal the block does not show. `dbmd query`
+ * puts the SQL there, which is the whole lesson of that entry. The other two
+ * put nothing there, and a command that started to would turn the page's block
+ * into half a transcript with nothing saying so.
+ *
+ * `dbmd studio` is still left alone, for the reason ADR 0056 gives: it prints a
+ * port the kernel chose. The `dbmd init` and `dbmd check` blocks are still
+ * uncovered too, and ADR 0076 says what each of them would cost.
  */
-const NARRATED = [
+interface Narrated {
+  /** The block's first `$ ` line, which is how the block is found on the page. */
+  readonly shown: string
+  /** The argument list, for a `$` line that cannot be parsed into one. */
+  readonly argv?: readonly string[]
+  /** Commands run in a fresh directory first, for a block that is only true after them. */
+  readonly setup?: readonly (readonly string[])[]
+  /** Whether the block's commands put anything on stdout. */
+  readonly stdout: 'something' | 'nothing'
+}
+
+const NARRATED: readonly Narrated[] = [
   {
     shown: '$ dbmd query --engine postgres > introspect.sql',
     argv: ['query', '--engine', 'postgres'],
+    stdout: 'something',
   },
-] as const
+  { shown: '$ dbmd refs orders examples/shop', stdout: 'nothing' },
+  { shown: '$ dbmd export', setup: [['init']], stdout: 'nothing' },
+]
+
+/**
+ * Runs `body` from the directory the block was written in, and puts the working
+ * directory back afterwards however it goes.
+ *
+ * `process.chdir` is global to the worker, which the walkthrough below already
+ * depends on and says so. Here it is held for the length of one test rather
+ * than for a describe, because one block is one session and nothing else in
+ * this file needs to see the directory it ran in.
+ */
+async function runNarrated(row: Narrated, body: () => Promise<void>): Promise<void> {
+  const sandbox = row.setup === undefined ? '' : await mkdtemp(join(tmpdir(), 'dbmd-narrated-'))
+  const original = process.cwd()
+  process.chdir(sandbox === '' ? repoRoot : sandbox)
+  try {
+    for (const argv of row.setup ?? []) {
+      const run = await runCli([...argv])
+      // Nothing compares this command's output, because the page does not show
+      // it here. What it has to do is succeed: everything the block claims is
+      // only true if it happened.
+      const before = `dbmd ${argv.join(' ')}`
+      expect(run.code, `the exit code of the \`${before}\` the block is written after`).toBe(0)
+    }
+    await body()
+  } finally {
+    process.chdir(original)
+    if (sandbox !== '') await rm(sandbox, { recursive: true, force: true })
+  }
+}
 
 describe('a block in README.md that narrates a command is what that command narrated', () => {
-  for (const { shown, argv } of NARRATED) {
-    const command = `dbmd ${argv.join(' ')}`
-
-    test(`the block opening \`${shown}\` is what \`${command}\` wrote to stderr`, async () => {
-      const at = lines.indexOf(shown)
-      expect(at, `README.md shows \`${shown}\``).toBeGreaterThan(0)
+  for (const row of NARRATED) {
+    test(`the block opening \`${row.shown}\` is what it narrated`, async () => {
+      // The `$` line is looked up rather than searched for by shape, so a page
+      // that stops showing this command fails here instead of passing over
+      // nothing. `$ dbmd export` appears twice; the first is the one a fence
+      // opens on, which is the one this finds.
+      const at = lines.indexOf(row.shown)
+      expect(at, `README.md shows \`${row.shown}\``).toBeGreaterThan(0)
       expect(lines[at - 1], `the line above README.md:${at + 1} opens a fence`).toBe('```')
       const end = lines.indexOf('```', at + 1)
       expect(end, `README.md:${at + 1} is inside a fence that closes`).toBeGreaterThan(at)
 
-      const run = await runCli([...argv])
-      expect(run.err, `\`${command}\`, against the block at README.md:${at + 2}`).toBe(
-        `${lines.slice(at + 1, end).join('\n')}\n`,
-      )
-      // The redirect is why this block is here rather than in a `dbmd-run`, so
-      // the thing being redirected is worth one assertion of its own. What the
-      // page shows of this run is the narration, and that was just compared.
-      expect(run.out.length, `what \`${command}\` put on stdout`).toBeGreaterThan(0)
-      expect(run.code, `the exit code of \`${command}\``).toBe(0)
+      const session =
+        row.argv === undefined
+          ? sessionIn({ kind: 'run', text: `${lines.slice(at, end).join('\n')}\n`, line: at + 1 })
+          : [{ argv: [...row.argv], expected: `${lines.slice(at + 1, end).join('\n')}\n` }]
+
+      await runNarrated(row, async () => {
+        for (const { argv, expected } of session) {
+          const command = `dbmd ${argv.join(' ')}`
+          const run = await runCli(argv)
+          expect(run.err, `\`${command}\`, against the block at README.md:${at + 1}`).toBe(expected)
+          expect(run.code, `the exit code of \`${command}\``).toBe(0)
+          if (row.stdout === 'something') {
+            // The redirect is why this block is here rather than in a
+            // `dbmd-run`, so the thing being redirected is worth an assertion
+            // of its own. What the page shows of it is the narration, and that
+            // was just compared.
+            expect(run.out.length, `what \`${command}\` put on stdout`).toBeGreaterThan(0)
+          } else {
+            expect(run.out, `what \`${command}\` put on stdout, which the block does not show`).toBe(
+              '',
+            )
+          }
+        }
+      })
     })
   }
 })
