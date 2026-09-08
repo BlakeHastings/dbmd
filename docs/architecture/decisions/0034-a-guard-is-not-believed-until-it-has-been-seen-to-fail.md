@@ -221,6 +221,11 @@ worktree on the same machine, on 2026-09-07:
 | `npm run check:guards` | 8.1s, one mutation | 18.5s, two rounds |
 | `npm run check` | 26.5s before this record, ~34.6s predicted after | 54.9s |
 
+The orchestrator ran the gate independently on the same machine the same night
+and got **1m0.2s**, which is their number and not this sweep's. Two runs an hour
+apart differing by five seconds is what a single run of anything is worth, and
+both are more than double what this record recorded.
+
 **What that changes and what it does not.** `check:guards` is now the single
 largest item in the gate, at about a third of it, where this record priced it as a
 30% increase on a 26.5s run. The two things the decision actually rests on are

@@ -1473,6 +1473,12 @@ it. Nothing is proposed on the strength of that: the two things ADR 0034's
 decision rests on, that `npm test` stays outside it and that the gate is paid
 once per push, are both unchanged.
 
+**The orchestrator ran the gate independently the same night and got 1m0.2s**,
+which is their measurement and not this one. Two runs an hour apart on one
+machine differing by five seconds is roughly what a single run of anything is
+worth, and the useful part is that both are more than double the 26.5s ADR 0034
+recorded earlier the same day.
+
 ### One thing the sweep found that was not a revisit condition
 
 **A brief's premise, and the correction is the useful part.** This sweep was
