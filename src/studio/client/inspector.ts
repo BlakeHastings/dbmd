@@ -89,7 +89,7 @@ import {
   type LineEnding,
 } from './fields.js'
 import type { Point } from './geometry.js'
-import { agreeing, referrersTo, referrerText, renamePlan } from './model.js'
+import { agreeing, lastMemberWarning, referrersTo, referrerText, renamePlan } from './model.js'
 import { PALETTE, unknownColorNote } from './palette.js'
 import { clashFor, NEW_TABLE_SHAPE, suggestName, suggestTableName } from './tables.js'
 
@@ -561,6 +561,13 @@ export class Inspector {
     field.append(input, create, cancel)
 
     const writes = note('')
+    // A group's paragraph names the `group:` line a table will write to join
+    // it, so it moves with the name field the way `path` and `writes` do. It
+    // was built once, from the suggested name, and went on naming `new-group`
+    // over a path line reading `groups/espresso-bar.md`, and over `groups/….md`
+    // once the field was empty. The other two kinds say where the object goes,
+    // which is what was pointed at and does not change while somebody types.
+    const shape = note('')
     const said = el('p', 'notes')
     said.dataset['field'] = `new-${kind}-notes`
     const confirmHost = el('div', 'confirm-host')
@@ -591,6 +598,12 @@ export class Inspector {
             : kind === 'note'
               ? `Writes notes/${name}.md, with layout: { x: ${at?.x ?? 0}, y: ${at?.y ?? 0} } and color: ${placement.color}. The body is the note; type it in the panel afterwards. No other file in the model changes.`
               : `Writes groups/${name}.md, with color: ${placement.color} and no coordinates at all. Its box is worked out from whatever joins it, and a table joins from its own panel.`
+      shape.textContent =
+        kind !== 'group'
+          ? `It goes where you pointed. A position nobody chose is computed and never written (ADR 0015), so pointing is the only way a new ${kind} gets a \`layout\` at all.`
+          : name === ''
+            ? 'A group has no coordinates. Its box is the bounding box of the tables that declare it, computed every time it is drawn, so dragging it writes one `layout` line per member and never touches this file (ADR 0005).'
+            : `A group has no coordinates. Its box is the bounding box of the tables that declare \`group: ${name}\`, computed every time it is drawn, so dragging it writes one \`layout\` line per member and never touches this file (ADR 0005).`
       confirmHost.replaceChildren()
 
       const lines: string[] = []
@@ -688,18 +701,7 @@ export class Inspector {
       )
     }
 
-    section.append(
-      writes,
-      note(
-        kind === 'group'
-          ? 'A group has no coordinates. Its box is the bounding box of the tables that declare `group: ' +
-              `${placement.name}` +
-              '`, computed every time it is drawn, so dragging it writes one `layout` line per member and never touches this file (ADR 0005).'
-          : `It goes where you pointed. A position nobody chose is computed and never written (ADR 0015), so pointing is the only way a new ${kind} gets a \`layout\` at all.`,
-      ),
-      said,
-      confirmHost,
-    )
+    section.append(writes, shape, said, confirmHost)
     restate()
     if (focus) {
       input.focus()
@@ -1339,7 +1341,17 @@ export class Inspector {
           orphans.length === 0
             ? 'Nothing else in the model refs this table, so nothing is left pointing at it.'
             : `${orphans.length} ${agreeing(orphans.length, 'ref', 'refs')} in ${files.length} other ${agreeing(files.length, 'file', 'files')} will be left pointing at nothing: ${referrerText(orphans)}. Those files are not edited. dbmd will report each one as \`ref-table-unknown\` until you fix it.`,
-          ...this.lastMemberWarning(table),
+          // Asked of the model rather than of the `Table` this section closed
+          // over. Rule 2 above keeps the panel standing over its own edits, so
+          // the closed-over object still carries the `group:` the file had when
+          // it was selected, and joining a group is the edit that most often
+          // comes just before a delete. Measured: join then delete without
+          // leaving the panel and the warning was missing at the one moment
+          // something had just made it true, and leave a group then delete and
+          // it was there for a group nothing had been in since. The name is
+          // what the closure is for, because that is what the panel is about;
+          // the membership is looked up at the moment it is said.
+          ...lastMemberWarning(this.handlers.model(), this.tableOf(table.name) ?? table),
           'Undo is `git checkout`, and only for a file that was committed. This one is gone from the disk either way.',
         ],
         'Delete',
@@ -1349,26 +1361,6 @@ export class Inspector {
 
     section.append(button, confirmHost)
     return section
-  }
-
-  /**
-   * That this table is the last thing in its group, said before it goes.
-   *
-   * The group file is deliberately left alone: deleting somebody's prose about
-   * a region because the last table in it went is a thing that cannot be undone
-   * and was never asked for. What is left is an empty group, which draws as a
-   * placeholder so it does not look deleted, and which `dbmd check` reports as
-   * `group-empty` because that is nearly always a rename that missed a file.
-   */
-  private lastMemberWarning(table: Table): string[] {
-    if (table.group === undefined) return []
-    const others = this.handlers
-      .model()
-      .tables.filter((held) => held.group === table.group && held.name !== table.name)
-    if (others.length > 0) return []
-    return [
-      `\`${table.group}\` will have nothing in it. groups/${table.group}.md is not deleted and not edited: it keeps its label and its prose, draws as an empty box, and dbmd reports it as \`group-empty\` until something joins it or you delete the file yourself.`,
-    ]
   }
 
   // ------------------------------------------------------------------------
@@ -1534,12 +1526,25 @@ export class Inspector {
    * what the reader last saw. The reader is asked which, and its clause is
    * repeated rather than reworded, so a lock and a permission change read the
    * same. dbmd-c7q.
+   *
+   * **Neither of them asks for a reload any more.** The parse half used to, and
+   * `unreadable.ts` had already called that half of its sibling a defect: the
+   * page re-reads the directory on a beat and on focus (ADR 0061), and adopting
+   * rebuilds this panel from what arrived. Measured on 2026-09-08: with the
+   * panel showing this sentence, `tables/subscriptions.md` was fixed in an
+   * editor and nothing was touched in the browser; 1.7 seconds later the panel
+   * was the full editable one, the box had lost its `broken` class and the
+   * diagnostics list was empty. So the instruction is the half somebody can act
+   * on, and what follows it is what will happen rather than what to do next.
+   * The two sentences now end the same way and differ only in whether there is
+   * anything in the file to fix, which is the whole of what they are here to
+   * tell apart. Amends ADR 0019.
    */
   private brokenNotice(path: string): HTMLElement {
     const said = this.handlers.unreadable(path)
     return note(
       said === undefined
-        ? `${path} did not parse, so this server is holding less than the file does and will not write over it. Fix the file and reload.`
+        ? `${path} did not parse, so this server is holding less than the file does and will not write over it. Fix the file; this panel comes back on its own once it parses.`
         : couldNotBeReadNow(
             path,
             'this server is showing what it last read and will not write over it',

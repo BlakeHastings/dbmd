@@ -11,6 +11,7 @@ import {
   toModelBody,
 } from '../../src/studio/client/fields.js'
 import {
+  lastMemberWarning,
   mentionsOf,
   referrersTo,
   referrerText,
@@ -288,7 +289,38 @@ describe('what the rename confirmation says', () => {
     const plan = renamePlan(model, 'orders', 'Customers')
     expect(plan.kind).toBe('confirm')
     if (plan.kind !== 'confirm') return
-    expect(plan.lines.join(' ')).toContain('differs from this only in case')
+    expect(plan.lines.join(' ')).toContain('`customers` differs from this only in case')
+  })
+
+  /**
+   * Renaming a table to a different case of its own name.
+   *
+   * The one rename that is destructive on Windows and macOS, and the one where
+   * the only name that clashes is the table's own, so the list the plan used to
+   * ask had it taken out. Measured on 2026-09-08, before this: the full plan,
+   * no case warning, opening with a promise to write `tables/Products.md` and
+   * delete `tables/products.md`, which on the machine it was measured on are
+   * one file. Confirming it reached the server and stopped there, which is the
+   * refusal being asked for after the decision rather than before it, which is
+   * what every other case in this block is about.
+   */
+  it('warns about the rename that only changes the case of the table itself', () => {
+    const plan = renamePlan(model, 'orders', 'Orders')
+    expect(plan.kind).toBe('confirm')
+    if (plan.kind !== 'confirm') return
+    const said = plan.lines.join(' ')
+    expect(said).toContain('This writes tables/Orders.md and deletes tables/orders.md')
+    expect(said).toContain('This changes only the case of the name')
+    expect(said).toContain('on Windows and macOS they are one file')
+    // Not the sentence about a *different* table, which would name `orders` as
+    // something this rename has to live beside rather than as itself.
+    expect(said).not.toContain('differs from this only in case')
+  })
+
+  it('does not turn a rename to a case variant of itself into a refusal', () => {
+    // The refusal shape is for a decision that was never available. This one is
+    // available on Linux, so the paragraph is a warning and the button stays.
+    expect(renamePlan(model, 'orders', 'ORDERS').kind).toBe('confirm')
   })
 
   it('counts the renamed table itself as a ref that moves, not as another file', () => {
@@ -388,6 +420,89 @@ describe('what the rename confirmation says about prose', () => {
     const alone = lastLine(renamePlan({ ...shop, body: '', groups: [] }, 'subscriptions', 'plans'))
     expect(alone).toContain('1 mention of `subscriptions` in backticks stays as it is')
     expect(alone).not.toMatch(/\b1 mentions\b/)
+  })
+})
+
+/**
+ * The paragraph in front of the only thing in this studio that destroys a file.
+ *
+ * Every clause of it is about a group *file*: that it is not deleted, that it
+ * keeps its label and its prose, that it draws as an empty box, that dbmd will
+ * call it `group-empty`, and that deleting it is something to do by hand. So
+ * the whole paragraph turns on what the read found at that path, which is ADR
+ * 0090's rule one surface along.
+ *
+ * Measured on 2026-09-08, driving the studio: a `tables/subscriptions.md`
+ * saying `group: no_such_group` with nothing at `groups/no_such_group.md`, on a
+ * page already showing the `group-unknown` error in its footer and
+ * `no_such_group (no groups/no_such_group.md)` in this panel's own dropdown,
+ * got all five of those clauses about a file that was not there.
+ */
+describe('what the delete confirmation says about the group being emptied', () => {
+  const joined = (name: string, group?: string): Table => ({
+    ...table(name, [{ name: 'id', type: 'uuid', pk: true }]),
+    ...(group === undefined ? {} : { group }),
+  })
+  const billing = group('billing', '\nWhat the invoicing job reads.\n')
+  const of = (
+    subject: Partial<Parameters<typeof lastMemberWarning>[0]>,
+    held: Table,
+  ): string | undefined =>
+    lastMemberWarning({ tables: [held], groups: [], refused: [], ...subject }, held)[0]
+
+  it('says nothing at all about a table that is in no group', () => {
+    expect(lastMemberWarning({ tables: [], groups: [], refused: [] }, joined('orders'))).toEqual([])
+  })
+
+  it('says nothing while another table still declares the same group', () => {
+    const orders = joined('orders', 'billing')
+    expect(
+      lastMemberWarning(
+        { tables: [orders, joined('invoices', 'billing')], groups: [billing], refused: [] },
+        orders,
+      ),
+    ).toEqual([])
+  })
+
+  it('describes the file that is there, which is the common case and is unchanged', () => {
+    const said = of({ groups: [billing] }, joined('orders', 'billing'))
+    expect(said).toContain('`billing` will have nothing in it')
+    expect(said).toContain('groups/billing.md is not deleted and not edited')
+    expect(said).toContain('it keeps its label and its prose')
+    expect(said).toContain('`group-empty`')
+  })
+
+  it('claims nothing about a label, a box or a group-empty when nothing is at the path', () => {
+    // The state a rename that missed a file leaves behind, which is the state
+    // the sentence about "a rename that missed a file" was written for and the
+    // one it was wrong about.
+    const said = of({}, joined('orders', 'billing'))
+    expect(said).toContain('Nothing is at groups/billing.md')
+    expect(said).toContain('the last thing in the model that names it')
+    expect(said).toContain('`group-unknown`')
+    for (const claim of [
+      'is not deleted and not edited',
+      'keeps its label',
+      'draws as an empty box',
+      '`group-empty`',
+      'delete the file yourself',
+    ]) {
+      expect(said).not.toContain(claim)
+    }
+  })
+
+  it('does not call a group file that is there a path with nothing at it', () => {
+    // A group file the read refused is absent from `groups` for a reason that
+    // is not absence, and the diagnostic naming it is already on the page. ADR
+    // 0090 is why the model carries this at all.
+    const said = of(
+      { refused: [{ kind: 'group', name: 'billing', path: 'groups/billing.md' }] },
+      joined('orders', 'billing'),
+    )
+    expect(said).toContain('groups/billing.md is there')
+    expect(said).toContain('The error already reported against that file is the one to fix')
+    expect(said).not.toContain('Nothing is at')
+    expect(said).not.toContain('`group-empty`')
   })
 })
 
