@@ -1,6 +1,6 @@
 ---
 name: dbmd
-description: Drive dbmd, the tool that keeps a database model in a repository as markdown and edits it in a local web view. Use when reading, changing, validating or bootstrapping a dbmd model directory (a directory of markdown files holding `_model.md`, `tables/`, `notes/`, `groups/`): adding or changing a column, index, ref, sticky note or grouping box; writing the prose that says why a table is shaped the way it is; answering "what points at this table"; renaming or deleting a table; importing a model from a live PostgreSQL or SQL Server schema; putting `dbmd check` in CI; or reading `dbmd check --json` output. Covers which surface an agent edits through and why, the canonical form a hand edit has to match, and what to do when a check fails on your own edit.
+description: Drive dbmd, the tool that keeps a database model in a repository as markdown and edits it in a local web view. Use when reading, changing, validating or bootstrapping a dbmd model directory (a directory of markdown files holding `_model.md`, `tables/`, `notes/`, `groups/`): adding or changing a column, index, ref, sticky note or grouping box; writing the prose that says why a table is shaped the way it is; answering "what points at this table"; renaming or deleting a table; importing a model from a live PostgreSQL or SQL Server schema, or re-importing over one and reading the delta it asks you to confirm; putting `dbmd check` in CI; or reading `dbmd check --json` output. Covers which surface an agent edits through and why, the canonical form a hand edit has to match, and what to do when a check fails on your own edit.
 ---
 
 # Driving dbmd
@@ -55,9 +55,13 @@ wire format says in its own source that it is still moving, it has no version
 and no reference page, it has no rename at all, and it writes on a debounce
 behind a revision counter you would have to model correctly. It gives you three
 real things: a stale edit is refused, a name a file cannot hold is refused, and
-`GET /api/model` carries the reference index. Rules 2 and 3 plus `dbmd check`
-give you the same protection from a process that exits. ADR 0039 weighs this
-properly, including the one claim about the API that turns out not to be true.
+`POST /api/flush` is a fence, which the API needs because a `PATCH` is answered
+before the file is written. Rules 2 and 3 plus `dbmd check` give you the same
+protection from a process that exits, and a file you write is written when you
+write it. The reference index on `GET /api/model` is not a fourth reason:
+`dbmd refs` answers that question from a command, and answers it better, because
+it answers a model with errors in it. ADR 0039 weighs all of this, including the
+one claim about the API that turns out not to be true.
 
 **Do not start a studio on a directory somebody may already have open.** The
 disk wins, the studio drops its own edit and says so in a page you are not
@@ -153,8 +157,12 @@ other command and is the one thing to remember about it.
   envelope. That is deliberately not the same as "nothing points at it", which
   exits 0, because you ask this immediately before a delete.
 - **`--outgoing`** asks what this table points at. Both flags prints both.
-  `--json` carries both directions whichever flag you gave, with `path`,
-  `inPrimaryKey` and `nullable` on every edge, so an agent never runs it twice.
+  `--json` carries both directions whichever flag you gave, so an agent never
+  runs it twice. `from`, `to` and `path` are on every edge. `inPrimaryKey`,
+  `nullable`, `onDelete` and `onUpdate` are there only when the file said so,
+  omitted rather than written false, for the reason the format omits them on
+  disk. **Test whether the key is there rather than reading its value**: a
+  missing `onDelete` is a ref that wrote no clause, which is not `no action`.
 
 ## Editing: the canonical form
 
@@ -164,14 +172,19 @@ that your file never moves again and the next person's save produces no diff.
 
 **Key order is fixed.**
 
-| file        | order                                                    |
-| ----------- | -------------------------------------------------------- |
-| `_model.md` | `kind`, `name`, `engine`                                 |
-| a table     | `kind`, `table`, `columns`, `indexes`, `group`, `layout` |
-| a column    | `name`, `type`, `pk`, `nullable`, `default`, `ref`       |
-| an index    | `name`, `columns`, `unique`                              |
-| a note      | `kind`, `layout`, `color`                                |
-| a group     | `kind`, `label`, `color`                                 |
+| file        | order                                                                        |
+| ----------- | ---------------------------------------------------------------------------- |
+| `_model.md` | `kind`, `name`, `engine`                                                     |
+| a table     | `kind`, `table`, `columns`, `indexes`, `group`, `layout`                     |
+| a column    | `name`, `type`, `pk`, `nullable`, `default`, `ref`, `on delete`, `on update` |
+| an index    | `name`, `columns`, `unique`                                                  |
+| a note      | `kind`, `layout`, `color`                                                    |
+| a group     | `kind`, `label`, `color`                                                     |
+
+**`on delete` and `on update` go under the `ref:` they are about, and never
+without one**, indented with the rest of the column's keys. Each takes one of
+five words, and anything else is `not-in-vocabulary`. A clause on a column with
+no `ref:` is `field-missing`, so the model could not be read back.
 
 **Block style everywhere, with exactly two exceptions:** `layout` is flow
 (`{ x: 480, y: 340 }`) and an index's `columns` is flow (`[customer_id, status]`).
@@ -260,8 +273,14 @@ console.log(JSON.stringify(result, null, 2))
   next to the one you meant.
 - **A file already in the shape is reported `skipped` as `unchanged`** and not
   rewritten. Running it twice is a no-op, so run it.
-- **`skipped` as `incomplete`** means the reader could not build that file, so it
-  was left alone rather than written over. Run `dbmd check` and fix that first.
+- **`skipped` as `incomplete`** means the reader raised an error building that
+  object, so it was left alone rather than written over: saving it back would
+  delete the line dbmd could not understand. Run `dbmd check` and fix that first.
+- **A path in neither list is worse than a skip.** A file whose frontmatter never
+  parsed, or whose `kind:` disagrees with its directory, produces no object at
+  all, so `only` matches nothing and the answer is
+  `{ "written": [], "skipped": [] }`. That reads like a clean no-op and it is
+  your edit not being seen. Check the list against the paths you passed.
 - **`pathToFileURL` is not decoration.** A bare Windows path in an `import`
   fails with `ERR_UNSUPPORTED_ESM_URL_SCHEME` because `C:` reads as a protocol.
 - This step is not optional and `dbmd check` will not do it for you. A
@@ -367,8 +386,16 @@ the diagnostic carries one. Say which part landed and which did not. Let whoever
 asked decide whether to fix forward or throw it away. The one thing to do
 yourself is fix the diagnostic you caused, when you know what it is.
 
-`error` means something in a file did not make it into the model, and dbmd
-refuses to save over that file, so an error blocks the canonicalise step too.
+`error` means something did not make it into the model. **Not every error blocks
+the canonicalise step, and the line number is what tells the two halves apart.**
+An error raised while reading one file carries the line it is on, leaves that
+object incomplete, and dbmd refuses to save over it, because writing the model
+back would delete the line it could not understand. An error about the whole
+model carries a path and no line, and does not block anything: a dangling
+`ref-table-unknown` is a disagreement between two files and both of them still
+write. That is why the rename recipe canonicalises in the middle of a rename and
+it works.
+
 `warning` means it loaded and is probably still wrong: an unnamed column, a
 keyless table, an empty group. Half-written models are full of warnings on
 purpose. `--strict` is how a team says warnings do not reach `main`.
@@ -392,14 +419,52 @@ Read the query before you run it. Its comment block says what it touches, that
 it cannot write, and how to save the result without cutting it short, which is
 the mistake the importer sees most.
 
-`dbmd import` refuses a directory that exists and is not empty, so re-importing
-over a model is not a thing you can do by accident. Tables land on a grid in
-name order; the layout is a person's job in the studio. Every table gets the
-one-line placeholder body. **Replacing those is the work**, and it is the part
-of this that is worth doing carefully rather than quickly.
+Tables land on a grid in name order; the layout is a person's job in the studio.
+Every table gets the one-line placeholder body. **Replacing those is the work**,
+and it is the part of this that is worth doing carefully rather than quickly.
 
 `dbmd init` writes a small example model with its prose, meant to be read once
-and replaced.
+and replaced. That one does refuse a directory that exists and is not empty,
+because it writes files named after common tables.
+
+### Running import again is a re-import, and it is a delta somebody confirms
+
+`dbmd import` over a directory that already holds a model does not refuse it and
+does not overwrite it. It compares what the database says against what the files
+say, prints every difference as an itemised list naming the file it is about,
+and writes nothing. Run the same command again with `--confirm` to make exactly
+the changes on that list and nothing else. ADR 0050 is the argument, the owner's
+own sentence is in it, and `dbmd import --help` is the four paragraphs.
+
+Three exits, and they are what a script reads:
+
+| what happened                               | exit              | written                  |
+| ------------------------------------------- | ----------------- | ------------------------ |
+| the database says what the files say        | `0`, and one line | nothing                  |
+| there are changes and nobody confirmed them | `1`, and the list | nothing                  |
+| there are changes and `--confirm`           | `0`               | the files the list named |
+
+- **Nothing prompts, here as everywhere.** The confirmation is a flag, because
+  the JSON is usually already on standard input and there is nothing left to ask
+  at. An unchanged re-import is a no-op that is safe to leave in CI, and
+  `--confirm` is accepted on a run with nothing to confirm.
+- **The unconfirmed run costs the whole pipeline again**, because the JSON on
+  standard input has been read. Use `--file` where you can, so the second run is
+  a second read of a file rather than a second query.
+- **On `--json` the unconfirmed run is `ok: false` with `error.code`
+  `changes-not-confirmed`**, and it carries a `changes` array whose entries have
+  a `kind`, a `path`, a `headline` and a `detail`. Branch on `kind`
+  (`table-removed`, `table-added`, `column-added`, `column-removed`,
+  `column-changed`, `index-added`, `index-removed`, `index-changed`,
+  `model-changed`) rather than on the prose.
+- **Prose bodies, layout and group membership are untouched either way**, and a
+  file no item on the list names is never opened. A column or a table that goes
+  takes no paragraph with it: the list says which paragraphs will then name
+  something that is not there, and deciding what those should say is yours.
+- **A rename in the database arrives as a removal and an addition**, because a
+  catalogue cannot say otherwise. That is the item to read twice, because
+  confirming it deletes a body. A table new to a re-import lands below
+  everything already placed, so nothing arranged moves.
 
 ## What you can rely on
 
