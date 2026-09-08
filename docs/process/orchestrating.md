@@ -906,3 +906,44 @@ opens by saying it is not the merge gate and why, and `merge-pr.mjs` prints a
 note saying it is proceeding with something outside the required set red. Reading
 those cost a few minutes; filing any of them would have cost an agent an hour and
 come back saying the repository was already right.
+
+## I told an agent the opposite of a record, and it read the record instead
+
+The brief for a write-failure message said, in bold, do not let the temporary
+file's name reach the reader, and cited ADR 0083 as the reason. ADR 0083 says the
+opposite. Its decision section contains almost the exact sentence the agent then
+wrote:
+
+> The write goes through a temporary file in the same folder, which is why the
+> system names that one first: EPERM: operation not permitted, rename '...tmp'
+> -> '...orders.md'
+
+The record's position is that the temporary is **explained, and only when there
+is one**, because those paths are the only part of the message that can say the
+write went to a network share. What it forbids is the temporary arriving cold
+and first, which is a different thing from the temporary arriving.
+
+**The error was paraphrasing a record from memory of the defect it fixed.** The
+defect had been "the message led with a temporary file", and the paraphrase that
+survived was "the temporary file must not appear", which is a stronger claim the
+record never made. That is a one-word difference and it inverts the instruction.
+
+Three things follow.
+
+**Quote the record, or send the agent to it.** A brief that paraphrases a
+decision is a second copy of that decision, made by somebody who is not reading
+it, and the two drift on the first retelling. Naming the file and the section
+costs a line and cannot invert.
+
+**An agent that reads the record and contradicts the brief is doing the job.**
+This one wrote out what ADR 0083 actually says, said it was not stripping the
+name, and said why. That is the third lens working in the direction it is
+usually not expected to: the brief was the thing that failed review.
+
+**Say so in the pull request, not only in chat.** The correction was posted on
+the pull request that carried it, because the next person to write a brief about
+a disk refusal will read that thread and not this session.
+
+The same mistake was already in the queue: the import fix had been written up on
+the same wrong reading, and its brief was corrected before dispatch rather than
+after. The cost of catching it late would have been one agent's full pass.

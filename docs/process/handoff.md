@@ -61,16 +61,17 @@ at all: it drove `dbmd check` and `dbmd init` against their own help text and
 reported, which is where three of the findings below came from. Nineteen agents
 have now worked between the afternoon of 2026-09-07 and here.
 
-- **`export/markers-out-of-order-and-a-refusal-in-the-commands-voice`.** Two
-  defects in `src/cli/export.ts`. A README holding both diagram markers in the
-  wrong order is told it is missing one, with advice that fits neither state. And
-  a write that fails escapes to the last-resort handler in `src/cli/main.ts`, so
-  it prints a raw Node error with an absolute backslashed path in a command whose
-  own helper exists to stop exactly that.
-- **`refs/every-error-is-not-a-file-that-did-not-load`.** `dbmd refs` counts the
-  reader's errors and the validator's together and explains all of them as a file
-  that failed to load. On a model whose one error is a dangling ref it warns that
-  the answer may be short, then prints the dangling ref as part of the answer.
+- **LANDED as #222.** `dbmd export` told a README holding both diagram markers,
+  in the wrong order, that it was missing one. It now says they are out of order,
+  and a refused write answers in the command's voice. It also writes through
+  `writeAtomically` now, so "nothing was changed" is true rather than usually
+  true. Verified by building the sha and measuring the file, not by reading the
+  report.
+- **LANDED as #223.** `dbmd refs` counted the reader's errors and the
+  validator's together and explained all of them as a file that failed to load.
+  Three banners for three states now, and `readErrors` beside `errors` in the
+  JSON. It also amended ADR 0042, whose claim was one size larger than its own
+  reason, which is where the code came from.
 
 **Two more waves went out after those, both from driving the command line.**
 
@@ -85,7 +86,14 @@ have now worked between the afternoon of 2026-09-07 and here.
   `dbmd check` says there is no `_model.md` on the line above the one that names
   `_model.md/`.
 
-**A third finding is held back on purpose.** `dbmd import` has the same
+**The held import finding is now out.** It was held until the export branch
+settled the wording, and #222 settled it: a refused write leads with the
+developer's file, says what happened to it, and hands over the system's words
+with the temporary explained rather than stripped. `import/a-failure-half-way-says-what-it-wrote`
+copies that shape and adds the part export did not need, which is a report that
+names the files a failed run did land.
+
+**What the held finding was.** `dbmd import` has the same
 uncaught write failure, it leads with a temporary file whose name is gone by the
 time anybody looks, and worse, a failure half way through writes files and then
 reports nothing about them, because `writeModel` returns its list of written
@@ -414,9 +422,8 @@ bd create --ignore-schema-skew -p 2 -t task   "export prints a write failure in 
 # Out with a second agent on 2026-09-08.
 bd create --ignore-schema-skew -p 2 -t task   "refs explains a validation error as a file that did not load"
 
-# HELD, not dispatched, until the export branch lands and settles the wording.
-# The reasoning is in the "In flight" section above. This is the worst of the
-# four: it is a silent partial write, not only a message.
+# Dispatched on 2026-09-08 once #222 landed and settled the wording. This is
+# the worst of the four: it is a silent partial write, not only a message.
 bd create --ignore-schema-skew -p 1 -t task   "import fails half way, leaves files written, and reports none of them"
 
 # Out with a third agent on 2026-09-08. All seven commands are affected.

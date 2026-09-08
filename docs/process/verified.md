@@ -6041,3 +6041,29 @@ corrected by whoever fixed the thing and the other was nobody's job.
   the session already says cannot make an edit made against the old picture lose
   anything. A layout is not shape. Filed nowhere, recorded here so the next
   reader who notices it does not spend the same twenty minutes.
+
+- **PR #222 was verified by building its sha and measuring, not by reading its
+  report.** A `db-model/README.md` of 1748 bytes with a paragraph above the
+  diagram and another below it, made stale, then refused with the Windows
+  read-only attribute: same md5 before and after, same byte count, no temporary
+  file left in the directory, both paragraphs intact. Clearing the attribute and
+  rerunning wrote normally. The three marker states still said three different
+  true things after the rebase and `dbmd refs` still answered correctly, so
+  nothing regressed across it.
+
+- **A plain `writeFile` truncates at open, which is why "nothing was changed" was
+  not true before that change.** Demonstrated on a copy of a README: 195 bytes
+  before, 0 bytes after the open alone and before any data. So a failure part way
+  through a plain write leaves the developer's prose gone under a message
+  promising the opposite. `dbmd export` now writes through the same
+  `writeAtomically` the model writer uses, which is what makes the sentence true
+  rather than usually true.
+
+- **My own instruction about the temporary file was the opposite of the record it
+  cited.** The brief said not to let the temporary's name reach the reader and
+  named ADR 0083 as the reason. ADR 0083 prescribes almost the exact sentence the
+  agent wrote instead: the temporary is explained, and only when there is one,
+  because those paths are the only part that can say the write went to a network
+  share. What it forbids is the temporary arriving cold and first. The agent read
+  the record rather than obeying the brief and was right. The import brief had
+  been written on the same wrong reading and was corrected before dispatch.
