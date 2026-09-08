@@ -186,6 +186,47 @@ describe('dbmd init', () => {
     expect(await readFile(path, 'utf8')).toBe('mine\n')
   })
 
+  /**
+   * The same refusal, from the other side of a platform disagreement.
+   *
+   * `dbmd init plain.md/sub` is one command line and two code paths. Linux
+   * answers `readdir` with ENOTDIR, so `vacancy` refuses it; Windows 11 on Node
+   * 24 answers ENOENT, so `vacancy` reads the path as free and the file above it
+   * is not met until the writer's first `mkdir`. Measured on both. This test
+   * pins the answer rather than the path it took, which is the only assertion
+   * that can hold on either kernel, and it is red on Windows before the writer's
+   * refusal exists: what reached the developer there was Node's own line, an
+   * absolute path with backslashes in it, naming `plain.md` rather than what
+   * they typed, under the generic code "failed".
+   */
+  test('a file above the path is the same refusal on either platform', async () => {
+    const file = await vacantPath()
+    await writeFile(file, 'mine\n', 'utf8')
+    const path = join(file, 'sub')
+
+    const text = await run('init', path)
+    const json = await run('init', '--json', path)
+
+    expect(text.code).toBe(1)
+    expect(text.err).toContain(`${path} is not a directory, so init has left it alone.`)
+    expect(text.err).toContain('Move it aside, or give init a different directory.')
+    // Node's own sentence, which is what used to arrive here, does not.
+    expect(text.err).not.toContain('ENOTDIR')
+    expect(text.err).not.toContain('mkdir')
+
+    expect(json.code).toBe(1)
+    expect(json.err).toBe('')
+    expect(JSON.parse(json.out)).toEqual({
+      schema: 1,
+      ok: false,
+      directory: path,
+      error: { code: 'not-a-directory', message: `${path} is not a directory` },
+    })
+
+    // "left it alone" is a claim about the disk, so it is read back.
+    expect(await readFile(file, 'utf8')).toBe('mine\n')
+  })
+
   test('an empty file is not told that it is not empty', async () => {
     const path = await vacantPath()
     await writeFile(path, '', 'utf8')

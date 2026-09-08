@@ -9,10 +9,10 @@
 
 import { readdir } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { writeModel } from '../model/write.js'
+import { WriteFailed, writeModel } from '../model/write.js'
 import { EXIT_FAILURE, UsageError, usageProblem, type Command } from './command.js'
 import { exampleModel } from './example.js'
-import { sortedBy, type Output } from './output.js'
+import { sortedBy, type Output, type Report } from './output.js'
 
 /** Where a model lives when nobody says otherwise. The README says so too. */
 const DEFAULT_DIRECTORY = 'db-model'
@@ -44,23 +44,7 @@ async function runInit(argv: readonly string[], out: Output): Promise<number> {
   const directory = parseInitArgs(argv)
 
   const found = await vacancy(directory)
-  if (found === 'not-a-directory') {
-    // No "empty it" here, and that is the whole point of the branch. Emptying
-    // a file leaves a file, so the advice the other refusal gives is advice a
-    // developer can follow and then meet the same refusal, which is what
-    // happened before this branch existed.
-    return out.report({
-      code: EXIT_FAILURE,
-      text:
-        `${out.style.bad('dbmd:')} ${directory} is not a directory, ` +
-        `so init has left it alone.\n` +
-        `Move it aside, or give init a different directory.\n`,
-      json: {
-        directory,
-        error: { code: 'not-a-directory', message: `${directory} is not a directory` },
-      },
-    })
-  }
+  if (found === 'not-a-directory') return out.report(notADirectory(directory, out))
   if (found === 'occupied') {
     return out.report({
       code: EXIT_FAILURE,
@@ -78,7 +62,41 @@ async function runInit(argv: readonly string[], out: Output): Promise<number> {
     })
   }
 
-  const { written } = await writeModel(directory, exampleModel())
+  let written: readonly string[]
+  try {
+    ;({ written } = await writeModel(directory, exampleModel()))
+  } catch (error) {
+    // The same refusal `vacancy` reaches, from the other platform's answer.
+    //
+    // `dbmd init plain.md/sub` is one command line with two behaviours: Linux
+    // answers `readdir` with ENOTDIR and is refused above, and Windows 11 on
+    // Node 24 answers ENOENT, so `vacancy` reads the path as free and the file
+    // in the way is not met until the writer's first `mkdir`. Measured on both,
+    // in #226 and again here. Until this branch existed the second of those
+    // reached the developer as the entry point's last-resort line: an absolute
+    // path with backslashes in it, which ADR 0006 rule 4 forbids, naming
+    // `plain.md`, which is not the path they typed, under the generic code
+    // "failed", which a caller cannot branch on.
+    //
+    // It is the same refusal rather than a second one because the same command
+    // line must not answer with two different `error.code`s depending on which
+    // kernel ran it, and because #226 worded this one to be true of a path that
+    // does not exist with a file above it: `vacancy`'s own note says so.
+    //
+    // ENOTDIR and nothing wider. Every other way a write fails, a permission
+    // denied or a full disk, is a fact about the machine and stays the entry
+    // point's to report. And ENOTDIR here can only be about the directory init
+    // was given, never about a file inside it, because the refusal above has
+    // already established that this path is either empty or absent.
+    //
+    // Through `cause`, because the writer renames every refusal onto the model
+    // file it was on and hands the original over untouched underneath it (ADR
+    // 0083). The errno is on the cause; the wrapper's own message is a copy of
+    // the cause's message and carries no `code` at all.
+    if (errorCode(error instanceof WriteFailed ? error.cause : error) !== 'ENOTDIR') throw error
+    return out.report(notADirectory(directory, out))
+  }
+
   const files = sortedBy(written)
   // The format reference rather than the README, because the next thing this
   // user does is write a file by hand, and the Prettier line is here rather
@@ -96,6 +114,32 @@ async function runInit(argv: readonly string[], out: Output): Promise<number> {
       `Prettier rewrites the prose in these files, and the prose is the point.\n`,
     json: { directory, files, format: FORMAT_REFERENCE },
   })
+}
+
+/**
+ * The refusal for a path init cannot make a directory of.
+ *
+ * No "empty it" here, and that is the whole point of the branch. Emptying a
+ * file leaves a file, so the advice the other refusal gives is advice a
+ * developer can follow and then meet the same refusal, which is what happened
+ * before this branch existed.
+ *
+ * It names the path that was typed, relative and spelled the way it was given,
+ * because that is the one the developer can act on and because ADR 0006 rule 4
+ * keeps absolute paths and backslashes out of what this CLI prints.
+ */
+function notADirectory(directory: string, out: Output): Report {
+  return {
+    code: EXIT_FAILURE,
+    text:
+      `${out.style.bad('dbmd:')} ${directory} is not a directory, ` +
+      `so init has left it alone.\n` +
+      `Move it aside, or give init a different directory.\n`,
+    json: {
+      directory,
+      error: { code: 'not-a-directory', message: `${directory} is not a directory` },
+    },
+  }
 }
 
 /**
@@ -150,7 +194,9 @@ function parseInitArgs(argv: readonly string[]): string {
  * and "is not a directory" is true of both while "already exists" is true of
  * only one. Measured: Linux answers `ENOTDIR` for the nested form, Windows 11
  * with Node 24 answers `ENOENT`, so the two platforms do not even agree on which
- * branch it takes.
+ * branch it takes. On Windows it lands in `vacant` and the file above it is not
+ * met until the writer's first `mkdir`, which `runInit` catches and reports as
+ * this same refusal, so the answer is one answer whatever the kernel says.
  *
  * Anything else, a permission error most likely, is thrown: it is a fact about
  * the machine rather than about the model, and the entry point reports it.
