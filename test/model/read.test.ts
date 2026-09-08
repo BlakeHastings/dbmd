@@ -1120,13 +1120,19 @@ columns:
     ])
   })
 
-  test('two spellings of the same name are a duplicate, and the first wins', async () => {
+  test('two spellings of one name name both lines, and the second is the one thrown away', async () => {
     // YAML itself rejects a literally repeated key, and it rejects `on:` against
     // `"on":` as well, because both of those resolve to the same string. The
     // retired `null` key is the case it cannot see: plain `null` resolves to the
     // null value and `"null"` to a string, so the parser thinks they are two
     // keys and dbmd knows they are one. Both complaints below are worth having
     // and neither replaces the other.
+    //
+    // The message names both spellings because that is the only way to point at
+    // a line here: the two never look alike, and printing the collapsed name on
+    // its own described neither of them. It says the second is ignored, and not
+    // that the first is used, because on this column the first is deleted by
+    // `reject('null')` and the assertion under this one is what proves it.
     const { model, diagnostics } = await withModel({
       'tables/orders.md': `---
 kind: table
@@ -1142,9 +1148,56 @@ columns:
 
     expect(lines(diagnostics)).toEqual([
       'tables/orders.md:7 error superseded-key: `null` is now `nullable` and means the same thing: write `nullable: false`',
-      'tables/orders.md:8 error duplicate-key: `null` is given twice; the first one is used',
+      'tables/orders.md:8 error duplicate-key: the key `null` is written twice, as `null` and as `"null"`; the second is ignored',
     ])
     expect(model.tables[0]?.columns[0]?.nullable).toBeUndefined()
+  })
+
+  test('a name the format does not know reaches it the same way', async () => {
+    // The other live case, and the reason the message says nothing about what
+    // becomes of the first: here it is reported as unknown and dropped, so
+    // neither line reaches the column in this one either.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: uuid
+    1: false
+    "1": true
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:7 warning unknown-key: `1` means nothing on a column; known keys are default, name, nullable, on delete, on update, pk, ref, type',
+      'tables/orders.md:8 error duplicate-key: the key `1` is written twice, as `1` and as `"1"`; the second is ignored',
+    ])
+    expect(model.tables[0]?.columns[0]).toEqual({ name: 'id', type: 'uuid' })
+  })
+
+  test('the same key written the same way twice is a complaint of YAML, not of this', async () => {
+    // The input `docs/format.md` used to describe. It cannot reach
+    // `duplicate-key` at all, which is why that row now describes the input
+    // that can, and why there is no state left where "the first one is used"
+    // would have been the true sentence.
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: uuid
+    nullable: false
+    nullable: true
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:8 error frontmatter-invalid: Map keys must be unique',
+    ])
   })
 })
 

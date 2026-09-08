@@ -1172,6 +1172,18 @@ interface FieldSet {
 
 function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
   const entries = new Map<string, Field>()
+  /**
+   * How each name was first written, for the message below.
+   *
+   * The two lines never look alike, which is the whole of why this code is
+   * reachable: YAML refuses a key it sees twice before dbmd is asked, so the
+   * only way here is two keys YAML reads as different that `keyText` collapses
+   * onto one name, and the difference is in the characters the author typed.
+   * Printing the name alone told somebody who had written `null:` and
+   * `"null":` that `null` was given twice, which is true and does not point at
+   * either line.
+   */
+  const written = new Map<string, string>()
   for (const pair of map.items) {
     const key = keyText(ctx, pair.key)
     if (key === undefined) {
@@ -1179,15 +1191,23 @@ function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
       continue
     }
     if (entries.has(key)) {
+      // What happens to the first one is not this message's to say, and used to
+      // be said anyway. On a column, `null:` beside `"null":` reaches
+      // `reject('null')`, which deletes it, so neither value gets near the
+      // column and "the first one is used" was false. Every other name that can
+      // arrive here is one the format does not know, where the run's next line
+      // is an `unknown-key` warning and nothing is used either. What is true in
+      // every case is that the second one is thrown away.
       report(
         ctx,
         'duplicate-key',
         'error',
-        `\`${key}\` is given twice; the first one is used`,
+        `the key \`${key}\` is written twice, as \`${written.get(key) ?? key}\` and as \`${rawOf(ctx, pair.key)}\`; the second is ignored`,
         offsetOf(pair.key),
       )
       continue
     }
+    written.set(key, rawOf(ctx, pair.key))
     entries.set(key, {
       node: pair.value,
       keyOffset: offsetOf(pair.key),

@@ -1170,7 +1170,7 @@ leaves the line off.
 | `frontmatter-empty` | error | Nothing between the two delimiters declares anything: either whitespace only, or comments only. The message says which, because a file holding a `#` line is not empty. | Say what the file is. |
 | `frontmatter-invalid` | error | YAML would not parse it. At most one per file: [see below](#one-parse-error-per-file). | The message is YAML's, and the line is where the parse first went wrong. Usually a tab, indentation, or a stray `:`. |
 | `frontmatter-not-a-map` | error | The frontmatter parsed to a list or a scalar. | It has to be `key: value` lines. |
-| `duplicate-key` | error | The same key twice in one mapping. | Delete one. The first is used. |
+| `duplicate-key` | error | Two keys YAML reads as different that name one dbmd key: `null:` beside `"null":`, or `1:` beside `"1":`. The same key written the same way twice never reaches this code, because YAML refuses it first and you get `frontmatter-invalid` saying "Map keys must be unique". | Delete the second. What happens to the first is whatever the rest of the run says about it; on a column, `null:` is superseded either way. |
 | `kind-missing` | error | No `kind:` key. | Add `kind: table`, `note`, `group` or `model`. |
 | `kind-mismatch` | error | `kind:` disagrees with the place the file is in: the directory, for an object file, and the name `_model.md` for the model file. An object file is not loaded; `_model.md` is, and its `name:` and `engine:` are read. | Fix the key, or move the file. |
 | `name-missing` | error | A table file with no `table:` key. | Add `table: <the file name>`. |
