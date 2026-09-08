@@ -10,17 +10,17 @@ state: a file that is on disk and did not load. That state is what a rename
 looks like half way through, which is the hour a person most needs the tool to
 be exact.
 
-Measured on 2026-09-08, driving the built CLI. `db-model/tables/customers.md`
-holding one line of prose and no frontmatter, `db-model/tables/orders.md` with
-`ref: customers.id` on a column:
+Measured on 2026-09-08, driving the built CLI from a scratch directory outside
+the repository. `db-model/tables/customers.md` holding one line of prose and no
+frontmatter, `db-model/tables/orders.md` with `ref: customers.id` on a column:
 
 ```
 $ dbmd check db-model
 tables/customers.md
-    error    no frontmatter: the file does not start with a `---` line (frontmatter-absent)
+    error  no frontmatter: the file does not start with a `---` line (frontmatter-absent)
 
 tables/orders.md
-    error    `ref: customers.id` on column `customer_id` names no table; there is no tables/customers.md (ref-table-unknown)
+    error  `ref: customers.id` on column `customer_id` names no table; there is no tables/customers.md (ref-table-unknown)
 
 db-model: 2 errors across 2 files.
 exit 1
@@ -31,9 +31,22 @@ denying it, and the half a reader acts on is the false half: they go and write a
 file that is already there.
 
 `group-unknown` did the same thing from the reader, with `groups/billing.md`
-present and unloadable, and `group-empty` did it inside out: a valid
-`groups/billing.md` beside a `tables/orders.md` that carries `group: billing`
-and is refused for a reason of its own produced
+present and unloadable:
+
+```
+groups/billing.md
+     error  no frontmatter: the file does not start with a `---` line (frontmatter-absent)
+
+tables/orders.md
+  8  error  `group: billing` names no file at groups/billing.md (group-unknown)
+
+db-model: 2 errors across 2 files.
+exit 1
+```
+
+And `group-empty` did it inside out. A valid `groups/billing.md` beside a
+`tables/orders.md` that carries `group: billing` and is refused for a reason of
+its own:
 
 ```
 groups/billing.md
@@ -41,9 +54,27 @@ groups/billing.md
 
 tables/orders.md
   2  error    `kind: note` in a directory of tables; the directory decides, so this file is not loaded (kind-mismatch)
+
+db-model: 1 error and 1 warning across 2 files.
+exit 1
 ```
 
-where both clauses are false and the advice points at a file on the screen.
+Both of that warning's clauses are false. The table does declare the group, and
+the advice about a rename that missed a file points at a file on the screen.
+
+Sharpest of all is `tables/customers.md` as a *directory*, where the run says
+the path is a directory and then, four lines down, that nothing is at it:
+
+```
+tables/customers.md
+    error  `customers.md` is a directory rather than a file, so there is no table `customers`; a link that resolves to a directory looks exactly like this (object-not-a-file)
+
+tables/orders.md
+    error  `ref: customers.id` on column `customer_id` names no table; there is no tables/customers.md (ref-table-unknown)
+
+db-model: 2 errors across 1 file and 1 directory.
+exit 1
+```
 
 **This is the same defect [ADR 0086](0086-a-diagnostic-says-whether-it-is-at-a-file-or-a-directory.md)
 removed from the summary sentence**, one layer along. There it was a count that
@@ -87,6 +118,65 @@ it complained, because it had just listed the directory. ADR 0086 rejected a
 second look at the filesystem for the neighbouring question and the argument is
 the same one: a `stat` at validation time is a second source of truth racing the
 read that produced the diagnostic.
+
+The same four directories, on the same afternoon, through the same built CLI:
+
+```
+$ dbmd check db-model            # tables/customers.md is there and broken
+tables/customers.md
+    error  no frontmatter: the file does not start with a `---` line (frontmatter-absent)
+
+db-model: 1 error across 1 file.
+exit 1
+
+$ dbmd check db-model            # groups/billing.md is there and broken
+groups/billing.md
+    error  no frontmatter: the file does not start with a `---` line (frontmatter-absent)
+
+db-model: 1 error across 1 file.
+exit 1
+
+$ dbmd check db-model            # the table that declares the group is refused
+tables/orders.md
+  2  error  `kind: note` in a directory of tables; the directory decides, so this file is not loaded (kind-mismatch)
+
+db-model: 1 error across 1 file.
+exit 1
+
+$ dbmd check db-model            # tables/customers.md is a directory
+tables/customers.md
+    error  `customers.md` is a directory rather than a file, so there is no table `customers`; a link that resolves to a directory looks exactly like this (object-not-a-file)
+
+db-model: 1 error across 1 directory.
+exit 1
+```
+
+And the three counterfactuals, which are the common case and are unchanged to
+the word. Nothing at `tables/customers.md`, nothing at `groups/billing.md`, and
+a group no table mentions:
+
+```
+$ dbmd check db-model
+tables/orders.md
+    error  `ref: customers.id` on column `customer_id` names no table; there is no tables/customers.md (ref-table-unknown)
+
+db-model: 1 error across 1 file.
+exit 1
+
+$ dbmd check db-model
+tables/orders.md
+  8  error  `group: billing` names no file at groups/billing.md (group-unknown)
+
+db-model: 1 error across 1 file.
+exit 1
+
+$ dbmd check db-model
+groups/billing.md
+    warning  no table declares `group: billing`; an empty group is usually a rename that missed a file (group-empty)
+
+db-model: 1 warning across 1 file.
+exit 0
+```
 
 ### What was rejected, and why
 
