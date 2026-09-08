@@ -3359,3 +3359,248 @@ read like a product defect and are not. The provider reads `table_schema`,
 `primary_key: { constraint_name, columns }`. This is the same seam recorded above
 under the seventeen import codes, met from the other side, and it cost two runs
 here before it was recognised.
+
+## 2026-09-08: every sentence in all eight `--help` outputs, constructed and run
+
+The model diagnostics, the import diagnostics and the studio page have each been
+swept by enumerating a whole class. `--help` had not been, and it is the first
+thing anybody reads: 258 lines across eight outputs, every line a claim about
+behaviour that can be built and run.
+
+Enumerated rather than sampled. **Every sentence below was checked by
+constructing the state it describes against the built CLI**, on Windows 11, at
+`c5e95a5`. Four came out false. The verdicts that came out true are listed too,
+because a sweep that reports only its findings cannot be told apart from a sweep
+that stopped early.
+
+### The four that were false, and which half was fixed
+
+Each of the four is a sentence that was true in the common case and false in a
+case nobody had constructed. In all four the behaviour is right and the sentence
+was wrong, so the sentence moved.
+
+- **`dbmd check --help`: "one broken file does not hide the rest."** It hides
+  two of the three ADR 0090 stand-downs, and the entry above this one, written
+  the same day from the skill's side, is the fuller account of which. This sweep
+  reached it from the help and built both shapes:
+
+  - **A model-wide one.** `groups/lonely.md` that nothing declares reports
+    `group-empty` and exits 0; add one unparseable `tables/broken.md` beside it
+    and the run is the parse error alone.
+  - **A per-object one, and this is the one that hides a diagnostic about a
+    different file.** `tables/orders.md` carrying `ref: customers.id` and
+    `group: ghost`, with no `tables/customers.md` at all, reports
+    `ref-table-unknown` and `group-unknown`, both against `tables/orders.md`.
+    Put an unparseable `tables/customers.md` in place and the run reports the
+    parse error and `group-unknown`, and `ref-table-unknown` is gone. The file
+    it was about, `tables/orders.md`, is not the file that broke.
+
+  Per-file rules are unaffected: `primary-key-missing` on a neighbouring table
+  fires in the same run. **Fixed the sentence, not the behaviour**, which is a
+  decision with a record and a table in `docs/format.md` behind it. The help now
+  says a run with an error in it is incomplete rather than clean, and points at
+  the page that names the three.
+
+- **`dbmd export --help`: "into db-model/README.md."** `dbmd export shop` writes
+  `shop/README.md` and creates no `db-model` anywhere. The sentence stated a
+  concrete path that is right only for the default, two lines above the line that
+  says the directory defaults to `db-model`. The help now says the README of the
+  directory it was given. Nothing in the tests could have caught it: every
+  fixture in `test/cli/export.test.ts` built its model in a directory literally
+  called `db-model`, so none of them could tell the two readings apart. One that
+  can is added.
+
+- **`dbmd refs --help`: "the table being asked about is the one file the answer
+  is not in."** `dbmd refs addresses examples/shop` answers with two rows and one
+  of them is `addresses.superseded_by -> addresses.id  tables/addresses.md`. A
+  self-reference is written in exactly that file. `examples/shop` has carried one
+  since it was written, `test/cli/refs.test.ts` has had a test for it since
+  before this sweep, and the SKILL page's rename recipe calls it out with "a
+  self-ref counts", so the help was the only place saying otherwise.
+
+- **`dbmd import --help`: "over a directory that already holds a model this is a
+  re-import."** The test is emptiness and nothing narrower. `occupancyOf` is
+  `(await readdir(directory)).length > 0`. A directory holding one `README.md`
+  and no model takes the delta path: exit 1, "Re-importing onefile from
+  postgres would make 4 changes", every table listed as `database table added`,
+  and `_model.md` reported as `database facts changed` against a model that is
+  not there. Nothing is written, which is the safe answer and the reason the
+  behaviour stays; the help now says what actually triggers it.
+
+### The forty-odd that were true, and how each was made to prove it
+
+**Root, `dbmd --help`.** `--help`, `-h` and no arguments at all produce
+byte-identical output, on stdout, exit 0, stderr empty. `--version` and `-v`
+print `0.1.0`, which is what `package.json` says. Every one of the seven commands
+answers `--help` and `-h` identically on stdout with an empty stderr and exit 0.
+The seven summary lines were each checked against the command they name.
+
+"Data goes to stdout and narration goes to stderr, in every context" was run
+over fifteen invocations covering success, failure, usage error and unknown
+command, with and without `--json`. Without `--json`, every one of them put zero
+bytes on stdout except the two that produce a document (`query`, `export
+--stdout`); with `--json`, every one of them put the envelope on stdout and zero
+bytes on stderr. `dbmd studio --json` is the one worth naming: the bound URL is
+still narrated to stderr while it runs, so the sentence in `dbmd studio --help`
+about stderr being the only way to learn the port holds under `--json` too.
+
+`--json` was given in three positions (`check shop --json`, `--json check shop`,
+`check --json shop`) and produced identical bytes and the same exit code from all
+three.
+
+`--no-color` needed a state this machine does not hand you: both streams
+claiming to be a terminal. Constructed by setting `isTTY` on both before calling
+`main`, so `processEnvironment` and `colorEnabled` run for real. Coloured by
+default, and no escape byte under `--no-color`, `NO_COLOR=1` or `TERM=dumb`,
+on a diagnostic run and on a usage error.
+
+**`dbmd init --help`.** `dbmd init` with no argument writes `db-model` with
+exactly four files: `_model.md`, one note, and two tables, `accounts` and
+`api_keys`. Refuses a non-empty directory (`directory-not-empty`, exit 1, the
+directory untouched), refuses a directory holding only `.gitkeep` the same way,
+accepts an existing empty one, and refuses a plain file differently
+(`not-a-directory`, exit 1, and advice that drops "empty it").
+
+**`dbmd query --help`.** Both engines print, stdout carries only SQL and stderr
+only narration, and the working directory is still empty afterwards. The comment
+block at the top of each query says what it touches, that it cannot write, and
+how to save the result without cutting it short, for Postgres and for SQL Server
+both. `--engine` is required (exit 2), an unknown engine is exit 2, a bare
+directory word is refused by name, and `--dir` is an unknown option. The engine
+table is built from the provider registry rather than written down, so it cannot
+name an engine this build lacks.
+
+**The whole journey, as the help prints it.** `dbmd import --file
+introspection.json` with no `--dir`, followed by `dbmd check db-model`, run
+exactly as the four lines are written. Three tables in, four files out, exit 0
+from both. Tables land on a grid in name order at `{x:40,y:40}`, `{x:340,y:40}`,
+`{x:40,y:300}`, and every body is the one-line prompt.
+
+**`dbmd import --help`.** The file's own `engine` is read with no `--engine`, for
+both providers. `--engine` overriding it warns `import/engine-overridden` and
+says both names, and never does it silently. A pipe on standard input works with
+no `--file`. **A terminal on standard input needed a real console**, which
+neither this shell nor `winpty` can supply: run from a `cmd` window opened by
+`Start-Process`, `process.stdin.isTTY` is `true` and the command says "standard
+input is a terminal, so there is nothing there to read" and exits 2 rather than
+sitting there. A pipe that is opened and never written to gets no warning and no
+stop: it was still waiting three seconds later and had printed nothing.
+
+The re-import contract, on a model with a hand-written body, a dragged layout and
+a group membership on it: an unchanged database prints one line and exits 0;
+`--confirm` on a run with nothing to confirm does the same; a run with changes
+prints the itemised list, exits 1, and leaves every file byte-identical with its
+mtime unmoved. **The claim worth naming is the paragraph one.** Removing
+`orders.total_cents` from the database, where the body of `tables/orders.md`
+names `total_cents` in backticks, produced "1 mention of it in backticks stays
+exactly as written, in tables/orders.md, so the prose will name a column that is
+not there. No check reads a body, so nothing else will tell you." It really does
+say which paragraphs will then name something that is not there. After
+`--confirm`, the body, the `group:` line and the `{ x: 999, y: 777 }` were all
+still there, `widgets.md` and `groups/money.md` were byte-identical, and the new
+table landed at `y: 1037`, below the lowest thing placed.
+
+A write the filesystem refuses, produced with the Windows read-only attribute on
+the middle file of three: the run stops there, the earlier file stays written,
+and the refusal names it. In `--json`, `error.file` is the one that refused and
+`files` is what landed, which was checked both ways round. A model already there
+that does not parse is exit 1 with nothing written, and `--dir` at a plain file
+is a refusal of its own.
+
+**`dbmd check --help`.** The default directory, `--strict` on a model with
+warnings only (exit 0 without it, 1 with it), diagnostics grouped under the file
+they are in, a directory diagnostic grouped under the directory, `--json` sorted
+on stdout with the same exit code and an empty stderr, and every exit code.
+
+**`dbmd refs --help`.** Incoming by default, `--outgoing`, both flags, and
+`--json` carrying both directions whichever flag was given. `key`, `required` and
+the quoted `on delete:` clause all read off `examples/shop`; a ref stripped of
+its clause prints no clause and omits `onDelete` from the JSON rather than
+writing `no action`. Exit 0 for a table nothing points at, exit 1 with
+`no-such-table` for a name the model has never heard of, exit 2 for the two words
+the wrong way round. Both banners: a model with an unparseable file says "what
+follows may be short" and carries `readErrors: 1`; a model half way through a
+rename says "Nothing is missing from what follows" with `readErrors: 0`, reports
+that there is no `tables/addresses.md` and then lists what still points at the
+name.
+
+**`dbmd studio --help`.** The default directory, `--port 0` by default, the URL
+on stderr, `--no-open`, and every exit code including a port already listening
+(`port-in-use`, exit 1, against a squatter on a port the OS had just handed out).
+It listens on 127.0.0.1 only: `127.0.0.1` and `localhost` answer, and `[::1]` and
+all three of this machine's non-loopback addresses refuse. **Ctrl-C needed a real
+console signal**, which `child.kill('SIGINT')` on Windows is not: it terminates
+the process and reports signal `SIGINT`, which looks like an answer and is not.
+Started with `Start-Process` so it owned a console, then
+`AttachConsole` plus `GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0)` from PowerShell,
+it exits 0. It flushes too: a `PATCH` moving a table, then a real Ctrl-C 28
+milliseconds later, inside the 250ms debounce, and the file on disk had the new
+coordinates.
+
+The watch and the conflict, driven against the running server: an editor's save
+to `tables/products.md` moved the revision from 0 to 1 and the studio reported the
+new coordinates; a `PATCH` held in the debounce while the same file changed on
+disk left the disk's value on disk and put one entry in `conflicts`, saying it
+"has reloaded the file and dropped its own edit to it"; a `PATCH` naming a
+revision the files have moved on from is refused `409 stale` with nothing
+written. And it does open a browser: started without `--no-open`, `msedge` had
+two established connections to the port it bound.
+
+**`dbmd export --help`.** Prose either side of the markers survives, the junk
+between them does not. Neither marker appends; one of the pair either way, and
+the closing marker above the opening one, are three separate refusals rather than
+a guess. A second run writes nothing and leaves the mtime alone. `--stdout`
+writes no file and puts the section on stdout with an empty stderr. `--format
+dot` is exit 2. A model with an error is refused (`model-has-errors`, exit 1, no
+README written) and a model with only a warning is drawn. **The mermaid claim was
+run rather than trusted**: the generated block, handed to the real `mermaid.parse`
+from `node_modules`, is accepted, and the fence is exactly ` ```mermaid `.
+
+### The two that cannot be tested from here, and what would test them
+
+- **"You run this query yourself, with the client you already trust."** The
+  round trip from `dbmd query` through a live server to a file `dbmd import`
+  reads needs a PostgreSQL or SQL Server instance, and there is none on this
+  machine. It was driven on 2026-09-07 against both, and those entries are above.
+  What would test it here is a container per engine in the gate, which is a
+  decision about what CI costs rather than a gap in this sweep.
+
+- **"GitHub renders mermaid in markdown."** What can be checked here is that the
+  diagram is mermaid a parser accepts inside a fence GitHub keys on, and it is,
+  above. What cannot is GitHub's renderer, which would need a pull request on
+  github.com with the exported README in it and a person looking at the rendered
+  page.
+
+### Two pages outside this sweep's reach carry the import sentence
+
+The re-import trigger is the one of the four that is written down in three
+places. Both of the other two were held by somebody else while this branch ran,
+so both are reported rather than edited.
+
+- **`README.md`** says "over a directory that already holds a model lists". It
+  is one word from right and it is not going in with the help fix, because a
+  `README.md` change makes the owner's next pull refuse against an edit they
+  have uncommitted in that file. It goes on the branch already held open for
+  that reason, `docs/the-one-readme-block-that-went-stale`.
+- **`.claude/skills/dbmd/SKILL.md`** says "`dbmd import` over a directory that
+  already holds a model does not refuse it and does not overwrite it", and two
+  lines later points the reader at `dbmd import --help` for the long form. So
+  the page that sends people to the help carries the sentence the help just
+  stopped saying. It is prose rather than a tagged block, so neither
+  `scripts/check-commands.mjs` nor the new `test/docs/skill.test.ts` can see it:
+  the second of those runs the blocks that are exact tool output, and this is
+  not one.
+
+`.claude/skills/dbmd/SKILL.md` also carried the same sentence as
+`dbmd check --help`, and that one had already been corrected on `main` by the
+time this branch rebased, which is the entry above. Two sweeps reached it from
+opposite ends on the same day and did not collide, because each fixed the page
+it owned.
+
+**And one near miss worth writing down, because a file-path diff would have
+missed it.** `test/docs/skill.test.ts` arrived on `main` while this branch was
+in review, and it runs the skill's `dbmd-run` block, which is
+`dbmd refs customers shop`. That block asserts what `dbmd refs` narrates. The
+only change on this branch to `src/cli/refs.ts` is inside `refsCommand.help`,
+which no run of that block reads, so the two do not touch. Nothing in the file
+lists of the two commits says that; it took reading what the new test executes.

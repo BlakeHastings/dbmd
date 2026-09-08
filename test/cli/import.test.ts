@@ -17,7 +17,7 @@
  */
 
 import { renameSync } from 'node:fs'
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -633,6 +633,29 @@ describe('re-importing over a model', () => {
     expect(run.code).toBe(0)
     expect(flat(run.err)).toContain('nothing to change')
     expect(await readFile(join(dir, 'tables', 'Order.md'), 'utf8')).toBe(before)
+  })
+
+  /**
+   * What makes a run a re-import is that the directory is not empty, and
+   * nothing narrower: `occupancyOf` reads the directory and counts entries.
+   * A directory holding a stray file and no model therefore takes the delta
+   * path, which is the safe one, rather than being written into unasked.
+   *
+   * It is here because `dbmd import --help` used to say "over a directory that
+   * already holds a model", which a reader tests by putting an import into a
+   * directory with a README in it and getting exit 1 from a sentence that
+   * promised a first import. The help now says what this asserts.
+   */
+  test('a directory holding no model but not empty is a re-import, not a first import', async () => {
+    const dir = join(await workspace(), 'not-empty')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'README.md'), '# Notes\n\nNothing to do with dbmd.\n', 'utf8')
+
+    const run = await runCli(['import', '--file', POSTGRES_FIXTURE, '--dir', dir])
+    expect(run.code).toBe(1)
+    expect(flat(run.err)).toContain('Re-importing')
+    expect(flat(run.err)).toContain('database table added')
+    expect(await readdir(dir)).toEqual(['README.md'])
   })
 
   test('an unchanged database is a no-op with --confirm too, so a script can always pass it', async () => {

@@ -48,10 +48,10 @@ export const exportCommand: Command = {
   summary: 'write the model as a mermaid diagram GitHub will render',
   help: `Usage: dbmd export [directory] [options]
 
-Write the model as a mermaid entity-relationship diagram, into
-${DEFAULT_DIRECTORY}/${README}, between two HTML comment markers. GitHub renders
-mermaid in markdown, so the diagram shows up in a pull request without anybody
-installing anything.
+Write the model as a mermaid entity-relationship diagram, into the ${README} of
+the model directory it was given, between two HTML comment markers. GitHub
+renders mermaid in markdown, so the diagram shows up in a pull request without
+anybody installing anything.
 
   directory   the model directory, defaulting to ${DEFAULT_DIRECTORY}
 
