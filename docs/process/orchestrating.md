@@ -1084,6 +1084,17 @@ is, and every one was corrected by measuring rather than by thinking harder. A
 gap that sounds larger is the more comfortable error to make while writing a
 finding, which is exactly why it needs the same evidence a defect does.
 
+**And the heading above is now false, which is the fourth correction to this one
+section and the most satisfying.** `test/docs/skill.test.ts` runs the blocks on
+that page that are exact tool output, and a word changed in a command's narration
+turns it red naming the page and the line. It was built because this section
+argued for it, so the section arguing that a document has no machinery is what
+put machinery on it. **The heading stays as it was written**, because a section
+about claims that go stale is the wrong place to quietly edit one, and because
+what replaced it is the better ending: the last document in this tree written to
+be obeyed and checked by nothing is `AGENTS.md`, and a sweep of that found three
+false counts on the same day. The pattern held every time it was tested.
+
 It went stale within the hour. A merge gave a thrown error the list of files a
 failed run had already written, and the agent that made the change correctly
 added a bullet to the skill saying so. Two hundred lines earlier, the same file
@@ -1658,3 +1669,86 @@ The general shape is one this project keeps meeting. A mechanical check answers
 a question adjacent to the one you care about. It is worth having when the
 adjacent question is cheap and the real one is not, and it is dangerous exactly
 when its answer gets quoted as though it were the real one.
+
+## Four studios of mine were still listening, hours later, and nothing said so
+
+`working-an-issue.md` tells an agent to stop the server it started, by its own
+process, before its worktree is removed. This file already records twenty two
+left running in one session by the person who reviews everyone else against that
+rule. Checking the loopback listeners tonight found four more, all mine, started
+at 01:32, 01:32, 02:37 and 03:04 and still bound at 07:00.
+
+**Nobody notices, because a studio that is still listening looks exactly like
+nothing at all.** It takes no window, prints nothing, and the only symptom is a
+port and a little memory on a machine whose ceiling is memory. So the rule has
+been repeated for a day and broken for a day, which is what a rule with no
+detection behind it does.
+
+`scripts/stray-studios.mjs` is the detection. It prints every studio that is
+listening, its port as a URL, its model directory, and which one is the owner's:
+
+```
+2 studio(s) listening.
+
+OWNER'S  http://127.0.0.1:49192/  pid 34404
+          examples/shop, the tracked one
+  stray  http://127.0.0.1:64841/  pid 25924
+          .
+```
+
+**It stops nothing, deliberately.** Killing a studio is a decision about
+somebody else's window and it stays with a person. That is also why the owner's
+is named rather than filtered out: the useful output is "one of these is theirs
+and the rest are yours", and a tool that quietly hid theirs would be one step
+from a tool that stopped it.
+
+**Its first version reported eight studios and one of them was itself.** It
+matched any command line containing the word "studio", which caught five
+`npm run studio:dev` shell wrappers around one server, that server a second time
+through a `cmd.exe` carrying its script name as an argument, and the PowerShell
+query doing the asking. The fix was not a better pattern. **A studio is a thing
+listening on a port**, so asking the ports rather than the process table answers
+the real question and every wrapper falls away for free. That is the same move as
+asking each worktree directory whether it is its own git top level, one section
+up: when a reading is full of things that are not the thing, the filter is
+usually the wrong question rather than a loose one.
+
+Proven by starting a studio on an OS-assigned port, watching it appear as a
+stray, stopping it by pid, and watching the count go back to one.
+
+## Two wrong answers to "is this agent finished", and the one that works
+
+`held.mjs` reported a three-way collision on one file whose three holders were
+three merged pull requests. An agent found it, said so, and added the sentence
+that turned out to be the useful part: **a collision line is a prompt to go and
+look rather than an answer**, which both of us had been treating it as and
+happening to be right about.
+
+**The first wrong answer was ancestry.** A finished branch's tip ought not to be
+reachable from `main`, except that every merge here is a squash, so it never is.
+`origin/main...HEAD` keeps showing a landed branch's whole diff forever.
+
+**The second wrong answer was content.** Compare each file on the branch against
+`main`, and drop the ones that are identical, because what landed is on `main` by
+definition. That is true on the day the branch lands and false the day after: a
+later branch touching the same file makes the merged one's version differ again.
+It failed on `test/guards/broken-on-purpose.test.ts`, which two branches had
+touched, and it failed silently, reporting a collision that read exactly like the
+real ones.
+
+**The answer that works is not in the worktree at all.** A branch is finished
+when nobody is asking for it to land, and the place that is recorded is the open
+pull request list. One `gh` call, and twenty two finished worktrees drop out of a
+reading that had been carrying them all night.
+
+**What that costs is worth naming.** The tool now needs the network for its best
+answer, and it says so in its own output when it could not get one. An agent that
+has committed but not yet pushed has no open pull request either, so `--live`
+still overrides, and it is still the one fact the tool cannot derive and the
+orchestrator always has.
+
+The general shape, for the third time in this file: **a question about the
+present cannot be answered from a shape left behind by the past.** Which
+directory is a worktree, which studio is listening, which branch is still wanted.
+Every one of them was got wrong first by inspecting an artifact and got right by
+asking the thing that currently holds the state.

@@ -39,6 +39,44 @@ const argv = process.argv.slice(2)
 const liveAt = argv.indexOf('--live')
 const incomingAt = argv.indexOf('--incoming')
 const dashdash = argv.indexOf('--')
+
+/**
+ * Refuse and say so, rather than throwing a stack trace at somebody who typed a
+ * flag slightly wrong.
+ */
+function refuse(...lines) {
+  for (const line of lines) console.error(line)
+  console.error('')
+  console.error('  node scripts/held.mjs                     what open branches hold')
+  console.error('  node scripts/held.mjs --live <id>,<id>     what those agents hold')
+  console.error('  node scripts/held.mjs --incoming <ref>     what a rebase brings into <ref>')
+  console.error('  node scripts/held.mjs [--live <ids>] -- <path>...   are these held')
+  process.exit(2)
+}
+
+// **An unknown flag is not a filename.** An agent ran `--incoming` from a tree
+// cut before that flag existed, and the parser read it as a path and answered
+// `free --incoming`, in green, silently. That is the same defect
+// `check-commands.mjs` exists to catch for the CLI, in the tool the orchestrator
+// uses to write briefs, so it is worth the eight lines.
+const KNOWN = new Set(['--live', '--incoming', '--'])
+const beforePaths = dashdash < 0 ? argv : argv.slice(0, dashdash)
+for (const [i, arg] of beforePaths.entries()) {
+  if (!arg.startsWith('--') || KNOWN.has(arg)) continue
+  if (i > 0 && (beforePaths[i - 1] === '--live' || beforePaths[i - 1] === '--incoming')) continue
+  refuse(`held.mjs: unknown option "${arg}".`)
+}
+
+if (liveAt >= 0 && (argv[liveAt + 1] === undefined || argv[liveAt + 1].startsWith('--'))) {
+  refuse('held.mjs: --live wants a comma-separated list of agent ids.')
+}
+if (incomingAt >= 0 && (argv[incomingAt + 1] === undefined || argv[incomingAt + 1] === '--')) {
+  refuse(
+    'held.mjs: --incoming wants a branch or a sha.',
+    'It answers what a rebase would bring into that ref, so there is nothing to answer without one.',
+  )
+}
+
 const live =
   liveAt < 0
     ? undefined
@@ -48,7 +86,7 @@ const live =
           .map((id) => id.trim())
           .filter((id) => id !== ''),
       )
-const asked = dashdash < 0 ? (liveAt < 0 ? argv : []) : argv.slice(dashdash + 1)
+const asked = dashdash < 0 ? (liveAt < 0 && incomingAt < 0 ? argv : []) : argv.slice(dashdash + 1)
 
 /** Both streams, because reading only stdout has produced a false reading here. */
 function git(args, cwd) {
@@ -130,9 +168,50 @@ function isWorktree(dir) {
   }
 }
 
+/**
+ * The head branch of every open pull request, or `undefined` where `gh` could
+ * not be asked.
+ *
+ * **This is the only reliable way to tell a finished worktree from a working
+ * one, and it took two wrong answers to get here.** Every merge in this
+ * repository is a squash, so a landed branch's tip is not an ancestor of `main`
+ * and `origin/main...HEAD` keeps showing its whole diff. Comparing each file
+ * against `main` does not save it either: a later branch touching the same file
+ * makes the merged one's version differ again, which is exactly what happened
+ * on `test/guards/broken-on-purpose.test.ts`. What actually distinguishes them
+ * is whether anybody is still asking for the branch to land.
+ */
+function openBranches() {
+  try {
+    return new Set(
+      JSON.parse(
+        execFileSync('gh', ['pr', 'list', '--state', 'open', '--json', 'headRefName'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      ).map((pr) => pr.headRefName),
+    )
+  } catch {
+    return undefined
+  }
+}
+
+/** The branch a worktree is on, or `undefined` when it is detached. */
+function branchOf(dir) {
+  try {
+    const name = git(['rev-parse', '--abbrev-ref', 'HEAD'], dir).trim()
+    return name === 'HEAD' ? undefined : name
+  } catch {
+    return undefined
+  }
+}
+
+const open = openBranches()
+
 const byFile = new Map()
 const read = []
 const skipped = { notAWorktree: 0, notLive: 0 }
+let finished = 0
 
 for (const name of existsSync(worktrees) ? readdirSync(worktrees) : []) {
   const id = name.replace(/^agent-/, '')
@@ -162,12 +241,31 @@ for (const name of existsSync(worktrees) ? readdirSync(worktrees) : []) {
   // committed its work looks exactly like one that has not started. Both were
   // true here at once, and the difference matters to a brief: a file already
   // committed on somebody's branch is a conflict just the same.
+  //
+  // **A merged branch is not a holder, and nothing in the worktree can tell.**
+  // An agent found this reported as a three-way COLLISION on one file whose
+  // three holders were three merged pull requests. So a worktree's committed
+  // rows count only when somebody is still asking for that branch to land, or
+  // when you named it live. Everything else is finished and contributes only
+  // what it has open right now, which is nothing.
+  const branch = branchOf(dir)
+  const stillWanted =
+    (live !== undefined && live.has(id)) ||
+    open === undefined ||
+    (branch !== undefined && open.has(branch))
+
+  if (!stillWanted) {
+    finished++
+    continue
+  }
+
   try {
     for (const path of git(['diff', '--name-only', 'origin/main...HEAD'], dir).split('\n')) {
-      if (path.trim() === '') continue
-      const already = byFile.get(path.trim())
+      const file = path.trim()
+      if (file === '') continue
+      const already = byFile.get(file)
       if (already?.some((h) => h.agent === id)) continue
-      hold(path.trim(), 'committed')
+      hold(file, 'committed')
     }
   } catch {
     // A detached worktree with no merge base is not an agent branch. Say
@@ -190,10 +288,21 @@ if (asked.length > 0) {
   process.exit(anyHeld ? 1 : 0)
 }
 
-const scope = live === undefined ? 'every registered worktree, live or finished' : 'the live agents you named'
+const scope =
+  live === undefined
+    ? 'every worktree whose branch still has an open pull request'
+    : 'the live agents you named'
 console.log(`${byFile.size} file(s) held across ${read.length} worktree(s), reading ${scope}.`)
 if (skipped.notAWorktree > 0) {
   console.log(`${skipped.notAWorktree} leftover director(ies) skipped: not their own git top level.`)
+}
+if (finished > 0) {
+  console.log(
+    `${finished} worktree(s) whose branch has no open pull request counted as finished.`,
+  )
+}
+if (open === undefined) {
+  console.log('`gh` could not be asked which branches are open, so every worktree was counted.')
 }
 console.log('')
 
