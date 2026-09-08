@@ -1792,3 +1792,42 @@ studio is listening, which branch is still wanted, which number is free. Every
 one was got wrong first by trusting a reading of an artifact, and every one got
 better by naming what the reading does not cover **in the tool's own output**,
 where the next person meets it, rather than in a document beside it.
+
+## What a rebase invalidates, and the rule I broke twice while writing the rule
+
+An agent, asked to rebase for the third time, did it and then said something I
+should have said first:
+
+> I have not rebased again unasked, because each rebase invalidates the review
+> record you just placed and restarts the same race.
+
+**It is right about the race and half right about the record**, and the half it
+is wrong about is a thing I had been leaving implicit for a whole session.
+
+**A rebase invalidates the sha and not the review.** `merge-pr.mjs` refuses a
+sha the orchestrator has not named, which is correct and is what catches a
+force-push. What it cannot tell is whether the change under that new sha is the
+change that was read. Three things decide that, and when all three hold the
+review still stands:
+
+- the diff against the new base is unchanged
+- the agent re-ran the whole gate on the rebased tree
+- the incoming commits were **read** rather than counted, because a clean apply
+  is not evidence
+
+Every agent here has given all three every time, and my re-read on a rebase is a
+check that those three are true rather than a second review. **Saying so is not
+a formality.** An agent that believes each rebase throws away a review will
+either rush the third one or stop reporting the things that make it hold.
+
+**The race is mine and my own rule already covers it.** Two agent branches ready
+at once cannot both merge without one rebasing, and no ordering avoids that. What
+is avoidable is what I did in between: merging my own documentation branches
+while an agent's sat green and waiting. The rule two sections up says the agent's
+goes first and mine goes last, and I broke it twice in one session, in the
+session where I wrote it down.
+
+So the fix is not another sentence in this file. It is that **a branch of mine
+that is green and waiting is not a branch to merge while any agent branch is
+green and waiting**, and the merge script has been printing the list of branches
+a merge will stale, by number, before every one of those merges.
