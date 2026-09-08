@@ -147,6 +147,12 @@ interface Envelope {
   readonly written?: boolean
   readonly tables?: number
   readonly relationships?: number
+  readonly characters?: number
+  readonly mermaid?: {
+    readonly version: string
+    readonly maxTextSize: number
+    readonly overMaxTextSize: boolean
+  }
   readonly error?: { readonly code: string; readonly message: string }
 }
 
@@ -533,6 +539,230 @@ Nobody said which row is which.
 
     expect(run.code).toBe(0)
     expect(payload(run).tables).toBe(1)
+  })
+})
+
+/**
+ * The warning a diagram too large for mermaid to draw gets. ADR 0100.
+ *
+ * Mermaid's `maxTextSize` is checked in `render` and not in `parse`, and when it
+ * trips mermaid substitutes `graph TB;a[Maximum text size in diagram
+ * exceeded];style a fill:#faa` for the diagram. So the failure is a red box on
+ * GitHub with no error anywhere: `dbmd export` reported success, `mermaid.parse`
+ * in `test/export/mermaid.test.ts` accepts the text, and nothing between the two
+ * has an opinion.
+ *
+ * **The two fixtures are one character apart across the limit**, which is the
+ * whole point of them. Twelve tables of 170 columns, plus one more column on
+ * the first table whose name is the only thing that differs, is 50,000
+ * characters of diagram in one case and 50,001 in the other. Mermaid's check is
+ * `text.length > maxTextSize`, so 50,000 draws and 50,001 does not, and this
+ * pair is the smallest thing that can say which. A constant that drifted, a
+ * comparison that became `>=`, or a count taken over `section.text` rather than
+ * over the diagram inside the fence turns one of the two red. A pair chosen at
+ * 8 and 600 tables would survive all three.
+ *
+ * The size is reached with wide tables rather than with six hundred files
+ * because the predicate is the length of the diagram and nothing else, and
+ * twelve files run in milliseconds where six hundred do not. The three-size run
+ * over models shaped like the reported one is in the pull request.
+ *
+ * The directories here are called `warehouse`, and deliberately not `db-model`:
+ * every other fixture in this file builds its model in a directory with the
+ * default's name, which is how `dbmd export --help` claimed for weeks to write
+ * into `db-model` whatever it was given.
+ */
+describe('a diagram mermaid will not draw', () => {
+  const LIMIT = 50_000
+
+  /**
+   * The eight-character name that makes the diagram exactly `LIMIT` characters,
+   * and the nine-character one that makes it exactly one over.
+   *
+   * A column row is `    varchar <name>` and its newline, so the name's length
+   * is the whole of the difference between the two fixtures. Twelve tables of
+   * 170 columns is 49,979 characters on its own; these add the last 21 and 22.
+   */
+  const AT_LIMIT = 'cccccccc'
+  const OVER_LIMIT = 'ccccccccc'
+
+  /**
+   * Twelve tables, each carrying 170 columns beyond its key and a `ref` at the
+   * one before it, plus one extra column on the first table with the given
+   * name, in a directory of the given name.
+   *
+   * The shape is the one the character counts above were measured against, so
+   * changing a name or a type in here moves both fixtures relative to the
+   * limit. Every assertion reads the count off the run rather than trusting it,
+   * and says in its failure message which knob is the one to turn.
+   */
+  async function wideModel(name: string, extra: string): Promise<string> {
+    const tables = 12
+    const columns = 170
+    const parent = await mkdtemp(join(tmpdir(), 'dbmd-export-wide-'))
+    temporaries.push(parent)
+    const directory = join(parent, name)
+    await mkdir(join(directory, 'tables'), { recursive: true })
+    await writeFile(
+      join(directory, '_model.md'),
+      `---\nkind: model\nname: warehouse\nengine: postgres\n---\n\n${tables} wide tables.\n`,
+      'utf8',
+    )
+    for (let i = 0; i < tables; i++) {
+      const table = `t${String(i).padStart(3, '0')}`
+      const parentRef =
+        i === 0
+          ? ''
+          : `  - name: parent_id\n    type: uuid\n    nullable: false\n    ref: t${String(i - 1).padStart(3, '0')}.id\n`
+      const wide = Array.from(
+        { length: columns },
+        (_, c) => `  - name: column_${String(c).padStart(4, '0')}\n    type: varchar\n`,
+      ).join('')
+      const tail = i === 0 ? `  - name: ${extra}\n    type: varchar\n` : ''
+      await writeFile(
+        join(directory, 'tables', `${table}.md`),
+        `---\nkind: table\ntable: ${table}\ncolumns:\n  - name: id\n    type: uuid\n    pk: true\n` +
+          `${parentRef}${wide}${tail}---\n\nTable ${i}.\n`,
+        'utf8',
+      )
+    }
+    return directory
+  }
+
+  /** What is inside the mermaid fence, which is what a renderer hands mermaid. */
+  function diagramIn(text: string): string {
+    const open = text.indexOf('```mermaid\n')
+    expect(open, 'the README has a mermaid fence in it').toBeGreaterThan(-1)
+    const body = text.slice(open + '```mermaid\n'.length)
+    const close = body.indexOf('```')
+    expect(close, 'the mermaid fence is closed').toBeGreaterThan(-1)
+    return body.slice(0, close)
+  }
+
+  test('a diagram over the limit is written, warned about, and still exit 0', async () => {
+    const directory = await wideModel('warehouse', OVER_LIMIT)
+
+    const run = await runCli(['export', directory])
+
+    // The file is correct and the model is fine, so refusing to write would be
+    // refusing over somebody else's renderer's configuration. ADR 0100.
+    expect(run.code).toBe(0)
+    expect(await readme(directory)).toContain('```mermaid')
+    expect(run.err).toContain('Wrote')
+
+    // The three things the message owes a reader: the number, the limit, and
+    // whose default the limit is.
+    expect(run.err).toContain('warning:')
+    expect(run.err).toContain('50000')
+    expect(run.err).toContain("mermaid 11.17.2's default maxTextSize rather than a rule")
+    // The sentence mermaid actually draws, so somebody who has already seen the
+    // red box on GitHub can match this line to it.
+    expect(run.err).toContain('Maximum text size in diagram exceeded')
+    // Not a failure, and it does not wear the CLI's failure prefix.
+    expect(run.err).not.toContain('dbmd:')
+  })
+
+  test('the count in the warning is the length of the diagram it just wrote', async () => {
+    const directory = await wideModel('warehouse', OVER_LIMIT)
+
+    const run = await runCli(['export', directory])
+
+    // The whole claim rests on this number being the fence body rather than the
+    // section, which carries a notice and a caveats paragraph as well and is
+    // about a kilobyte longer. Both are over the limit for this fixture, so
+    // only reading it back off the file can tell them apart.
+    const characters = diagramIn(await readme(directory)).length
+    expect(
+      characters,
+      `this fixture is meant to be exactly ${LIMIT + 1} characters. If it has moved, the column ` +
+        `name lengths at the top of this block are the knob: one character of name is one ` +
+        `character of diagram.`,
+    ).toBe(LIMIT + 1)
+    expect(run.err).toContain(`that diagram is ${characters} characters`)
+  })
+
+  test('a diagram of exactly the limit draws, and is told nothing about its size', async () => {
+    const directory = await wideModel('warehouse', AT_LIMIT)
+
+    const run = await runCli(['export', directory])
+
+    const characters = diagramIn(await readme(directory)).length
+    expect(
+      characters,
+      `this fixture is meant to be exactly ${LIMIT} characters. If it has moved, the column ` +
+        `name lengths at the top of this block are the knob: one character of name is one ` +
+        `character of diagram.`,
+    ).toBe(LIMIT)
+    // Mermaid's check is `text.length > maxTextSize`, so a diagram of exactly
+    // the limit is drawn. One character apart from the test above, and silent:
+    // this is the assertion a `>=` fails.
+    expect(run.code).toBe(0)
+    expect(run.err).not.toContain('warning')
+    expect(run.err).not.toContain('Maximum text size')
+    expect(run.err).toContain('Wrote')
+  })
+
+  test('the ordinary two-table model is silent about size in both forms', async () => {
+    const directory = await twoTables()
+
+    const prose = await runCli(['export', directory])
+    const json = await runCli(['export', directory, '--json'])
+
+    expect(prose.err).not.toContain('warning')
+    expect(prose.err).not.toContain('Maximum text size')
+    expect(payload(json).mermaid).toEqual({
+      version: '11.17.2',
+      maxTextSize: 50000,
+      overMaxTextSize: false,
+    })
+  })
+
+  test('the --json report carries the count and the claim rather than the prose', async () => {
+    const directory = await wideModel('warehouse', OVER_LIMIT)
+
+    const run = await runCli(['export', directory, '--json'])
+
+    // ADR 0006 rule 3: a caller scripting export has the same problem as a
+    // person, and should never have to read prose off stderr to find out.
+    expect(run.code).toBe(0)
+    expect(run.err).toBe('')
+    const report = payload(run)
+    expect(report.ok).toBe(true)
+    expect(report.characters).toBe(diagramIn(await readme(directory)).length)
+    expect(report.mermaid).toEqual({
+      version: '11.17.2',
+      maxTextSize: 50000,
+      overMaxTextSize: true,
+    })
+  })
+
+  test('--stdout warns too, on stderr, having written no file', async () => {
+    const directory = await wideModel('warehouse', OVER_LIMIT)
+
+    const run = await runCli(['export', directory, '--stdout'])
+
+    // The same text with the same problem, going somewhere else. ADR 0006 rule
+    // 1 is about stdout and is untouched: the document is on stdout, whole, and
+    // a run under the limit still writes nothing at all to stderr, which the
+    // block above asserts.
+    expect(run.code).toBe(0)
+    expect(run.out).toContain('```mermaid')
+    expect(run.err).toContain('Maximum text size in diagram exceeded')
+    expect(run.err).toContain(`that diagram is ${diagramIn(run.out).length} characters`)
+    await expect(readme(directory)).rejects.toThrow()
+  })
+
+  test('a second run of an unchanged oversized model still warns', async () => {
+    const directory = await wideModel('warehouse', OVER_LIMIT)
+    await runCli(['export', directory])
+
+    const run = await runCli(['export', directory, '--json'])
+
+    // The file did not need writing and is still too large to draw. A warning
+    // attached to the write rather than to the diagram would go quiet here,
+    // which is the run somebody does after a rebase to find out where they are.
+    expect(payload(run).written).toBe(false)
+    expect(payload(run).mermaid?.overMaxTextSize).toBe(true)
   })
 })
 

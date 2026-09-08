@@ -226,9 +226,19 @@ A clean run is one line, and it is on stderr too:
 examples/shop: 8 tables, 2 notes, 1 group, no problems.
 ```
 
-`dbmd export --stdout` prints the diagram on stdout and **nothing whatsoever**
-on stderr, so the redirect captures the document and only the document. There
-is no success line to strip and no quiet flag to remember.
+`dbmd export --stdout` prints the diagram on stdout and **no success line at
+all** on stderr, so the redirect captures the document and only the document.
+There is nothing to strip and no quiet flag to remember.
+
+Stderr is not unconditionally empty, and the two things that put something
+there are both worth having. A model with an error in it is refused, and the
+refusal is narration on stderr with exit code 1, as it is for every other form
+of this command. And a diagram over mermaid's default `maxTextSize` gets a
+warning on stderr with exit code **0**, described under
+[the report below](#the-report-dbmd-export---json-writes): the file or the
+document is correct either way, and what will not draw it is downstream of
+`dbmd`. A run that succeeds over a model under that size writes nothing to
+stderr at all, which is the case the paragraph above is about.
 
 Two things follow from this that are worth knowing before you debug a job:
 
@@ -256,12 +266,18 @@ exit code as the text form:
   "file": "examples/shop/README.md",
   "written": true,
   "tables": 8,
-  "relationships": 11
+  "relationships": 11,
+  "characters": 2120,
+  "mermaid": {
+    "version": "11.17.2",
+    "maxTextSize": 50000,
+    "overMaxTextSize": false
+  }
 }
 ```
 
 **`written` is the field to read.** Export does not rewrite a file whose diagram
-has not changed, so the same eight keys come back with `written: false` when the
+has not changed, so the same nine keys come back with `written: false` when the
 committed diagram was already current, and `ok` is `true` either way. That is the
 question the `git diff --exit-code` shape above asks with a second command and an
 exit code, asked once and answered as a value.
@@ -270,6 +286,30 @@ exit code, asked once and answered as a value.
 in and slash-separated on every platform, so two runners produce the same bytes.
 `tables` and `relationships` count what the diagram drew, which is a cheap thing
 for a job to assert on when a model is not supposed to be losing tables.
+
+**`mermaid.overMaxTextSize` is the field to read second**, and it is the only
+one here that is a claim about somebody else's software. `characters` is the
+length of the diagram itself, meaning what is inside the ` ```mermaid ` fence,
+which is what a markdown renderer hands mermaid. Mermaid checks that length when
+it **renders** and not when it parses, and a diagram over the limit does not
+fail: mermaid quietly substitutes a red box reading "Maximum text size in
+diagram exceeded" for the picture. So an export of a large model can report
+success, write a perfectly valid diagram, and put a red box in the pull request
+nobody was told about. That is what this field exists to say, and the text form
+says it as a warning on stderr beside exit code 0.
+
+`maxTextSize` is **mermaid's own default, not a rule**, which is why the version
+it was read out of travels with it. A renderer configured with a larger one
+draws the file. What GitHub configures is not something this project can
+observe, so nothing here claims to know it: `overMaxTextSize: true` means "over
+the default of the mermaid this was built against", and that is the whole of it.
+A job that wants to fail on it reads the boolean; a job pasting the diagram
+somewhere with a raised limit ignores it.
+
+Nothing about the exit code changes. The model is fine and the file is right, so
+refusing to write would be refusing over a downstream renderer's configuration,
+and a job that treats this as fatal is choosing to. See
+[ADR 0100](architecture/decisions/0100-a-diagram-that-is-written-and-will-not-draw.md).
 
 This is the writing form of the command and not the `--stdout` one. Asking for
 both is a usage error, exit code 2, because stdout carries one thing per run:

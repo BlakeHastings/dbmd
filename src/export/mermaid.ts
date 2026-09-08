@@ -42,6 +42,41 @@ export const SECTION_BEGIN = '<!-- dbmd:diagram -->'
 /** The last line of it. Prose on either side of the pair belongs to whoever wrote it. */
 export const SECTION_END = '<!-- /dbmd:diagram -->'
 
+/**
+ * The version of mermaid the two constants below were read out of.
+ *
+ * They are a claim about somebody else's software rather than a choice this
+ * project made, so the version they were true of travels with them and is
+ * printed wherever the number is. `test/export/mermaid.test.ts` reads both back
+ * out of the installed package on every run, so this pair cannot quietly go
+ * stale: the day `package-lock.json` moves mermaid, the suite says which of
+ * these two is wrong.
+ *
+ * It is a constant here rather than a read of the package because `mermaid` is
+ * a devDependency (ADR 0048) and `files` ships `dist` only (ADR 0024). An
+ * installed `dbmd` has no mermaid to ask, and a command that must work on that
+ * install cannot depend on one being there.
+ */
+export const MERMAID_VERSION = '11.17.2'
+
+/**
+ * The number of characters of diagram source mermaid will draw, past which it
+ * draws something else entirely.
+ *
+ * This is `maxTextSize` in mermaid's default config. The check is in `render`
+ * and not in `parse`, so a diagram over it parses perfectly and then renders as
+ * `graph TB;a[Maximum text size in diagram exceeded];style a fill:#faa`: a red
+ * box with that sentence in it, where the schema should be. Nothing anywhere
+ * fails, which is the same shape of silent wrongness the rest of this file is
+ * arranged against.
+ *
+ * **It is a default and not a law.** A renderer is free to configure a larger
+ * one, and what GitHub configures cannot be observed from this repository. So
+ * everything written about this number says whose default it is, and the number
+ * itself is printed rather than only the verdict.
+ */
+export const MERMAID_MAX_TEXT_SIZE = 50_000
+
 export interface MermaidSection {
   /** The whole generated section, both markers included, newline-terminated. */
   readonly text: string
@@ -49,6 +84,18 @@ export interface MermaidSection {
   readonly tables: number
   /** How many relationship lines it has: one per `ref`. */
   readonly relationships: number
+  /**
+   * The length of the diagram source alone: what is inside the mermaid fence,
+   * and therefore what `MERMAID_MAX_TEXT_SIZE` is compared against.
+   *
+   * Not the length of `text`, which carries the markers, the notice and the
+   * caveats paragraph as well and is nothing mermaid ever sees. A markdown
+   * renderer hands mermaid the body of the fence, which is these bytes, and the
+   * fence's own closing newline is worth a character either way. That
+   * uncertainty is one reason the report prints the count rather than only
+   * saying "over".
+   */
+  readonly characters: number
 }
 
 /**
@@ -90,6 +137,7 @@ export function mermaidSection(model: Model): MermaidSection {
     text: [SECTION_BEGIN, NOTICE, '', body, CAVEATS, SECTION_END, ''].join('\n'),
     tables: tables.length,
     relationships: edges(tables).length,
+    characters: diagram.length,
   }
 }
 
