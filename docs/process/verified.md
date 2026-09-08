@@ -1249,3 +1249,52 @@ place, and the create path does not go through it.
   `8 tables, 2 notes, 2 groups, no problems`. The `group-empty` diagnostic that
   the new group had while it was empty went away when the table joined it, which
   is the same read feeding the canvas, the panel and the footer.
+
+## 2026-09-07, night: the dash is already taken, and I had offered it
+
+**This corrects a picture the owner was sent.** Four edge-marker options were
+rendered on the live diagram to make the visuals epic's open question something
+they could answer by looking. The fourth was a dashed line for a cascading
+delete. **It is not available.**
+
+`.edge.unanchored` in `index.html` sets `stroke-dasharray: 5 4`, and its comment
+says why: an end that could not find its column is drawn at the table's name and
+has to be readable as that rather than as an ordinary arrow. Found by removing
+`customers.id` in a browser, not by reading the stylesheet: three of the eleven
+edges went dashed at that moment and eight stayed solid, and each dashed one's
+tooltip ended *"Drawn at the table's name because there is no customers.id."*
+
+**The other two channels are taken as well.** `.edge.related` paints the edges of
+a selected table in the accent colour at `stroke-width: 2.5` against the ordinary
+`1.5`. So colour and weight both already mean "these are the ones you are looking
+at".
+
+**That gives the epic's recommendation a second and better reason.** It said
+prefer a marker to colour because colour stops working in print and for a
+colour-blind reader, which is true and is about readers. The stronger reason is
+about the canvas: of the three channels an edge has, two are spoken for and the
+third is a dash that already means something else. A marker at an end is the only
+one left.
+
+**And the marker slot itself is free, which was worth checking rather than
+assuming.** An edge uses one marker, `dbmd-arrowhead`, on `marker-end`, and it is
+the only `<marker>` defined anywhere on the page. `marker-start` and `marker-mid`
+are unset on every edge. So a mark at the child end costs nothing that is
+currently in use, and the two surviving options are identical in what they take:
+the choice between them is which shape and which case it marks, and nothing
+else.
+
+## The same night: removing a referenced column, and reordering one
+
+- **A column that other tables point at is not removed quietly.** Taking `id` off
+  `customers`, which three tables reference, asks first and offers
+  `Remove anyway` beside `Cancel`. Taken, the footer names all three:
+  `` `ref: customers.id` on column `customer_id` names no column of `customers` ``
+  for `addresses`, `orders` and `subscriptions`, plus the primary key warning
+  that follows from it. `dbmd check` reports 3 errors and 1 warning across 4
+  files, and the three edges go dashed while the other eight stay solid. **The
+  edge ids survived the removal**, which is what ADR 0072 needed them to do.
+- **Reordering a column writes the file in the new order.** Moving `cancelled_at`
+  up one in the panel put it above `paused_until` in `tables/subscriptions.md`
+  and on the canvas box in the same beat, and the status named the file it wrote.
+  The index in that file, `subscriptions_due_idx`, stayed where it was.
