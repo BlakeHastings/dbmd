@@ -281,9 +281,14 @@ as open work. The nine presses of Tab it describes are no longer the only route.
 
 **The revisit lists in `docs/architecture/decisions/` were swept on 2026-09-07**,
 all 263 conditions across 73 records, and [`verified.md`](verified.md) carries the
-method and the count. Fifteen conditions had fired without anything saying so and
-their records now say so. Three things came out of it that are open work rather
-than history, and they are owed to the tracker too:
+method and the count. **Sixteen** conditions had fired without anything saying so
+and their records now say so. The sixteenth was the sweep's own mistake, found an
+hour later when ADR 0075 landed: ADR 0021's second entry had fired and the sweep
+said it had not, because it believed the record's description of `dbmd import`
+instead of reading `src/import/model.ts`. That correction is on ADR 0021, on
+ADR 0029 and in `verified.md`, and it is the reason to distrust any "not fired"
+verdict in the sweep that does not name what was read. Three things came out of
+it that are open work rather than history, and they are owed to the tracker too:
 
 ```bash
 # ADR 0065, ADR 0071, ADR 0072 and ADR 0073 all carry a revisit entry that fires

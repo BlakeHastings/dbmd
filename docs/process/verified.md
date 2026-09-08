@@ -1473,6 +1473,12 @@ it. Nothing is proposed on the strength of that: the two things ADR 0034's
 decision rests on, that `npm test` stays outside it and that the gate is paid
 once per push, are both unchanged.
 
+**The orchestrator ran the gate independently the same night and got 1m0.2s**,
+which is their measurement and not this one. Two runs an hour apart on one
+machine differing by five seconds is roughly what a single run of anything is
+worth, and the useful part is that both are more than double the 26.5s ADR 0034
+recorded earlier the same day.
+
 ### One thing the sweep found that was not a revisit condition
 
 **A brief's premise, and the correction is the useful part.** This sweep was
@@ -1558,3 +1564,45 @@ screen. Nothing re-fits on a resize, on purpose, so the sentence is about the
 moment it was said and pressing Fit again makes it true. ADR 0075 names it under
 both **Consequences** and **Revisit when** rather than fixing it, because the
 fix is a decision about what a resize should do to the view.
+
+## 2026-09-07, later: the sweep got one wrong, and ADR 0075 is what found it
+
+**The count above is sixteen rather than fifteen**, and the sixteenth was found
+by somebody else's change landing an hour later. It is written here rather than
+edited into the section above because a sweep that quietly fixes its own
+arithmetic is a sweep nobody can audit.
+
+**ADR 0021's second revisit entry had fired and the sweep said it had not.** The
+entry is *"Something other than the studio creates a table. `dbmd import` writes
+a whole directory and has no pointer, so every table it makes has no `layout` and
+is laid out on the grid. That is correct today and stops being obviously correct
+the moment somebody wants an import to arrive readable."* The sweep's own
+sentence about it repeated the entry's description as though it were a
+measurement, and the description is false:
+
+- **`dbmd import` writes a `layout:` on every table and always has.**
+  `src/import/model.ts` sets one on each table it builds, and ADR 0029 decided
+  that in #45, the pull request the import landed in. ADR 0021 landed in #29,
+  sixteen pull requests earlier, so its sentence was a prediction about a command
+  that did not exist and the prediction was wrong. Nothing ever re-read it.
+- **And somebody has now asked for an import to arrive readable.** ADR 0075 is
+  that, landed the same night, and the section above it on this page carries the
+  numbers.
+
+**Two lessons, and the second one is the one worth keeping.**
+
+The cheap one is that ADR 0021's entry is the shape ADR 0071's turned out to be:
+a record born describing a future, never read against the future when it
+arrived. That is two out of sixteen, from seventy-three records, which is a rate
+rather than a coincidence.
+
+The one that costs more is that **the sweep believed a record instead of the
+tree**. Every other "not fired" verdict in it was reached by reading the code or
+by driving the page. This one was reached by reading the sentence in the record
+and agreeing with it, which is precisely the failure the sweep was carried out to
+find, committed by the sweep, in a section whose whole subject is records going
+stale. `orchestrating.md` already carries the rule this breaks, that the source
+is read before the page is believed, and a decision record is a page.
+
+Both corrections are appended to the records themselves, ADR 0021 and ADR 0029,
+in the same shape as the others.

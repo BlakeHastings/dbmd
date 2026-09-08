@@ -159,3 +159,42 @@ without a `layout:` and nobody has asked for an import to arrive readable. The
 studio is still one session, so no second window has raced a delete. Nobody has
 asked for an undo of a delete inside the studio, and ADR 0074's own revisit list
 now carries the same question from the create side.
+
+## Correction to the section above, within the hour: the second entry had fired too
+
+Appended rather than edited, because a sweep that quietly fixes its own mistakes
+is a sweep nobody can audit, and this record's neighbours already carry two
+sections correcting an earlier section of their own.
+
+The section above ends by saying the other three entries have not fired, and
+gives as its reason that "`dbmd import` still writes every table without a
+`layout:` and nobody has asked for an import to arrive readable". **Both halves
+of that sentence are wrong**, and they were wrong when it was written an hour
+earlier.
+
+**`dbmd import` writes a `layout:` on every table and always has.**
+`src/import/model.ts` sets `layout: { x: MARGIN + (slot % columns) *
+COLUMN_PITCH, y: ... }` on each table it builds, and ADR 0029 decided that in
+the same pull request the import landed in, #45. The claim in the entry above,
+that a table an import makes "has no `layout` and is laid out on the grid", is a
+prediction rather than a description: this record landed in #29 and the import
+did not exist yet. What shipped writes the grid to disk rather than leaving the
+canvas to draw one. The entry was never re-read against the thing it predicted,
+which is the whole reason the sweep exists, and then the sweep repeated the
+prediction as though it were a measurement.
+
+**And somebody has now asked for an import to arrive readable.** That is the
+condition the entry actually names, and
+[ADR 0075](0075-the-grid-is-shaped-like-the-window-and-a-fit-that-cannot-fit-says-so.md)
+is it, landed the same night. Six hundred imported tables were five columns wide
+and a hundred and twenty rows deep, and a person opening the studio on that saw
+70 of 600 boxes with the zoom already at its floor. The grid's width now comes
+from the table count aimed at the window's shape, so a hundred tables fit where
+about sixty-five did. That is exactly "stops being obviously correct the moment
+somebody wants an import to arrive readable", and the answer went the way this
+entry implied it would: the import chose better coordinates rather than the
+studio learning to lay out.
+
+**The other two entries are unchanged and have not fired.** The studio is still
+one session, so no second window has raced a delete, and nobody has asked for an
+undo of a delete inside the studio.
