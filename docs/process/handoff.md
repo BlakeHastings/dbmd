@@ -143,6 +143,22 @@ was one `EPERM` about the second. It is held because the export agent is settlin
 the wording that ADR 0083 asks for, and the import fix should copy a landed
 pattern rather than invent a second one beside it. Dispatch it once export lands.
 
+**The studio the owner has open predates eight of tonight's studio fixes, and
+one of them matters.** The process was started at 20:37 on 2026-09-07 and has not
+been restarted, so both halves of it, the served bundle and the server, are from
+before #198, #213, #226, #231, #237, #238, #240 and #243.
+
+**The one to know about is the create path.** On that build, naming a new table
+with different capitalisation from one that exists answers "`tables/Orders.md` is
+already a file, and it is not in the model, which means it did not parse. Fix or
+delete it rather than writing over it". It is one file, it is in the model, it
+parses, and the advice deletes a healthy table file. #238 fixed it. **A person
+working on that page would be told to do it.**
+
+**Do not restart it to fix that.** The address was given to the owner and this
+file has said since yesterday not to move it without saying so. Telling them is
+the move; restarting is theirs.
+
 **The studio is running for the owner** at `http://127.0.0.1:49192/`, started at
 20:37 on 2026-09-07 with `npm run studio:dev`, with the feedback overlay on it.
 `npm run annotations` reads what they write there. **Nothing has been annotated
