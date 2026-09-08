@@ -183,6 +183,9 @@ describe('dbmd init', () => {
     expect(err).toContain(`${path} is not a directory, so init has left it alone.`)
     expect(err).toContain('Move it aside, or give init a different directory.')
     expect(err).not.toContain('is not empty')
+    // The path and the file are the same thing here, so "it" already points at
+    // something the developer can move and the sentence says nothing more.
+    expect(err).not.toContain('further up the path')
     expect(await readFile(path, 'utf8')).toBe('mine\n')
   })
 
@@ -209,6 +212,10 @@ describe('dbmd init', () => {
 
     expect(text.code).toBe(1)
     expect(text.err).toContain(`${path} is not a directory, so init has left it alone.`)
+    // The advice names the file, because "move it aside" about a path that
+    // does not exist is an instruction nobody can carry out, and that is the
+    // defect this whole branch is about arriving inside the fix for it.
+    expect(text.err).toContain(`${file}, further up the path, is the file in the way.`)
     expect(text.err).toContain('Move it aside, or give init a different directory.')
     // Node's own sentence, which is what used to arrive here, does not.
     expect(text.err).not.toContain('ENOTDIR')
@@ -225,6 +232,26 @@ describe('dbmd init', () => {
 
     // "left it alone" is a claim about the disk, so it is read back.
     expect(await readFile(file, 'utf8')).toBe('mine\n')
+  })
+
+  // The name in the advice has to be the file and not merely an ancestor, so
+  // the walk that finds it is driven where the first ancestor is a real
+  // directory and the second is the file. Two components below it as well,
+  // because "the parent of what was typed" would pass the case above and fail
+  // this one.
+  test('the advice names the file itself, not the first directory above it', async () => {
+    const parent = await vacantPath()
+    await mkdir(parent, { recursive: true })
+    const file = join(parent, 'plain.md')
+    await writeFile(file, 'mine\n', 'utf8')
+    const path = join(file, 'a', 'b')
+
+    const { code, err } = await run('init', path)
+    expect(code).toBe(1)
+    expect(err).toContain(`${path} is not a directory, so init has left it alone.`)
+    expect(err).toContain(`${file}, further up the path, is the file in the way.`)
+    expect(await readFile(file, 'utf8')).toBe('mine\n')
+    expect(await readdir(parent)).toEqual(['plain.md'])
   })
 
   test('an empty file is not told that it is not empty', async () => {
