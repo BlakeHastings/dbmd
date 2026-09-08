@@ -1335,3 +1335,30 @@ throwaway worktree with `--no-commit --no-ff`, read the `CONFLICT` lines, and
 `--abort`. That answers which files and costs nothing, and it leaves the rebase
 where it belongs, with the agent that owns the branch. Resolving somebody's
 conflict makes you the author of a change you are about to review.
+
+## Land the agent's branch first, and yours last
+
+Twice in one hour I sent a pull request back to be rebased, and then made it
+stale again myself before it could land.
+
+The shape both times: an agent reports a branch, the merge script refuses it
+because main has moved, I send it back, the agent rebases and re-verifies and
+reports a new sha, and in the meantime I have merged one of my own process-doc
+branches on top. The agent pays a full gate run, about ninety seconds plus its
+own re-verification, for a rebase that was clean and that I caused.
+
+**The ordering is not symmetric, and that is the whole fix.** A branch of mine
+is a process document, which is the narrow exception to not reviewing your own
+work, so I can rebase it in a worktree myself in one command. An agent's branch
+costs a round trip: a message, a rebase, a gate, a report. So when both are
+green, the agent's goes first and mine goes last, and the count of round trips
+is zero rather than one per branch of mine that was queued in front of it.
+
+**The merge script already prints the information this needs and I was not
+reading it.** It names every other open branch the merge is about to make stale,
+by number, before it merges. That list is the sequencing decision, sitting in the
+output of the command that is about to make the decision for you.
+
+What it cannot know is which of those branches is cheap for you to rebase. That
+is the part to hold: **read its list, and merge in cheapest-to-rebase-last
+order.**
