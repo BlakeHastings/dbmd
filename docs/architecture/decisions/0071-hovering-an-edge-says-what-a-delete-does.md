@@ -158,3 +158,37 @@ model and can be held by a test.
 - **A referential action stops being a value the file writes.** ADR 0049 lists
   this and it applies here word for word: the title's whole claim is that it is
   quoting, so a computed or defaulted action makes it a lie.
+
+## The third revisit entry had already fired on the day this was written
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. The decision stands: the title still quotes what the file
+says, still names both actions when both are written, and still says nothing when
+the file says nothing.
+
+**The third entry opens "ADR 0065 left that open and edges are not focusable
+today", and the first half of that was already false.** `dbmd-y6k` landed the
+canvas keyboard in #167 and ADR 0067 is the record of it; this record landed in
+#187, twenty pull requests later. So the canvas was operable by keyboard before
+this sentence was written, and by the time it was written ADR 0073 had made the
+panel reachable from the canvas too. The entry should be read as being about
+edges rather than about the canvas.
+
+**The half that matters to this record's title is still true, and it was
+measured.** On a running studio in this worktree on 2026-09-07, against a copy of
+`examples/shop` in a temporary directory: **0 of the 11 edges carry a `tabindex`
+and 0 carry an `aria-label`**. So the string is still reached by hovering or by a
+reader walking the tree, exactly as this record says, and its length still costs
+nothing to somebody who landed on it deliberately, because nobody can land on it.
+
+That leaves the entry live rather than spent, with its first clause corrected: the
+condition to watch for is a **focusable edge**, not a keyboard-operable canvas.
+ADR 0072's last entry and ADR 0073's third say the same thing from their own
+angles, and all three would fire together. It is on the owed backlog list in
+`docs/process/handoff.md`.
+
+**The other three entries have not fired.** The owner has not decided how a
+cascade should look, and `verified.md` records that the dashed channel they were
+offered is already taken by `.edge.unanchored`. No `no action` wall has been
+observed on the canvas. And a referential action is still only ever a value the
+file wrote, so the title is still quoting.

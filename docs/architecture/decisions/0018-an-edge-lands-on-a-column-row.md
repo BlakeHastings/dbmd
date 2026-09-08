@@ -137,3 +137,54 @@ between a live edit and the observer firing.
   thing whose geometry comes from a measurement of the page rather than from the
   file, and the question of where that measurement lives is the same question
   answered here.
+
+## Two revisit entries have fired: a row moves without a resize, and groups arrived
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. The decision stands: an edge still lands on a column row, the
+anchor still comes from a measurement of the rendered box, and the clamp is
+unchanged.
+
+### "The inspector rewrites a box's rows in place"
+
+It does, and the case this entry worries about is live: **reordering a column
+moves a row without changing the box's height**, so no `ResizeObserver` entry can
+fire for it.
+
+Measured in this worktree on 2026-09-07, against a copy of `examples/shop` in a
+temporary directory. `subscription_id` on `orders` carries a `ref`, and it was
+moved three places down through the panel's `Move down` button:
+
+| | rows | box height | edges that moved |
+| --- | --- | --- | --- |
+| before | `id, customer_id, shipping_address_id, subscription_id, status, total_pence, psp_reference, roast_day, placed_at` | 239px | |
+| after | `id, customer_id, shipping_address_id, status, total_pence, psp_reference, subscription_id, roast_day, placed_at` | 239px | 1 of 11 |
+
+The one that moved is `edge-orders.subscription_id->subscriptions.id`, which is
+the one whose row moved. The other ten paths are byte-identical, including the
+two that anchor on `orders.id`, which did not move. The status line then said
+`Wrote tables/orders.md`, and the file on disk carries the new order.
+
+**So the trigger is already explicit and it is `Canvas.update()`**, which the
+inspector calls after an edit that changed a table's columns. It re-renders that
+one box, calls `measure`, re-observes it and rebuilds the edges, and its comment
+says in as many words that the `ResizeObserver` "is not enough on its own and is
+not made redundant by this either". This entry asked for the trigger to become
+explicit rather than inferred if the case ever appeared. The case appeared and
+the trigger was already there.
+
+### "Groups arrive (ADR 0005)"
+
+They did, in dbmd-34. ADR 0030 draws them and ADR 0035 answers the question this
+entry raises, which is where the measurement lives.
+
+The answer is the same as this record's and it is the same code path: a group's
+box is computed from the rendered rectangles of its members, ADR 0005 keeps a
+group's geometry out of the file, and the `ResizeObserver` above calls
+`drawGroups` alongside `drawEdges` precisely because a table that changed size
+changed the box of the group it is in. So the geometry of a group and the anchor
+of an edge are one mechanism with one waking rule, which is what this entry was
+asking whether to expect.
+
+**The first entry has not fired.** No box scrolls and none is clipped, so the
+clamp is still written for a stale measurement rather than for `overflow`.

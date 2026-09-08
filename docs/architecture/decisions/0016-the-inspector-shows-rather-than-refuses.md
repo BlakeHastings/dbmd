@@ -133,3 +133,86 @@ works.
 - **A rename becomes something two people can race.** ADR 0013 already names the
   trigger for the model cache being one session's; a multi-file compose is the
   same trigger seen from the worst angle.
+
+## Three of the four revisit entries have fired
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. Everything decided here stands: the inspector still shows
+rather than refuses, the validator still runs in the browser over the model the
+page holds, a rename is still composed from the routes that already exist and
+still says what it is about to do, and `fields.ts` still has no DOM in it.
+
+### "The watcher lands (dbmd-33)"
+
+It landed. `src/studio/watch.ts` is the watcher and ADR 0019 and ADR 0061 are the
+records of what it does. So "never redraw the fields" did have to become "never
+redraw the fields the developer is in", and it did.
+
+Driven in this worktree on 2026-09-07, against a copy of `examples/shop` in a
+temporary directory. With `customers` selected, its body textarea holding 1581
+characters and the caret parked at offset 392 after typing into it:
+
+| what changed on disk | textarea length | caret | still focused | panel heading |
+| --- | --- | --- | --- | --- |
+| nothing yet | 1581 | 392 | yes | `customers` |
+| `tables/products.md` gained a column | 1581 | 392 | yes | `customers` |
+| `tables/customers.md` gained a column | 1581 | 392 | yes | `customers` |
+
+and after each of the two the status line read *"The model changed on disk. This
+page is still showing what you were working on, and will catch up when you are
+between edits."* The canvas did not redraw either, which is the same sentence
+being honest: the page holds the read while an edit is unwritten rather than
+redrawing everything except the field. `verified.md` records the same behaviour
+from the other end, where an edit made outside reaches an open page in three
+seconds when nothing is pending.
+
+So the harder sentence this entry predicted is written and is built, and the
+consequence above that says "a change made to a table from somewhere else while
+its panel is open is not reflected in the fields until it is reselected" is
+still true and is now a stated behaviour with a sentence attached rather than a
+silence.
+
+### "Something other than a table gets a panel"
+
+Notes and groups both have one, from dbmd-34, and ADR 0013's own first revisit
+entry fired with this one. Read off the running page:
+
+| panel | fields | textareas |
+| --- | --- | --- |
+| note | `color`, `body`, `layout` | 1 |
+| group | `label`, `color`, `members`, `body` | 1 |
+
+`verified.md` records a note's 764 character body being typed into through that
+textarea and reaching the file byte for byte, LF endings and all. That is this
+entry's prediction word for word: the same textarea, the same line-ending rule,
+and `fields.ts` is the seam all three kinds go through.
+
+### "A rule the page needs is not one the validator has"
+
+This one fired and has already been answered, from a direction the entry did not
+look in.
+
+**A second and a third did appear.** The panel now says three things in its own
+words rather than one: a column with no name, an index with no name, and an index
+that names no columns. The entry says that when a second and a third turn up, the
+question is whether they are validator rules.
+
+**The answer is that all three are already rules, and they are the reader's.**
+The entry says nothing in `ModelDiagnosticCode` covers an empty column name. Since
+ADR 0027 something does: `empty-value`, a warning. `src/model/read.ts` raises it
+through `reportBlank` for a required string that arrived saying nothing, which
+covers a column with no name and an index with no name in the same call, and
+separately for an index whose `columns:` list is empty. So every sentence the
+panel says in its own words now has a diagnostic behind it, and none of them is a
+validator rule, because none of them is a question about whether the model agrees
+with itself.
+
+**The duplication stays, for the reason this record already gives.** The reader's
+diagnostics are about bytes on disk and arrive after a write and a re-read; the
+panel's arrive on the keystroke, beside the field, on a column that was created
+blank one click ago. What has to be corrected is the entry's premise rather than
+the design: "nothing in `ModelDiagnosticCode` covers it" was true when it was
+written and is not true now.
+
+**The fourth entry has not fired.** A rename is still one session's, because the
+studio is still one loopback session with no authentication.

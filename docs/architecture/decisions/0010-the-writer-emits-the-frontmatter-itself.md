@@ -166,3 +166,35 @@ moved.
   question, which is whether writing this object back would lose what the file
   says. The moment somebody wants it to also mean "this object is valid" it has
   become two fields wearing one name, and validation is dbmd-12's.
+
+## The fourth revisit entry fired: something needed to delete, and it is not here
+
+Appended rather than edited, as part of a sweep of every record's **Revisit
+when** list on 2026-09-07. Nothing above changes. The writer still emits the
+frontmatter itself, still quotes the way this record says, and **still never
+deletes**.
+
+The fourth entry says that deleting, when a caller needs it, "belongs in whatever
+removes an object, with the model's diagnostics in hand, and not in a function
+whose job is to write". A caller needed it: ADR 0021 makes a table something the
+studio deletes after saying what the delete costs, and ADR 0013's routes carry
+it.
+
+**The answer is where this entry said it belongs, and it is the only one.**
+`Edits.removeObject` in `src/studio/edits.ts` is the single place in the project
+that removes a file, and its own comment says so and says why: `writeModel` never
+deletes, deliberately. It holds the model, so the diagnostics are in hand; it
+re-reads immediately before it acts, so a file that changed under it is refused
+rather than removed (ADR 0019); and it goes through the same containment check as
+every other route rather than a second copy of one.
+
+So this is a revisit entry that fired and was answered by the design it named,
+which is worth recording precisely because nothing about the writer had to
+change for it.
+
+**The rest of the list was read at the same time and none of it has fired.**
+Nobody has reported `serialise(parse(f))` failing on a file they wrote by hand,
+nobody has asked for a save to keep their file's CRLF frontmatter, no unknown key
+dropped on save has bitten a real user, and `complete` still answers exactly one
+question, which is whether writing this object back would lose what the file
+says.

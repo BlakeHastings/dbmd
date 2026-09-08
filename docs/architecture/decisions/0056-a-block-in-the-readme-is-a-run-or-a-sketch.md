@@ -213,3 +213,41 @@ have to work that out.
 still prints a port the kernel chose and is still excluded, and `examples/shop`'s
 layout has not stopped being volatile: it has been contained rather than
 removed as an objection.
+
+## The third revisit entry fired, and the parser was copied rather than lifted
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07, and appended below the section about the first entry so the
+two read in the order they happened. The three tags and the fourth are unchanged.
+
+**"A third page starts carrying output blocks."** Four do, and four test files
+read fenced blocks out of them:
+
+| page | what is asserted | reader |
+| --- | --- | --- |
+| `docs/format.md` | ` ```markdown dbmd: ` and ` dbmd-error: ` blocks | `test/docs/format.test.ts` |
+| `docs/import-format.md` | ` ```json dbmd-import: ` blocks | `test/import/docs.test.ts` |
+| `README.md` | this record's four tags | `test/docs/readme.test.ts` |
+| those three and `docs/ci.md` | every plain ` ```json ` payload on them | `test/docs/payloads.test.ts` |
+
+**The entry says a third is the moment to lift the parser out of both tests
+rather than to copy it again, and it was copied again.** ADR 0066 is the record of
+the fourth reader and it argues for the mechanism rather than against sharing:
+those blocks carry no tag, they are claimed by page and by command, and the
+exhaustiveness a tag buys is bought there by counting every plain `json` fence on
+the four pages. The question this entry actually raises, whether four readers
+should share one block parser, was not asked.
+
+So the entry fired and is only half answered. Lifting a shared parser is still
+available, it is a refactor with no decision in it, and it is on the owed backlog
+list in `docs/process/handoff.md` rather than being done here, because this sweep
+records what happened to conditions and does not change what was decided.
+
+**One thing worth writing down for whoever does it.** The four readers do not read
+the same thing. Three match an info string and one matches a bare `json` fence on
+a named page, and ADR 0069 added a fifth assertion inside `readme.test.ts` that
+reads a narration block against a command's stderr. A lift that assumed one shape
+would have to give all five of those back.
+
+**The second and fourth entries are unchanged and still stand**, and the first is
+answered in the section above.

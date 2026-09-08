@@ -264,6 +264,69 @@ So this is not a claim that the keyboard work is wrong. It is that the last step
 of it has no key, and the help text is the evidence: it describes opening and
 stops there.
 
+**One entry above is now stale, and it is the fourth one.** The item "Enter says
+it opens the panel and does not say how to reach it" was filed here against the
+help text as it stood. ADR 0073 answered it, and the sentence in `index.html` has
+grown the two clauses it was missing. Read off a running studio on 2026-09-07:
+
+> Tab reaches one object on the canvas. Arrow keys move between objects, Home and
+> End go to the first and the last, and Enter opens the panel for the one you are
+> on. **Enter again moves into that panel, at its heading. Escape from the panel
+> comes back to the canvas.**
+
+Driven the same day and both clauses hold: a second `Enter` on a focused box
+lands on the panel's `h2`, and `Escape` returns to the box. So that entry should
+be filed and closed in the same motion like the three above it, rather than filed
+as open work. The nine presses of Tab it describes are no longer the only route.
+
+**The revisit lists in `docs/architecture/decisions/` were swept on 2026-09-07**,
+all 263 conditions across 73 records, and [`verified.md`](verified.md) carries the
+method and the count. Fifteen conditions had fired without anything saying so and
+their records now say so. Three things came out of it that are open work rather
+than history, and they are owed to the tracker too:
+
+```bash
+# ADR 0065, ADR 0071, ADR 0072 and ADR 0073 all carry a revisit entry that fires
+# on this one condition, and none of them can close alone. Measured 2026-09-07 on
+# a running studio against a copy of examples/shop: 0 of the 11 edges carry a
+# tabindex and 0 carry an aria-label, while all 11 canvas objects carry both a
+# name and a place in the arrow order. So a relationship is the one thing on the
+# canvas a person cannot land on, and its title, which is the sentence saying
+# what a delete does, is reachable only by hovering or by a reader walking the
+# tree. Deciding it means answering three questions together: what an edge is in
+# the reading order (0073), whether the id ADR 0072 wrote for a development tool
+# becomes something a person lands on (0072), and whether the title's length
+# starts to cost once it can be landed on deliberately (0071).
+bd create --ignore-schema-skew -p 3 -t task \
+  "An edge is the one thing on the canvas a keyboard cannot reach"
+
+# ADR 0056's third revisit entry: "a third page starts carrying output blocks...
+# the moment to lift the parser out of both tests rather than to copy it again".
+# Four pages carry them now and four test files read fenced blocks out of them:
+# test/docs/format.test.ts, test/import/docs.test.ts, test/docs/readme.test.ts
+# and test/docs/payloads.test.ts. The fourth was added by ADR 0066 with an
+# argument for its own shape and none about sharing, so the question the entry
+# raises has not been asked rather than answered. It is a refactor with no
+# decision in it. Whoever takes it should know the four do not read the same
+# thing: three match an info string, one matches a bare json fence on a named
+# page, and ADR 0069 added a fifth assertion inside readme.test.ts that reads a
+# narration block against a command's stderr.
+bd create --ignore-schema-skew -p 4 -t task \
+  "Four test files read fenced blocks and none of them shares a parser"
+```
+
+**And one is the owner's rather than an agent's.** ADR 0002's first revisit entry
+is *"the owner asks for the GitHub repository. The backlog does not have to move
+with it, and moving it is a decision to make deliberately rather than by drift."*
+That happened on 2026-08-24 and the decision was never taken: the backlog stayed
+in beads because nobody asked. It is worth asking now rather than later, because
+the tracker being refused by Application Control is a second fact pointing at the
+same question, and because the file the entry sends a reader to,
+`references/backlog-port.md`, is in the orchestrated-delivery skill and not in
+this repository. **This is not a recommendation to move it.** It is that the
+answer should be chosen once, and written into ADR 0002 as an appended section
+either way.
+
 ## What a successor would otherwise have to reconstruct
 
 - **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it

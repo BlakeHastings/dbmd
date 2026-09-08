@@ -101,3 +101,40 @@ found it.
   time one gesture produces more than one file's worth of edits. The
   back-pressure above is per table already, which is the shape that wants, but
   the batch is a new thing to say.
+
+## The third revisit entry fired on both halves, and the batch has been said
+
+Appended rather than edited, as part of a sweep of every record's **Revisit when**
+list on 2026-09-07. The decision stands: a drag still writes only `layout:`, still
+writes only the table that moved, and still writes nothing at all for a table
+whose position was computed rather than dragged.
+
+**"Something other than a table becomes draggable."** Both of the things this
+entry predicted have arrived, in dbmd-34.
+
+- **A note is dragged, and resized.** `canvas.ts` carries a `note` drag and a
+  `resize` drag beside the `box` one, and `verified.md` records a note being
+  dragged and its grip pulled 90 by 60 with the zoom taken out of the arithmetic.
+- **A group drag moves several tables at once**, which this entry called the
+  first time one gesture produces more than one file's worth of edits. Measured
+  on 2026-09-07 in this worktree, against a copy of `examples/shop` in a
+  temporary directory: dragging the `warehouse` group's header 70 by 50 moved
+  both its members and the status line named both files in one sentence,
+  `Wrote tables/shipments.md, tables/stock_movements.md`. `groups/warehouse.md`
+  gained no `layout:` key, so ADR 0005 holds through the gesture.
+
+**The batch this entry said was "a new thing to say" is said, in two places.**
+`onPointerUp` builds the batch from the members whose rounded position actually
+changed, so a group nudged and put back writes nothing, and its comment says that
+is the point. `write.ts`'s header says the other half: a group drag is several
+objects and therefore several of those back-pressure queues at once, which is
+exactly right because they are separate files. So the per-table shape this entry
+said "is the shape that wants" is the shape that was built, and the gesture is
+narrated once by `onGroupMove` while the writes stay one per file.
+
+**The other two entries have not fired.** Auto layout has not arrived. Nobody has
+reported a drag slow enough to feel: the hundred and twenty table run in
+`verified.md` drew 120 boxes and 120 edges with no console error and wrote
+exactly one file on a drag, and it did not time the drag itself, so what stands
+is the absence of a complaint rather than a measurement. The rerouting is still
+every edge on every animation frame.
