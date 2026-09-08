@@ -40,9 +40,17 @@ Then exercise **the change itself** as the actual user would, since no suite
 covers what landed today. Confirm:
 
 - the happy path works end to end
-- one realistic failure path behaves sanely (bad input, expired link, network drop)
+- one realistic failure path behaves sanely
 - no console errors, no unhandled promise rejections
 - no new error-level logs or failed spans
+
+**"Realistic" is about this product and not about software in general.** The
+examples this list shipped with were an expired link and a network drop, and
+`dbmd` never opens a socket, holds a session or asks for a credential. Its
+failure paths are a file that will not parse, a directory that is not empty, a
+disk that refuses a rename half way through a write, a path the filesystem will
+not keep, and a port already bound. Pick one of those, or one the change itself
+introduces.
 
 "Tests pass" is not evidence of functionality. A green suite over an app that
 does not load is a common and embarrassing outcome. Say what you actually did
