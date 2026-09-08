@@ -1362,3 +1362,42 @@ output of the command that is about to make the decision for you.
 What it cannot know is which of those branches is cheap for you to rebase. That
 is the part to hold: **read its list, and merge in cheapest-to-rebase-last
 order.**
+
+## I told an agent a file was free, and another agent had forty-five lines in it
+
+Four times in one session I have told an agent something about a decision record
+without checking it. Three were numbers: I handed out 0091 as free when it was
+taken, and 0092 to two agents at once. The fourth was ownership. I briefed an
+agent to append a note to ADR 0084 and told it in writing that the branch which
+had been editing that record was finished with it. That branch had forty-five
+uncommitted lines in the file at the moment I wrote the sentence.
+
+**The numbers already had a fix and the files did not.** `freeadr.mjs` reads
+`origin/main` and every open pull request and reports which numbers are free, and
+it has not been wrong since. Nothing did the same for files, so every brief
+naming a file to leave alone was written from memory of what I had dispatched.
+
+**The information was always one command away.** Every agent works in a worktree
+under `.claude/worktrees/agent-<id>`, and `git status --short` in one of those is
+the exact list of what that agent is holding, including files it has created and
+not yet committed. `scripts/held.mjs` walks them and prints it, by file, marking
+any file two worktrees hold.
+
+Two things it has to get right, and both were found by running it rather than by
+designing it:
+
+- **A leftover directory is not a worktree.** Thirty-one of the fifty-one
+  directories under `.claude/worktrees` are no longer registered, so `git status`
+  in one of them walks up to the main checkout and answers about that instead.
+  The first run reported thirty-one agents all holding the owner's uncommitted
+  `README.md`, which is a file none of them had ever opened. It asks each
+  directory whether it is its own git top level before believing it.
+- **A finished agent's worktree still holds its files.** Nothing on disk
+  distinguishes an agent that is working from one that stopped an hour ago, so
+  the live ids are passed in rather than guessed. That is the one fact the script
+  cannot derive and the orchestrator always has.
+
+**Run it before writing the "do not touch" list in a brief, not after.** The cost
+of not running it is not a conflict, which git would catch. It is an agent given
+a false statement in writing, which it has no reason to doubt and every reason to
+act on.
