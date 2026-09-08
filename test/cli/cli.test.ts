@@ -171,14 +171,68 @@ describe('dbmd init', () => {
     expect(await readdir(directory)).toEqual(['notes.txt'])
   })
 
-  test('a path that is a file rather than a directory is refused too', async () => {
+  test('a path that is a file rather than a directory is refused as a file', async () => {
     const path = await vacantPath()
     await writeFile(path, 'mine\n', 'utf8')
 
     const { code, err } = await run('init', path)
     expect(code).toBe(1)
-    expect(err).toContain('already exists')
+    // The wording is the whole assertion. This used to say the path was a
+    // directory that was not empty, which was three false clauses about one
+    // file, and the exit code was already 1 before that was true of anything.
+    expect(err).toContain(`${path} is not a directory, so init has left it alone.`)
+    expect(err).toContain('Move it aside, or give init a different directory.')
+    expect(err).not.toContain('is not empty')
     expect(await readFile(path, 'utf8')).toBe('mine\n')
+  })
+
+  test('an empty file is not told that it is not empty', async () => {
+    const path = await vacantPath()
+    await writeFile(path, '', 'utf8')
+
+    const { code, err } = await run('init', path)
+    expect(code).toBe(1)
+    expect(err).toContain(`${path} is not a directory`)
+    expect(err).not.toContain('is not empty')
+  })
+
+  // The refusal for a file offers no advice a developer can follow twice and
+  // still be refused, which the one before it did: it said to empty the file,
+  // and emptying a file leaves a file.
+  test('emptying the file does not turn the refusal into a run, and is not suggested', async () => {
+    const path = await vacantPath()
+    await writeFile(path, 'content\n', 'utf8')
+
+    const first = await run('init', path)
+    expect(first.err).not.toContain('Empty it')
+
+    await writeFile(path, '', 'utf8')
+    const second = await run('init', path)
+
+    expect(second.code).toBe(1)
+    expect(second.err).toBe(first.err)
+  })
+
+  // The counterfactual. Every clause of the older refusal is true of a real
+  // directory with entries in it, including "Empty it", which does then work,
+  // so that message stays exactly as it was for the case it was written for.
+  test('a directory with entries in it keeps the refusal that was right about it', async () => {
+    const directory = await vacantPath()
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'notes.txt'), 'mine\n', 'utf8')
+
+    const refused = await run('init', directory)
+    expect(refused.code).toBe(1)
+    expect(refused.err).toContain(
+      `${directory} already exists and is not empty, so init has left it alone.`,
+    )
+    expect(refused.err).toContain('Empty it, move it aside, or give init a different directory.')
+
+    await rm(join(directory, 'notes.txt'))
+    const emptied = await run('init', directory)
+
+    expect(emptied.code).toBe(0)
+    expect(await readdir(directory)).toContain('_model.md')
   })
 
   test('an existing empty directory is fine', async () => {
@@ -252,6 +306,23 @@ describe('dbmd init --json', () => {
         code: 'directory-not-empty',
         message: `${directory} already exists and is not empty`,
       },
+    })
+  })
+
+  test('a file gets its own code, so a caller is not told the directory was full', async () => {
+    const path = await vacantPath()
+    await writeFile(path, '', 'utf8')
+
+    const text = await run('init', path)
+    const json = await run('init', '--json', path)
+
+    expect(json.code).toBe(text.code)
+    expect(json.code).toBe(1)
+    expect(JSON.parse(json.out)).toEqual({
+      schema: 1,
+      ok: false,
+      directory: path,
+      error: { code: 'not-a-directory', message: `${path} is not a directory` },
     })
   })
 

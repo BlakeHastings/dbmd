@@ -31,6 +31,14 @@ async function fromTheModelReader(): Promise<Diagnostic> {
   return only
 }
 
+/** A `views/` beside the model's own directories, which is a directory and has no lines. */
+async function fromADirectory(): Promise<Diagnostic> {
+  const { diagnostics } = await withModel({ 'views/orders.md': 'not a kind dbmd knows\n' })
+  const only = diagnostics[0]
+  if (only === undefined) throw new Error('expected a diagnostic')
+  return only
+}
+
 /** An introspection file whose `tables` is an object, which has no lines. */
 function fromTheImportContract(): Diagnostic {
   const result = readIntrospection({ dbmdIntrospection: 1, engine: 'postgres', tables: {} })
@@ -48,6 +56,19 @@ describe('one Diagnostic, two sources', () => {
       severity: 'error',
       at: { in: 'file', path: 'tables/orders.md', line: 6 },
       message: '`type` must be a string, but YAML read `true` as a boolean; quote it',
+    })
+  })
+
+  test('a directory location carries a path and has no line to carry', async () => {
+    const diagnostic = await fromADirectory()
+
+    // `in: 'directory'` rather than `in: 'file'`, which is what this said until
+    // ADR 0086 and is the thing `dbmd check` was counting as a file.
+    expect(diagnostic).toEqual({
+      code: 'unknown-kind-directory',
+      severity: 'warning',
+      at: { in: 'directory', path: 'views' },
+      message: '`views/` is not a kind of object dbmd knows; its files are ignored',
     })
   })
 
@@ -77,16 +98,18 @@ describe('one Diagnostic, two sources', () => {
   test('a consumer tells them apart on `at.in`, and the type makes it ask', async () => {
     // This is the whole API for "where is it": one conditional, on `at.in`.
     // A consumer that wants to open an editor takes the first branch and is the
-    // only one that can see `line`; nothing can reach `line` on the second.
+    // only one that can see `line`; nothing can reach `line` on the other two,
+    // because a directory and a JSON document do not have one.
     const where = (d: Diagnostic): string =>
       d.at.in === 'file'
         ? `${d.at.path}${d.at.line === undefined ? '' : `:${d.at.line}`}`
-        : d.at.jsonPath
+        : d.at.in === 'directory'
+          ? `${d.at.path}/`
+          : d.at.jsonPath
 
-    expect([await fromTheModelReader(), fromTheImportContract()].map(where)).toEqual([
-      'tables/orders.md:6',
-      '$.tables',
-    ])
+    expect(
+      [await fromTheModelReader(), await fromADirectory(), fromTheImportContract()].map(where),
+    ).toEqual(['tables/orders.md:6', 'views/', '$.tables'])
   })
 
   test('a list of them is a `Payload`, so `--json` can carry it unaltered', async () => {

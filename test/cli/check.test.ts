@@ -202,6 +202,89 @@ Two problems, one file.
   })
 })
 
+describe('the summary names what it counted, rather than calling all of it files', () => {
+  test('two broken files are two files, which is the case the sentence was written for', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/orders.md': UNPARSEABLE,
+      'tables/events.md': UNPARSEABLE.replace('table: orders', 'table: events'),
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain('2 errors across 2 files.')
+  })
+
+  test('two directories are two directories, and neither is a file', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      // `views/` is not a kind dbmd knows; `tables/archive/` holds markdown one
+      // folder too deep. Both diagnostics say "directory" in their own text,
+      // and the summary used to add them up as files.
+      'views/orders.md': 'ignored\n',
+      'tables/archive/orders.md': MODEL_FILE,
+    })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(1)
+    expect(err).toContain('1 error and 1 warning across 2 directories.')
+    expect(err).not.toContain('across 2 files')
+  })
+
+  test('a mixture says both, because a sentence that picks one is wrong about the other', async () => {
+    const directory = await modelWith({
+      '_model.md': MODEL_FILE,
+      'tables/orders.md': UNPARSEABLE,
+      'views/orders.md': 'ignored\n',
+    })
+
+    const { err } = await runCli(['check', directory])
+
+    expect(err).toContain('across 1 file and 1 directory.')
+  })
+
+  test('a model directory that is not there is one directory, not one file', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'dbmd-check-'))
+    temporaries.push(parent)
+
+    const { code, err } = await runCli(['check', join(parent, 'nowhere-at-all')])
+
+    expect(code).toBe(1)
+    expect(err).toContain('1 error across 1 directory.')
+  })
+
+  test('a `_model.md` that is a directory is counted as one, two lines under the sentence saying so', async () => {
+    // The two lines have to agree. A warning that opens "`_model.md` is a
+    // directory rather than a file" over a summary saying "across 1 file" is a
+    // smaller copy of the defect this whole change removes.
+    const parent = await mkdtemp(join(tmpdir(), 'dbmd-check-'))
+    temporaries.push(parent)
+    const directory = join(parent, 'db-model')
+    await mkdir(join(directory, '_model.md'), { recursive: true })
+
+    const { code, err } = await runCli(['check', directory])
+
+    expect(code).toBe(0)
+    expect(err).toContain('`_model.md` is a directory rather than a file')
+    expect(err).toContain('1 warning across 1 directory.')
+    expect(err).not.toContain('across 1 file')
+  })
+
+  test('a `_model.md` nobody wrote is still counted as the file it has to become', async () => {
+    // The one place the noun stays "file" over something that is not on disk.
+    // `model-file-missing` is about a path a file has to be written at, and
+    // that is what its location says, so the count says the same thing.
+    const directory = await modelWith({ 'tables/orders.md': DANGLING })
+
+    const { err } = await runCli(['check', directory])
+
+    expect(err).toContain('model-file-missing')
+    expect(err).toContain('across 2 files.')
+  })
+})
+
 describe('the exit code policy', () => {
   test('errors fail the run', async () => {
     const { code } = await runCli(['check', await fourProblems()])
