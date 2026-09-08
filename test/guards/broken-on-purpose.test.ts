@@ -1263,7 +1263,7 @@ describe('the merge guard, asked to judge', () => {
 })
 
 // ---------------------------------------------------------------------------
-// merge-pr.mjs: the four refusals, and the cost the merge did not name
+// merge-pr.mjs: its refusals, and the cost the merge did not name
 // ---------------------------------------------------------------------------
 
 /**
@@ -1302,6 +1302,7 @@ interface PullRequestFacts {
   readonly reviewDecision: string | null
   readonly baseRefName: string
   readonly headRefName: string
+  readonly headRefOid: string
   readonly statusCheckRollup: readonly RollupEntry[]
 }
 
@@ -1322,6 +1323,7 @@ const mergePr = await guardModule<{
   decideMerge: (input: {
     pr: PullRequestFacts
     behind: number | null
+    reviewed?: string | null
     required?: readonly string[]
     refuseWhenBehind?: boolean
     waitedSeconds?: number
@@ -1333,6 +1335,9 @@ const mergePr = await guardModule<{
 }>('merge-pr.mjs')
 
 describe('merge-pr.mjs, broken on purpose', () => {
+  /** The head of the fixture pull request, and the sha the fixture reviewer read. */
+  const HEAD = '9f8e7d6c5b4a39281706f5e4d3c2b1a098765432'
+
   /** An open pull request with one green required check, level with its base. */
   function pullRequest(overrides: Partial<PullRequestFacts> = {}): PullRequestFacts {
     return {
@@ -1345,15 +1350,28 @@ describe('merge-pr.mjs, broken on purpose', () => {
       reviewDecision: null,
       baseRefName: 'main',
       headRefName: 'tooling/a-branch',
+      headRefOid: HEAD,
       statusCheckRollup: [{ name: 'check', conclusion: 'SUCCESS' }],
       ...overrides,
     }
   }
 
+  /**
+   * A decision taken by a reviewer who read the head, which is the ordinary case.
+   *
+   * The reviewed sha defaults here for the same reason the pull request above
+   * defaults: every case below is meant to differ from the control in one fact,
+   * and a case that had to restate the sha would be stating two. The cases that
+   * are about the sha pass their own.
+   */
+  function decide(input: Parameters<typeof mergePr.decideMerge>[0]): MergeDecision {
+    return mergePr.decideMerge({ reviewed: HEAD, ...input })
+  }
+
   test('the pull request this script exists to let through is let through', () => {
     // The control. Every case below differs from this one in a single fact, so
     // a refusal reported there is that fact and not the fixture.
-    const decision = mergePr.decideMerge({ pr: pullRequest(), behind: 0 })
+    const decision = decide({ pr: pullRequest(), behind: 0 })
 
     expect(decision.merge).toBe(true)
     expect(decision.why).toBe(null)
@@ -1361,7 +1379,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   })
 
   test('a pull request that is not open is refused, and the state is named', () => {
-    const decision = mergePr.decideMerge({ pr: pullRequest({ state: 'CLOSED' }), behind: 0 })
+    const decision = decide({ pr: pullRequest({ state: 'CLOSED' }), behind: 0 })
 
     expect(decision.merge).toBe(false)
     // The state itself, because "not OPEN" covers closed, merged and a number
@@ -1370,14 +1388,14 @@ describe('merge-pr.mjs, broken on purpose', () => {
   })
 
   test('a draft is refused', () => {
-    const decision = mergePr.decideMerge({ pr: pullRequest({ isDraft: true }), behind: 0 })
+    const decision = decide({ pr: pullRequest({ isDraft: true }), behind: 0 })
 
     expect(decision.merge).toBe(false)
     expect(decision.why).toContain('it is a draft')
   })
 
   test('a conflicting pull request is refused and sent back rather than resolved here', () => {
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }),
       behind: 2,
     })
@@ -1390,7 +1408,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   })
 
   test('a red required check is refused, and merging around it is named as the wrong fix', () => {
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({ statusCheckRollup: [{ name: 'check', conclusion: 'FAILURE' }] }),
       behind: 0,
     })
@@ -1403,7 +1421,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   test('a required check that never ran reads as never ran, not as green', () => {
     // The safe direction, and the one a typo in REQUIRED lands on. A rollup
     // full of green checks that are not the required one is this case.
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({ statusCheckRollup: [{ name: 'lint', conclusion: 'SUCCESS' }] }),
       behind: 0,
     })
@@ -1415,7 +1433,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   test('a rerun is judged on its latest conclusion rather than its first', () => {
     // A red run followed by a green rerun arrives as two entries under one
     // name. Judging the first would refuse every branch that ever went red.
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({
         statusCheckRollup: [
           { name: 'check', conclusion: 'FAILURE' },
@@ -1429,7 +1447,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   })
 
   test('a green that is stale is refused, which is the refusal that costs the most', () => {
-    const decision = mergePr.decideMerge({ pr: pullRequest(), behind: 3 })
+    const decision = decide({ pr: pullRequest(), behind: 3 })
 
     expect(decision.merge).toBe(false)
     // The count, because "behind" without a number reads as an opinion.
@@ -1443,7 +1461,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
     // A fork's head branch is not in this repository, so the compare is a 404
     // and `behind` is null. GitHub's own answer is still enough to refuse, and
     // the sentence degrades to one without a number rather than to "by null".
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({ mergeStateStatus: 'BEHIND' }),
       behind: null,
     })
@@ -1456,7 +1474,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   test('the stale refusal is a setting, so turning it off lets the same branch through', () => {
     // REFUSE_WHEN_BEHIND is documented as a choice with a cost. If this passed
     // whatever the flag said, the flag would be decoration.
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest(),
       behind: 3,
       refuseWhenBehind: false,
@@ -1466,7 +1484,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   })
 
   test('BLOCKED says what it can rule out and that it is not BEHIND', () => {
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({ mergeStateStatus: 'BLOCKED', reviewDecision: 'REVIEW_REQUIRED' }),
       behind: 0,
     })
@@ -1480,7 +1498,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
   })
 
   test('UNSTABLE proceeds, and says which contract it is honouring', () => {
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({
         mergeStateStatus: 'UNSTABLE',
         statusCheckRollup: [
@@ -1499,7 +1517,7 @@ describe('merge-pr.mjs, broken on purpose', () => {
     // Refusing on "GitHub has not answered yet" would refuse at random, and a
     // wrapper that refuses at random gets worked around. Saying so is the whole
     // of what this case does, so the words are the behaviour.
-    const decision = mergePr.decideMerge({
+    const decision = decide({
       pr: pullRequest({ mergeStateStatus: 'UNKNOWN' }),
       behind: 0,
       waitedSeconds: 15,
@@ -1510,6 +1528,108 @@ describe('merge-pr.mjs, broken on purpose', () => {
     expect(said).toContain('still UNKNOWN after 15s')
     expect(said).toContain('Unverified: whether main has moved under this branch')
     expect(said).toContain('Proceeding on the check rollup alone')
+  })
+
+  // The refusal this section grew for. Everything above is a fact about the
+  // branch; these are about whether the person merging read the commit. The
+  // incident is in the script's header: a body describing an eleven line change
+  // was read and reported on, its agent force-pushed, and the merge twenty
+  // minutes later was of a commit nobody had seen. Nothing was red and nothing
+  // was stale, so every assertion above would have passed on it.
+
+  test('a merge that names no commit is refused, and the head is not handed over', () => {
+    const decision = decide({ pr: pullRequest(), behind: 0, reviewed: null })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('you have not said which commit you read')
+    // Where to read it, at the moment reading it means something.
+    expect(decision.why).toContain('gh pr view 128 --json headRefOid --jq .headRefOid')
+    // And the load-bearing omission: a refusal that printed the head would be
+    // satisfied by copying it, which is a control that asks for nothing.
+    expect(decision.why).not.toContain(HEAD)
+    expect(decision.why).toContain('deliberately not printed here')
+  })
+
+  test('a second argument that is not a sha says so, rather than reading as a mismatch', () => {
+    // Two ways to fail and the reader is told which (ADR 0060). "main" is the
+    // plausible mistake: it is what somebody types when they mean the branch.
+    const decision = decide({ pr: pullRequest(), behind: 0, reviewed: 'main' })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('is not a commit sha')
+    expect(decision.why).toContain('"main"')
+    expect(decision.why).toContain('at least 7 hexadecimal characters')
+  })
+
+  test('a prefix too short to be unambiguous is refused rather than matched loosely', () => {
+    const decision = decide({ pr: pullRequest(), behind: 0, reviewed: HEAD.slice(0, 4) })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('is not a commit sha')
+  })
+
+  test('a head that moved since the review is refused, with both shas to compare', () => {
+    const read = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+    const decision = decide({ pr: pullRequest(), behind: 0, reviewed: read })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('the commit you named is not the head of this pull request')
+    // Both, adjacent, whole: the fix is a copy, which is what makes this a
+    // control rather than an obstacle.
+    expect(decision.why).toContain(`you read     ${read}`)
+    expect(decision.why).toContain(`would merge  ${HEAD}`)
+    // The sentence that stops this being read as a fault in the branch.
+    expect(decision.why).toContain('A moved\n  head is an unreviewed pull request')
+    // And the one that refuses to pretend copying the line is a review.
+    expect(decision.why).toContain('without running the first satisfies this script and')
+  })
+
+  test('the common case is a short prefix, typed, in whatever case it was copied in', () => {
+    // The control for the four above. A rule that demands forty characters, or
+    // a lookup before every merge, is a rule people route around, and a control
+    // people route around is worse than none because it looks like safety.
+    const decision = decide({
+      pr: pullRequest(),
+      behind: 0,
+      reviewed: ` ${HEAD.slice(0, 7).toUpperCase()} `,
+    })
+
+    expect(decision.merge).toBe(true)
+    expect(decision.why).toBe(null)
+  })
+
+  test('a merge names in its output the commit it merged', () => {
+    // The terminal is the record. A merge that printed only the number leaves
+    // the reviewed sha nowhere a later reader can find it.
+    const decision = decide({ pr: pullRequest(), behind: 0 })
+
+    expect(decision.merge).toBe(true)
+    expect(decision.notes.join('\n')).toContain(`Head ${HEAD}, which is the commit you named`)
+  })
+
+  test('a pull request with no head sha is refused rather than let through unchecked', () => {
+    // An absent field takes this branch too: the comparison is unmakeable
+    // either way, and a check that passes by being unable to run is the disease
+    // ADR 0034 is about.
+    const decision = decide({ pr: pullRequest({ headRefOid: '' }), behind: 0 })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('did not answer with a head sha')
+    expect(decision.why).toContain('Refusing is the safe direction')
+  })
+
+  test('a branch that is broken as well as unnamed is told about the branch first', () => {
+    // Deliberate ordering. The sha question is asked last, so a caller who
+    // forgot it and whose checks are red spends one round trip rather than two.
+    const decision = decide({
+      pr: pullRequest({ statusCheckRollup: [{ name: 'check', conclusion: 'FAILURE' }] }),
+      behind: 0,
+      reviewed: null,
+    })
+
+    expect(decision.merge).toBe(false)
+    expect(decision.why).toContain('check: FAILURE')
+    expect(decision.why).not.toContain('which commit you read')
   })
 })
 
