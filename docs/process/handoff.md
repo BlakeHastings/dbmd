@@ -254,6 +254,79 @@ What is left is neither urgent nor blocking:
   command needs `--ignore-schema-skew`. One destructive statement, refused by the
   harness, backup taken. The stopgap has carried every backlog write for two days.
 
+## The tracker is blocked, and this is how to replay what it missed
+
+**`bd` stopped running partway through 2026-09-07 and the backlog has been
+read-only since.** Windows Smart App Control moved into enforcement, `bd.exe` is
+not digitally signed, and Application Control refuses it. The binary itself has
+not changed since 15 August, so the policy moved rather than the tool.
+`Get-AuthenticodeSignature` says `NotSigned`, and the registry value
+`VerifiedAndReputablePolicyState` under `HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy`
+reads 1, which is enforced rather than the evaluation mode it was presumably in
+before.
+
+**Do not suggest turning Smart App Control off as though it were a setting.** It
+can be turned off, and once off it cannot be turned back on without resetting
+Windows. That is the owner's call to make knowingly, and the alternative is a
+signed build from the beads project.
+
+**`.beads/issues.jsonl` is still readable** as a plain file, so the backlog can
+be queried with `node` or `grep`. **Do not hand-edit it.** The database is the
+source of truth and the next export overwrites the file.
+
+**These writes are owed to the tracker and should be replayed in this order once
+`bd` runs again.** Each one is a thing that actually happened, not a plan:
+
+```bash
+# The feedback reader, if its pull request has landed by the time you read this.
+bd close dbmd-v6c --ignore-schema-skew --reason "..."
+
+# The work dispatched while the tracker was down, which has no item because
+# there was no way to file one. Its whole brief is in its pull request body.
+bd create --ignore-schema-skew -p 2 -t task \
+  "Hovering an edge says what it references and not what a delete does"
+
+# Found on 2026-09-07 and not yet filed anywhere but here.
+bd create --ignore-schema-skew -p 3 -t task \
+  "An annotated edge comes back as a position because SVG has no string className"
+
+# Found on 2026-09-07 by driving the keyboard, and not filed anywhere but here.
+bd create --ignore-schema-skew -p 3 -t task \
+  "Enter says it opens the panel and does not say how to reach it"
+```
+
+The third one needs its reasoning, so here it is. `agentation` records the
+element a person annotated by building a CSS selector, and its rule is an id
+first, then a class longer than two characters that matches exactly one element,
+and otherwise a recursion into the parent with `> tag:nth-child(n)` appended.
+Read out of `node_modules/agentation/dist/index.mjs` on 2026-09-07. The class
+branch is guarded by `typeof el.className === "string"`, and an SVG element's
+`className` is an `SVGAnimatedString`, so **no SVG element can ever match on
+class**. Every edge on the canvas is an SVG path with no id, so feedback on a
+relationship arrives as a position from the top of the drawing: resolvable while
+that render is up, and meaningless once the layout moves. Every table box has an
+id, so feedback on a table and on a column is anchored properly and needs
+nothing.
+
+The fourth one needs its reasoning too. `index.html` describes the canvas to a
+screen reader as *"Tab reaches one object on the canvas. Arrow keys move between
+objects, Home and End go to the first and the last, and Enter opens the panel for
+the one you are on."* Every clause of that was driven on 2026-09-07 and every one
+of them is true: arrows move between objects spatially, Home and End reach the
+first and the last, and Enter opens `aside#inspector` with the right heading on
+it.
+
+**What the sentence does not say is how to get into the panel it just opened.**
+Focus stays on the canvas object, which is defensible on its own, because it lets
+somebody arrow to the next table and watch the panel follow. But the panel holds
+101 of the page's 136 focusable elements, and reaching the first of them from
+where Enter leaves you takes **nine presses of Tab**, through a note and the
+whole toolbar. Nothing announces that and nothing shortens it.
+
+So this is not a claim that the keyboard work is wrong. It is that the last step
+of it has no key, and the help text is the evidence: it describes opening and
+stops there.
+
 ## What a successor would otherwise have to reconstruct
 
 - **The guard is loaded.** `scripts/guard-merge.mjs --probe` was refused. Ask it
