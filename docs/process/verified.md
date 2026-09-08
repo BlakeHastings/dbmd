@@ -3017,3 +3017,36 @@ corrected by whoever fixed the thing and the other was nobody's job.
   reports a conflict against that same file, saying it changed on disk after the
   studio read it. Nobody changed it. The studio wrote it, thirty seconds earlier,
   in the drag the message is about.
+
+- **`dbmd import` drops a primary key it cannot match and says nothing, while the
+  matching foreign-key case warns.** A payload whose `primary_key` names a column
+  that is not in that table's `columns` imports cleanly, exit 0, with no warning
+  at all. The written file carries no `pk:` on anything, and `dbmd check` then
+  says ``orders` has no primary key; put `pk: true` on the column or columns that
+  identify one row`, which sends the reader to add a key the database already
+  says it has.
+
+  Confirmed by reading. `columnOf` sets `pk: true` when the key list includes the
+  column's name and does nothing otherwise, so a key naming a column that is not
+  there marks nothing and reports nothing. **The analogous case one function up
+  is handled well**: `refsOf` warns `` `public.orders` has a foreign key to
+  `other.customers`, which this file does not contain, so no `ref:` was written
+  for it; re-run the query over the whole database if that table belongs in the
+  model``. Two shapes of the same problem, one silent and one explained.
+
+  `import/mismatched-columns` exists and is raised only for a foreign key whose
+  two column lists differ in length, so the intent to catch shape mismatches is
+  there and this one is outside it. A payload from `dbmd query` cannot produce
+  this, since the query builds both lists from the catalogue, but the whole of
+  `src/import/contract.ts` exists because the file is one a person saved and may
+  have mangled.
+
+- **The foreign-key half of that was a false alarm of my own making, and it is
+  the third instrument failure of the session.** The first run showed exit 0 and
+  no warning, so it looked identical to the primary-key case. The warning was
+  there and my own command had cut it: `head -4` on the output of a run whose
+  interesting line was the fifth. **Two of tonight's three false alarms were a
+  pipe truncating what I was reading**, which is the same failure this file
+  already records under `| head` masking an exit code, in a different disguise.
+  The rule that would have caught both: **when a run is being read for what it
+  says, read all of it.**

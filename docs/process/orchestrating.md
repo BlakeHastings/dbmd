@@ -1182,3 +1182,38 @@ count, a duplicate-line scan, something mechanical that runs in the gate. This
 repository already checks the README's examples, the format page's error blocks,
 every pinned version and every command name. The one file it keeps specifically
 so that work is not redone was the one thing nothing looked at.
+
+## Two of three false alarms tonight were a pipe cutting the answer in half
+
+This file already records that `| head` and `| tail` mask an exit code, learned
+by reading five CLI error paths as exit 0 when they exit 1 and 2. Tonight the
+same pipe produced two more false alarms in a different disguise, and one of
+them was mine twice over.
+
+**A script checking whether the exported diagram carried every column reported
+all 64 missing from all 8 tables.** The exporter was fine; the script's regexes
+had lost their backslashes to a heredoc.
+
+**Then `dbmd import` appeared to drop a foreign key in silence.** It does not. It
+prints a warning naming the table, the target, the fact that no `ref:` was
+written and what to run instead. The command that read the output was
+`| head -4`, and the warning is the fifth line.
+
+The rule the earlier entry gives is about exit codes, and it is too narrow.
+**When a run is being read for what it says, read all of it.** A truncated
+success and a truncated failure look identical, and the interesting line is
+disproportionately likely to be the one past the cut, because the ordinary lines
+come first and the exceptional one is appended.
+
+**What saved both was the same instinct and it is worth naming.** Every column
+missing from every table is not how software fails. A tool that reports one
+absence in silence while explaining the neighbouring one at length is not how a
+codebase this careful fails either. **The alarming result is the one to distrust
+first**, because it is the one that costs an agent a day, and because a codebase
+with this much reasoning written into it rarely fails in a way that is both
+severe and undocumented.
+
+The third of the three was real, in the same pass: a primary key whose columns
+are not in the export is dropped with no warning, next to a foreign key case that
+warns properly. So the instinct is a prior, not a rule. It tells you what to
+check first, not what to conclude.
