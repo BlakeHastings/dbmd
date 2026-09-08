@@ -1016,6 +1016,20 @@ describe('group membership is declared by the member', () => {
     expect(diagnostics[0]?.message).toContain('a group has no coordinates')
     expect(model.groups[0]).not.toHaveProperty('layout')
   })
+
+  test('and a group does not offer `layout` as a key it knows', async () => {
+    // Two commands used to disagree: an unknown key on a group answered
+    // `known keys are color, kind, label, layout`, and writing the `layout` it
+    // named answered that a group has no coordinates. It was on the list only
+    // because the reader takes the key in order to refuse it.
+    const { diagnostics } = await withModel({
+      'groups/billing.md': '---\nkind: group\nlabel: Billing\nzz: 1\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'groups/billing.md:4 warning unknown-key: `zz` means nothing on a group; known keys are color, kind, label',
+    ])
+  })
 })
 
 describe('layout', () => {
@@ -1045,6 +1059,32 @@ describe('layout', () => {
       'tables/orders.md:4 error field-missing: `layout` needs `x`',
     ])
     expect(model.tables[0]?.layout).toBeUndefined()
+  })
+
+  test('a table layout does not offer back the keys it refuses', async () => {
+    // The two sentences used to contradict each other three lines apart: one
+    // said `w` and `h` do not belong on a table, and the other listed them as
+    // this layout's known keys, in the same run over the same file.
+    const { diagnostics } = await withModel({
+      'tables/orders.md':
+        '---\nkind: table\ntable: orders\nlayout: { x: 1, y: 2, w: 3, h: 4, z: 5 }\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      "tables/orders.md:4 warning unknown-key: `w` and `h` belong to a note, not to a table: a note's size is a design choice and a table's is a consequence of its columns (ADR 0005). They are ignored",
+      'tables/orders.md:4 warning unknown-key: `z` means nothing on a layout; known keys are x, y',
+    ])
+  })
+
+  test("and a note's layout still offers them, because there they are known", async () => {
+    const { model, diagnostics } = await withModel({
+      'notes/why.md': '---\nkind: note\nlayout: { x: 1, y: 2, w: 3, h: 4, z: 5 }\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'notes/why.md:3 warning unknown-key: `z` means nothing on a layout; known keys are h, w, x, y',
+    ])
+    expect(model.notes[0]?.layout).toEqual({ x: 1, y: 2, w: 3, h: 4 })
   })
 })
 

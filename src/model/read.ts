@@ -1039,7 +1039,11 @@ function readNote(ctx: Ctx, fields: FieldSet, path: string, name: string, body: 
 function readGroup(ctx: Ctx, fields: FieldSet, path: string, name: string, body: string): Group {
   const label = takeString(ctx, fields, 'label')
   const color = takeString(ctx, fields, 'color')
-  const layoutField = fields.take('layout')
+  // Dropped rather than taken, because a group never has one: taking it put
+  // `layout` on the list of known keys `reportUnknown` offers below, so a
+  // group with an unknown key was told to write the one key the next run
+  // refuses.
+  const layoutField = fields.drop('layout')
   if (layoutField !== undefined) {
     report(
       ctx,
@@ -1061,7 +1065,13 @@ function readGroup(ctx: Ctx, fields: FieldSet, path: string, name: string, body:
   }
 }
 
-/** `allowSize` is false for a table: `w` and `h` belong to a note (ADR 0005). */
+/**
+ * `allowSize` is false for a table: `w` and `h` belong to a note (ADR 0005).
+ *
+ * Where they are not allowed they are not read either, so `w: "big"` on a
+ * table is the one warning that says the key does not belong here rather than
+ * that warning and a second one about the type of a value nothing will use.
+ */
 function takeLayout(ctx: Ctx, fields: FieldSet, allowSize: boolean): Layout | undefined {
   const field = fields.take('layout')
   if (field === undefined) return undefined
@@ -1078,24 +1088,34 @@ function takeLayout(ctx: Ctx, fields: FieldSet, allowSize: boolean): Layout | un
   const inner = fieldsOf(ctx, field.node)
   const x = requiredNumber(ctx, inner, 'x', field.valueOffset)
   const y = requiredNumber(ctx, inner, 'y', field.valueOffset)
-  const w = takeNumber(ctx, inner, 'w')
-  const h = takeNumber(ctx, inner, 'h')
-  if (!allowSize && (w !== undefined || h !== undefined)) {
-    report(
-      ctx,
-      'unknown-key',
-      'warning',
-      "`w` and `h` belong to a note, not to a table: a note's size is a design choice and a table's is a consequence of its columns (ADR 0005). They are ignored",
-      field.valueOffset,
-    )
+  // Taken where they are allowed and dropped where they are not, rather than
+  // taken and then argued with. A table's layout used to answer `z` with
+  // `known keys are h, w, x, y` three lines under the warning below, which is
+  // the reader offering back, in one run, the two keys it had just refused.
+  const w = allowSize ? takeNumber(ctx, inner, 'w') : undefined
+  const h = allowSize ? takeNumber(ctx, inner, 'h') : undefined
+  if (!allowSize) {
+    // Both dropped, then the pair reported once. Stopping at the first one
+    // found would leave the other on the list `reportUnknown` offers, which is
+    // the whole of what this is about.
+    const size = [inner.drop('w'), inner.drop('h')]
+    if (size.some((dropped) => dropped !== undefined)) {
+      report(
+        ctx,
+        'unknown-key',
+        'warning',
+        "`w` and `h` belong to a note, not to a table: a note's size is a design choice and a table's is a consequence of its columns (ADR 0005). They are ignored",
+        field.valueOffset,
+      )
+    }
   }
   inner.reportUnknown('a layout')
   if (x === undefined || y === undefined) return undefined
   return {
     x,
     y,
-    ...(allowSize && w !== undefined ? { w } : {}),
-    ...(allowSize && h !== undefined ? { h } : {}),
+    ...(w === undefined ? {} : { w }),
+    ...(h === undefined ? {} : { h }),
   }
 }
 
@@ -1114,10 +1134,29 @@ interface Field {
 interface FieldSet {
   take(key: string): Field | undefined
   /**
+   * A key this file is not allowed to have, out of the mapping and out of the
+   * list of known keys `reportUnknown` offers, with the caller left to say
+   * what is wrong with it.
+   *
+   * `take` is the wrong tool for one of these and the difference is the whole
+   * point: `take` means "this key belongs here", and it is what builds the
+   * list. A key that is taken and then argued with is offered back as known a
+   * few lines later, in the same run, by the same reader, which is the
+   * contradiction this exists to prevent. A table's `layout` answered `z` with
+   * `known keys are h, w, x, y` three lines under a warning that `w` and `h`
+   * belong to a note, and a group offered `layout` as known and then refused
+   * it when it was written.
+   *
+   * The message is the caller's because the answer differs: `null:` has a
+   * replacement to name, a table's `w` has a note to point at, and a group's
+   * `layout` has a reason it can never have one.
+   */
+  drop(key: string): Field | undefined
+  /**
    * A key the format understands well enough to say what to write instead.
    *
-   * It is taken out of the mapping without joining the list of known keys that
-   * `reportUnknown` offers, because the answer to `null:` is `nullable:` and
+   * `drop` plus the one code that fits, so the key is out of the list of known
+   * keys for `drop`'s reason: the answer to `null:` is `nullable:`, and
    * offering `null` back would be worse than the generic warning it replaces.
    */
   reject(key: string, message: string): void
@@ -1151,15 +1190,21 @@ function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
   }
 
   const taken = new Set<string>()
+  const drop = (key: string): Field | undefined => {
+    const field = entries.get(key)
+    if (field === undefined) return undefined
+    entries.delete(key)
+    return field
+  }
   return {
     take(key) {
       taken.add(key)
       return entries.get(key)
     },
+    drop,
     reject(key, message) {
-      const field = entries.get(key)
+      const field = drop(key)
       if (field === undefined) return
-      entries.delete(key)
       report(ctx, 'superseded-key', 'error', message, field.keyOffset)
     },
     reportUnknown(what) {
