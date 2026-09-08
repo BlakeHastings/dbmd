@@ -108,7 +108,13 @@ indexes:
     ])
   })
 
-  test('`unique: true` on a column says where to write it instead', async () => {
+  // The remedy names the index's own `name:`, and that is not decoration. An
+  // `indexes:` entry without one is `field-missing: \`name\` is required`, so
+  // the sentence this replaced traded one error for another when it was
+  // followed word for word; and the clause before it, that a unique constraint
+  // has a name and a column has nowhere to put one, is the reason the key is
+  // needed at all.
+  test('`unique: true` on a column says where to write it instead, whole', async () => {
     const { model, diagnostics } = await withModel({
       'tables/customers.md': `---
 kind: table
@@ -122,9 +128,34 @@ columns:
     })
 
     expect(diagnostics.map((d) => `${d.severity} ${d.code}: ${d.message}`)).toEqual([
-      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an `indexes:` entry with `columns: [email]` and `unique: true`',
+      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an `indexes:` entry with `columns: [email]`, `unique: true` and the `name:` the constraint has in the database',
     ])
     expect(model.tables[0]?.complete).toBe(false)
+  })
+
+  test('and the entry that remedy describes is one the reader then accepts', async () => {
+    // The whole point of a remedy: written out, it clears the diagnostic it was
+    // given for rather than raising the next one. The entry below is the
+    // sentence above with a name filled in, and nothing else.
+    const { model, diagnostics } = await withModel({
+      'tables/customers.md': `---
+kind: table
+table: customers
+columns:
+  - name: email
+    type: citext
+indexes:
+  - name: customers_email_key
+    columns: [email]
+    unique: true
+---
+`,
+    })
+
+    expect(diagnostics).toEqual([])
+    expect(model.tables[0]?.indexes).toEqual([
+      { name: 'customers_email_key', columns: ['email'], unique: true },
+    ])
   })
 
   test('and a column with no name is not told to write a line that will not parse', async () => {
@@ -146,7 +177,7 @@ columns:
 
     expect(diagnostics.map((d) => `${d.severity} ${d.code}: ${d.message}`)).toEqual([
       'error field-missing: `name` is required',
-      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an `indexes:` entry with `unique: true`, whose `columns:` names this column once it has a `name:`',
+      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an `indexes:` entry with `unique: true` and the `name:` the constraint has in the database, listing this column in its `columns:` once the column has a `name:`',
     ])
   })
 })

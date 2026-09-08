@@ -3641,3 +3641,259 @@ in review, and it runs the skill's `dbmd-run` block, which is
 only change on this branch to `src/cli/refs.ts` is inside `refsCommand.help`,
 which no run of that block reads, so the two do not touch. Nothing in the file
 lists of the two commits says that; it took reading what the new test executes.
+
+## 2026-09-08: every piece of advice in `docs/format.md`, followed literally
+
+`docs/format.md` gives each of the thirty-five diagnostics a row, and the last
+column of every row is advice: what to do about it. `test/docs/format.test.ts`
+checks that every code has a row and every row has a code, that no code has two
+rows, and that the page's examples assemble into a model with no diagnostics.
+**Nothing checked the advice.** Roughly fifty pieces of instruction, read at the
+moment somebody is stuck, and not one had been followed to see whether it works.
+
+The method was one thing repeated thirty-five times: **construct the state that
+raises the diagnostic, do exactly what the advice says, run `dbmd check` again.**
+Enumerated rather than sampled, on Windows 11, against the built CLI at `d610dfe`
+plus this branch's changes. Sixty-four before-and-after pairs in all, because
+several rows describe more than one state or offer more than one fix and each
+half was built separately.
+
+Nine rows came out wrong and one message came out wrong. Every one of them is
+the shape the earlier sweeps kept finding: advice that is right in the common
+case and false in a case nobody had constructed. `model-file-not-a-file` already
+says out loud that it is separate from `model-file-missing` **because the fix is
+the opposite one**; these are its siblings.
+
+### The ten that were wrong, and which half was fixed
+
+Nine are the page's advice and the behaviour is right, so the page moved. One is
+a message the tool prints, and there the message moved.
+
+- **`duplicate-table` describes a state neither way of building a model can
+  reach.** The row said "A directory cannot do this; an import of two schemas
+  can." The second half is false. An introspection document holding
+  `sales.orders` and `web.orders` was built and imported: `withoutCollisions`
+  refuses the collision first, so the run reports
+  `import/name-collision`, writes **one** table, exits 1, and says to import one
+  schema at a time. `tables/` then holds one `orders.md` and `dbmd check` over
+  the result is clean. So the advice, "Rename one of them", names a second file
+  that is not there. What is left that can reach the code is a `Model` a program
+  built itself and passed to the exported `validate`, which is a public entry
+  point (`src/index.ts`), and that is what the row now says. Confirmed by
+  building such a model in memory and getting the diagnostic. ADR 0093 is why the
+  importer behaves this way and the behaviour is not in question.
+
+- **`unknown-kind-directory`: "Move the files, or delete the directory."** The
+  first of the two does not clear it. The warning is about the directory and
+  never looks inside: a `views/summary.md` moved to `notes/summary.md` leaves
+  `views/` and the same warning, and a `views/` that never held a file at all
+  raises it too. Only deleting it, or moving it out of the model root, works.
+  (The message's own clause "its files are ignored" is false of an empty one.
+  That is a message defect rather than an advice one and it is left standing,
+  named here so the next person does not have to find it twice.)
+
+- **`object-not-a-file`: "A directory that is not meant to be an object belongs
+  under a name that does not end in `.md`."** True of an empty directory, false
+  of one holding markdown, which is the case somebody who parked an archive
+  under `tables/archive.md/` actually has. Renaming that to `tables/archive/`
+  clears this error and raises `object-in-subdirectory` in the same breath.
+  `tables/.archive/` clears both, which is what the sibling row already told
+  people and this one now does too.
+
+- **`kind-mismatch`: "Fix the key, or move the file."** The row's own "what
+  happened" column covers `_model.md`, and for `_model.md` the second option
+  cannot be followed. That name is what makes it the model file, so moving it
+  produces `model-file-missing` and a model with no name and no engine. The
+  reader's own message says "the file name decides what this file is" one line
+  earlier. For an object file both options are real and both were driven; moving
+  `tables/orders.md` into `notes/` clears the mismatch and raises two
+  `unknown-key` warnings for its `table:` and `columns:`, which is the right
+  answer when the file really was a note and the reason the reader picks.
+
+- **`field-wrong-type`: "Usually quotes."** The word "usually" was carrying the
+  whole cell. Two reachable shapes of this code are not about quoting at all and
+  quoting them changes nothing: `layout: 40` says "`layout` must be a mapping
+  such as `{ x: 480, y: 120 }`" and `layout: "40"` says exactly the same, and
+  `columns: id` says "`columns` must be a list" and so does `columns: "id"`. The
+  "what happened" column was narrow in the same way, naming only "a number where
+  a string was wanted". Both now name the shapes and send the reader to the
+  message, which has always said which sort of value the key takes.
+
+- **`ref-malformed`: "Add the column."** Right for `ref: customers`, wrong for
+  `ref: id`, and `ref: id` is at least as easy to write. Following the advice
+  there produces `ref: id.id` and a `ref-table-unknown` about a `tables/id.md`
+  nobody meant. `ref: ".id"` is the same trap from the other side: malformed with
+  the column half present. The advice now says to add whichever half is missing
+  and that the message quotes what you wrote.
+
+- **`empty-value`: "Fill it in, or delete the row."** The row lists four states
+  and the fourth is "a table file whose name is blank", which has no row to
+  delete. It is reachable: `tables/ .md` was created on this machine and
+  produced "the file name is only whitespace, so this table has no name, and the
+  file name is what a ref resolves against; rename the file, and its `table:` key
+  with it". The message names the fix and the row did not.
+
+- **`model-file-not-a-file`: "Move the directory aside."** An earlier sweep
+  verified this one and reached "no problems", which means it moved the directory
+  somewhere the sweep did not record. Aside is not enough on its own. Moved to
+  `db-model/model-dir-moved-aside/` the warning becomes `unknown-kind-directory`,
+  and a leading `.` does not exempt a directory at the model root the way it does
+  inside `tables/`: `.model-old/` warns. Moved out of the model root, clean. The
+  page's prose two hundred lines up already says every other root directory
+  warns and that this one name is exempt; the advice cell now says where "aside"
+  has to be.
+
+- **`file-unreadable`: "`ENOENT` on a file dbmd had just listed means it went
+  away mid-read: a delete, or a branch changed under the command."** There is a
+  third cause and it is the reproducible one: a link that resolves to nothing.
+  `src/model/read.ts` names it in a comment beside the code that raises it. Both
+  halves were built here **without symlink privilege**, which is the part worth
+  keeping: `symlink(..., 'file')` is `EPERM` on this box, but a *junction*
+  pointing at a directory that does not exist needs no privilege, is accepted by
+  Windows, and fails every read. A junction at `tables/orders.md` gives
+  `cannot read the file: no such file or directory (ENOENT)`; a junction at
+  `tables/` itself gives `cannot list the directory: ... (ENOENT)`, which is the
+  kind-directory half the advice's "on a file" did not cover either.
+
+- **The one message rather than advice. `superseded-key` on `unique: true`.**
+  The row says "The message names the replacement", which is a fair claim, and
+  the `unique` message did not keep it. It said to write an `indexes:` entry
+  with `columns: [reference]` and `unique: true`, and doing exactly that and
+  nothing else leaves a `field-missing` saying `name` is required, because an
+  index needs a name. The message contradicts itself one clause earlier: its whole
+  justification is that *a unique constraint has a name and a column has nowhere
+  to put one*. So the message moved, both variants of it, and a test was added
+  that writes the entry the message describes and asserts the reader accepts it,
+  which is the assertion the two existing tests could not make because they only
+  read the sentence. This is the second time this one sentence has been wrong in
+  this way; the first was `columns: [this column]`, which would not parse.
+
+### The twenty-five that were true, and the state each was made to prove it
+
+Every one below was constructed, fixed as written, and re-run.
+
+**About the directory.** `model-directory-unreadable` was reached three ways and
+"Check the path" answered all three: a mistyped path (ENOENT), a dangling
+junction (ENOENT), and a plain file (`a directory in the path is not a directory
+(ENOTDIR)`). `kind-not-a-directory` was built as a `tables` file holding
+`../elsewhere/tables`, which is the "a path in it means a symlink checked out as
+text" case the advice names; renaming it out of the way cleared it.
+`object-in-subdirectory` was cleared both ways the advice offers: the markdown
+moved up into `tables/`, and the directory renamed to `tables/.drafts/`.
+
+**About one file.** `model-file-missing`, written as `_model.md` with the three
+keys, cleared; it is a warning and exits 0, which is the "or accept a model with
+no name" half. `frontmatter-absent` cleared by adding frontmatter and, separately,
+by deleting a blank first line, which is the second sentence of its advice; a
+`_model.md` that is prose only raises nothing at all, as the page says elsewhere.
+`frontmatter-unterminated` cleared by adding the closing `---`.
+`frontmatter-empty` cleared from both states it has, whitespace only and comments
+only, and the comment-only message says so in its own words.
+`frontmatter-invalid` was raised by all three causes the advice names, a tab, bad
+indentation and a stray `:`, and in each case the YAML message at the line named
+was enough to fix it. `frontmatter-not-a-map` cleared by rewriting a list as
+`key: value` lines. `duplicate-key` cleared by deleting the second, in both its
+live shapes, `null:` beside `"null":` on a column and `1:` beside `"1":` on a
+table, and in both the advice's own caveat held: what is left is a
+`superseded-key` and an `unknown-key` respectively, which is "whatever the rest
+of the run says about it". `kind-missing` cleared by adding `kind: table`.
+`name-missing` cleared by adding `table: orders`. `name-mismatch` cleared by
+changing the key, and also by renaming the file, and "the file name wins" is a
+true statement about which of the two the model takes. `field-missing` was built
+in all four states the row lists, a column's `name`, an index's `columns`, a
+layout's `x`, and the `ref:` an `on delete` is about, and "Add it" cleared every
+one. `not-in-vocabulary` was raised from `on delete` and from `on update` both,
+and writing one of the five cleared it. `unknown-key` cleared by fixing a
+spelling and by deleting the key, and its claim **"it is dropped on the next
+save" was driven rather than assumed**: `writeModel` over the model rewrote
+`tables/orders.md` without the `author:` key and kept the body, and did the same
+for a group's `layout:` and a table's layout `w`/`h`, which are the two shapes of
+this warning that are real keys in the wrong place. A re-import is not that
+proof, because a re-import with nothing to change writes nothing.
+`superseded-key`'s other half, `null:` to `nullable:`, was followed word for word
+and cleared.
+
+**About the model.** `group-unknown` cleared by creating the file and by fixing
+the name. `ref-table-unknown` cleared by fixing the spelling and by adding the
+table. `ref-column-unknown` cleared by checking it against the target's
+`columns:`. `ref-target-not-unique` was built in both states the row distinguishes
+and all three of its fixes were driven: on a target column in no key at all,
+adding the `unique: true` index cleared it and so did fixing the ref; on one
+column of a composite primary key, adding the missing `ref:` cleared it, and that
+is the state the row's first fix is for. `duplicate-column` cleared by deleting
+one. `duplicate-index` cleared by renaming one. `index-column-unknown` was built
+in all three states its advice distinguishes, a renamed column, a bare
+`'lower(email)'`, and the quoted mapping `'{ expression: lower(email) }'`, and
+each sentence of the advice cleared the state it is for; writing
+`{ expression: lower(email) }` verbatim out of the message parses.
+`primary-key-missing` cleared by `pk: true`, and exits 0 without it, which is
+"accept a keyless table". `group-empty` cleared by adding `group:` to a table and
+by deleting the group file, and stands down entirely while a table file is
+broken, which is ADR 0090 and was re-confirmed here.
+
+### Two states that changed the diagnostic and are not findings
+
+Both were built, both are recorded because a sweep that hides its judgment calls
+is not evidence.
+
+- **`frontmatter-unterminated` on a file that is only `---`.** Adding the closing
+  delimiter, exactly as told, produces `frontmatter-empty`. That is one mistake
+  fixed and a second one revealed, not advice that misfires: the file did say
+  nothing before and says nothing after, and the second diagnostic is the one
+  that describes it. Left alone.
+- **`kind-mismatch` on an object file, taking "move the file".** A
+  `tables/orders.md` carrying `kind: note` moved to `notes/orders.md` clears the
+  mismatch and raises `unknown-key` on `table:` and `columns:`. The row offers
+  two fixes because only the author knows which of the two things the file is,
+  and the warnings are what the wrong choice looks like. Left alone; the
+  `_model.md` half above is different because there the choice does not exist.
+
+### What could not be constructed from here, and what would construct it
+
+One thing. **`file-unreadable` with `EACCES`.** The row's advice opens "Read the
+errno rather than assuming permissions", and the errno this machine can produce
+is `ENOENT`, three ways, all now built. A permission failure needs a file whose
+ACL denies read to the running user, which on Windows is `icacls /deny` and on
+the Linux runner is `chmod 000`, and the two behave differently enough that
+`test/model/unreadable.test.ts` mocks `node:fs/promises` rather than causing it,
+and says why. So the advice's first clause is proven for the errnos that are
+reachable and unproven for the one it names. What would settle it is one
+`icacls` run in an elevated shell on a scratch directory, which is a smaller
+reach than the console this project already went and got.
+
+Everything else in the table was built for real. No row was reported untestable.
+
+### Whether any of this could be mechanical
+
+**No, and here are the rules that were considered and rejected.**
+
+- **"Every row's advice must clear its diagnostic," as an executable pair.** The
+  page already has the machinery: `dbmd:` and `dbmd-error:` blocks that
+  `test/docs/format.test.ts` runs. Extending it to a before-and-after pair per
+  row is buildable. It is rejected because a machine cannot derive the fix from
+  the prose, so somebody has to hand-write the after-state, and the after-state
+  they write is the one they were already picturing when they wrote the advice.
+  Every one of today's ten was an author writing a fixture for the common case.
+  The guard would have been green for all ten and would have made them look
+  checked.
+- **"Every model diagnostic code must be produced by a test that reads a real
+  directory."** This is the one rule that would have caught something:
+  `duplicate-table` is the only code that fails it, and it fails it for exactly
+  the reason today's finding is a finding. It is rejected because the state it
+  reports is true and permanent. `duplicate-table` is directory-unreachable by
+  design and the page now says so; a red build over that is a guard demanding a
+  fixture that cannot exist.
+- **"Every diagnostic code named inside an advice cell must be a real code."**
+  Cheap, and implementable: the table cells hold no lowercase-hyphenated
+  backticked token that is not a code, so a `^[a-z]+(-[a-z]+){2,}$` match against
+  `ModelDiagnosticCode` would be clean today, and the cells this sweep rewrote
+  now name six codes between them where the old ones named two. It is rejected
+  for now on this repository's own stated bias: it would have caught none of the
+  ten, it defends against a rename that the existing both-directions test already
+  makes loud, and a check that has never caught a real problem is one this
+  process says to delete. It is written down here rather than built, so that the
+  first time a rename does strand a cell there is a rule ready.
+
+The honest summary is that this surface is prose about behaviour, and the only
+thing that reads it is a person who follows it. What this sweep leaves behind is
+not a guard but a page whose fifty instructions have each been carried out once.
