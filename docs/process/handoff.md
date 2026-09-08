@@ -4,7 +4,7 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-07, with nothing running, three agents cancelled, and every
+**As of 2026-09-07, with one agent running, one pull request open, and every
 epic closed.**
 
 ## Where the work is
@@ -12,20 +12,21 @@ epic closed.**
 **Do not quote the merged count from arithmetic.** I did, and said 162 when
 `gh pr list --state merged` said 158. Every pull request has merged through
 `merge-pr.mjs` and the provenance audit is clean across every commit on `main`;
-for the number, run the command. As of the last measurement: **168 merged, 120
-items closed, 4 open, and no P1s.**
+for the number, run the command. As of the last measurement: **181 merged, 123
+items closed, 3 open, and one P1.**
 
-**Three of the four open need the owner rather than an agent.** The visuals epic,
-which is taste. The stale screenshot, which needs a browser extension whose
-server failed to connect in this session, so it is not one click any more. And a
-character count in `README.md` that cannot be corrected while they have that
-file open, which is `dbmd-53w` and is now the last unmeasured instance of a
-number checked in three other places.
+**Two of the three open need the owner rather than an agent.** The visuals epic,
+which is taste, and one recoverable layout they have not said whether to
+restore. The third, `dbmd-v6c`, is dispatched and is the P1.
 
-**The fourth, `dbmd-s22`, is dispatchable and small**: run `dbmd studio` on an
-empty directory and it starts, lets you add a table, and warns forever about a
-`_model.md` it has no way to create. Every other refusal in this tool says what
-to do next and that one does not. **All eight epics are closed**, the last
+**The three items this section used to list as owner-blocked are gone.** The
+stale screenshot was retaken and merged. `dbmd-s22`, the studio warning forever
+about a `_model.md` it could not create, is closed. The character count in
+`README.md` turned out to be editable after all, because the owner's own
+uncommitted hunks are at lines 14 and 17 and the number is at line 238; the
+claim that it could not be touched was mine and it was wrong, which is what
+`orchestrating.md` means by a blocker you wrote being a claim like any other.
+**All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 **The screenshot item needs a server rather than a click.** It was one click
@@ -120,14 +121,30 @@ loaded. `orchestrating.md` carries the general form.
 
 ## In flight, and what is actually left
 
-**Nothing is running and nothing is queued.** Every branch has landed and the
-backlog is four items, three of which need the owner rather than an agent.
+**One agent is running**, building the reading half of the feedback loop
+against `dbmd-v6c`. #182 landed as 2d83bea.
 
-**The session was restarted here so that the annotation server's tooling is
-available**, which is what turns the owner's design feedback into something a
-session can read directly rather than something they paste. `npm run studio:dev`
-brings the studio up with the toolbar on it, and the server it posts to is
-`agentation-mcp` on port 4747, which the start command checks and names.
+**The annotation server is reachable and the way it is reachable is not the way
+this file used to say.** The earlier version of this paragraph claimed the
+session had been restarted so that the server's tooling was available. That was
+wrong in both halves and a successor should not inherit it.
+
+What is actually true, read off this machine on 2026-09-07:
+
+- `agentation-mcp server` is running and `GET http://127.0.0.1:4747/health`
+  answers. Its only established client belongs to a different project on this
+  machine, so it was somebody else's process before it was ours.
+- **It is not registered as an MCP server for this project and does not need to
+  be.** The only server in the user's config is `browsermcp`, and that one fails
+  to connect. There are no `agentation` tools in a session here.
+- **It answers plain HTTP.** `POST /mcp` with an `initialize` call returns an
+  `mcp-session-id` header, and after `notifications/initialized` every one of
+  its nine tools is callable with curl. Done by hand: the studio's own
+  annotation session is `mtrqroy8-xdzike` at `http://127.0.0.1:57818/`, created
+  21:17:26Z, and it holds no annotations yet.
+
+So the owner does not have to restart anything for their feedback to be
+readable, and `dbmd-v6c` is the script that closes it.
 
 ## What was destroyed, because a successor will find the gap
 
