@@ -305,6 +305,34 @@ export class Inspector {
     this.host.replaceChildren(...parts)
   }
 
+  /**
+   * Take keyboard focus into the panel, and say whether there was a panel.
+   *
+   * The heading and not the first control. `<h2>` is the first thing in every
+   * one of the four panels this file builds, and landing on it is what makes a
+   * reader say "addresses, heading level 2" before anything else: the answer to
+   * "which object's panel am I in", which is the question somebody arriving
+   * from a canvas of eleven boxes actually has. The first control is one `Tab`
+   * further on, which is where it already was.
+   *
+   * `tabindex="-1"` is set here rather than in `heading()` because it is a
+   * property of being focused programmatically and not of being a heading. It
+   * keeps the heading out of the tab order, so nothing about the sequence of
+   * presses through the page changes.
+   *
+   * Returns false when there is nothing to go to, which is a panel closed or a
+   * panel whose object has gone. The caller leaves the key alone in that case
+   * rather than swallowing a press that did nothing.
+   */
+  takeFocus(): boolean {
+    if (this.host.hidden) return false
+    const heading = this.host.querySelector('h2')
+    if (heading === null) return false
+    heading.tabIndex = -1
+    heading.focus({ preventScroll: true })
+    return true
+  }
+
   private buildFor(selected: Selected): HTMLElement[] | undefined {
     const model = this.handlers.model()
     if (selected.kind === 'table') {
@@ -621,7 +649,13 @@ export class Inspector {
     input.addEventListener('input', restate)
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') askToCreate()
-      if (event.key === 'Escape') this.show(null)
+      if (event.key === 'Escape') {
+        // Kept from the document handler, which would otherwise also read it as
+        // "leave the panel". A field that answers Escape has answered it, and
+        // two answers to one press is one of them happening by accident.
+        event.stopPropagation()
+        this.show(null)
+      }
     })
     create.addEventListener('click', askToCreate)
     cancel.addEventListener('click', () => this.show(null))
@@ -774,6 +808,9 @@ export class Inspector {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') askToRename()
       if (event.key === 'Escape') {
+        // See the create field: this press is this field's, so it does not also
+        // reach the document handler and carry focus out of the panel.
+        event.stopPropagation()
         input.value = table.name
         confirmHost.replaceChildren()
         refused.hidden = true

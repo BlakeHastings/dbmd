@@ -163,6 +163,21 @@ export interface CanvasHandlers {
   /** Something was selected, or the background was clicked. The inspector opens here. */
   readonly onSelect: (selected: Selected | null) => void
   /**
+   * `Enter` was pressed on an object whose panel is already open, which is
+   * somebody asking to be taken into it.
+   *
+   * Returns whether focus actually moved, so the canvas can leave the press
+   * alone when there was nowhere to go. A panel whose object has just been
+   * deleted from under it is the case: the selection still names it, the panel
+   * is empty, and swallowing the key would be the canvas claiming a press it
+   * did nothing with.
+   *
+   * A handler rather than something this file does itself, for the reason the
+   * header gives about `onSelect`: the inspector is not here, and a canvas that
+   * knew how to focus a panel would know where the panel was.
+   */
+  readonly onEnterPanel: () => boolean
+  /**
    * A point was pointed at while placement was armed, in whole model pixels.
    *
    * `layout` is the one thing about a new table or note the server cannot
@@ -513,6 +528,27 @@ export class Canvas {
   /** What is selected, so a redraw can put the panel back on it. */
   get selection(): Selected | null {
     return this.selected
+  }
+
+  /**
+   * Put keyboard focus back on the object somebody left the canvas from, and
+   * say whether there was one.
+   *
+   * The way out of the panel, and it is a method here rather than a `focus()`
+   * in `main.ts` because the object to go back to is `focused`, which only this
+   * file knows: it is the one carrying `tabindex="0"`, and focusing anything
+   * else would move the tab stop as a side effect of coming back.
+   *
+   * `focused` before `selected` for the case where they differ. Arrows move the
+   * one and not the other (ADR 0067), so somebody can open a panel, walk two
+   * boxes along, then go into the panel and come back. Back is where they were
+   * standing, which is the second box, and not the box the panel is about.
+   */
+  takeFocus(): boolean {
+    const target = this.focused ?? this.selected
+    if (target === null || this.elementFor(target) === undefined) return false
+    this.refocus(target)
+    return true
   }
 
   /**
@@ -870,6 +906,15 @@ export class Canvas {
    * selection-follows-focus would relay out the drawing under a person on every
    * arrow press. It also keeps `#selection` saying one sentence per chosen
    * object rather than one per step across the canvas. ADR 0067.
+   *
+   * **`Enter` on an object whose panel is already open goes into the panel**,
+   * and that is the second press rather than the first for the same reason
+   * moving and selecting are two. The first press opens the panel and leaves
+   * focus where it is, so somebody who pressed it to hear what is there is
+   * still standing on the drawing and can carry on with the arrows. The second
+   * is unambiguous: the panel it would take you to is the one already on
+   * screen, and there is nothing else the press could mean. Nine presses of
+   * `Tab` was the alternative, measured. ADR 0073.
    */
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
@@ -901,7 +946,15 @@ export class Canvas {
         break
       case 'Enter':
       case ' ':
-        if (this.focused !== null) this.select(this.focused)
+        if (this.focused === null) return
+        // The second press, on the object whose panel is already open, is the
+        // one that goes in. `select` returns early on an unchanged selection,
+        // so the first press and the second are told apart before either runs.
+        if (this.isSelected(this.focused.kind, this.focused.name)) {
+          if (!this.handlers.onEnterPanel()) return
+        } else {
+          this.select(this.focused)
+        }
         break
       default:
         return
