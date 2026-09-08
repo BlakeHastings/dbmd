@@ -63,6 +63,41 @@
 // rejected: it guesses at intent, and the day it guesses wrong it either fails
 // a correct page or waves through the defect this exists to catch. ADR 0036.
 //
+// WHY A VERSION AFTER dbmd@ IS READ, AND WHAT IT IS READ AGAINST
+// docs/ci.md hands a reader a workflow to copy and pins the version in it,
+// because npx dbmd@latest in somebody else's CI is a supply chain decision made
+// by accident. ADR 0028 settled that and it is not in question here. What was
+// missing is that the pin is a copy of the number in package.json, there were
+// four of them, and nothing made any of them agree with it. They all said the
+// same number because that is what the package was, so there was nothing
+// inconsistent to grep for, which is the shape of dbmd query above.
+//
+// The rule is one sentence: a version after dbmd@ names the version in
+// package.json. It reads the version and not the shape around it, because the
+// four are written three ways. Two are inside a YAML block a reader copies. One
+// is a sentence about that block with no command after it at all, so a rule
+// built out of the command shapes above would read three of the four. One is in
+// README.md about a different command entirely.
+//
+// A dist-tag is not a version and is not read. npx dbmd@latest is written in
+// this tree exactly once, in the paragraph of docs/ci.md that exists to say not
+// to, and there is nothing in package.json for a moving tag to equal. The cost
+// is a real hole and it is worth knowing about: this would not notice @latest
+// arriving in the recipe. Telling that apart from the sentence warning against
+// it needs a marker, and one page writing one word is not yet worth one.
+//
+// This says nothing about whether the version is on the registry, and it
+// cannot. The package was unpublished when this was written, so a check that
+// asked npm would have been red on the owner's first push. npm view dbmd
+// versions is the authority on what exists and both pages already send a reader
+// there. What this holds is that the pages name the version this repository is
+// rather than the version it used to be. ADR 0080.
+//
+// A version in prose is left alone, because only a pin is a claim about what to
+// install. "0.1.0 is the number chosen for the first release" stays true after
+// the second release, and a rule that read every number would demand that
+// sentence be falsified.
+//
 // WHY DECISION RECORDS ARE NOT SCANNED
 // A record says what was true when it was decided, and this repository never
 // edits one. Failing a build over a record naming something since renamed would
@@ -161,6 +196,21 @@ function cliCommands() {
 /** The scripts `npm run` will find. */
 function npmScripts() {
   return new Set(Object.keys(JSON.parse(read('package.json')).scripts ?? {}))
+}
+
+/**
+ * The version this package is, which every pin has to name. See the header.
+ *
+ * A manifest with no version to compare against is an error rather than a skip.
+ * A check that quietly has nothing to do is indistinguishable from one that
+ * works, which is the whole subject of ADR 0034, and this one costs nothing.
+ */
+function packageVersion() {
+  const { version } = JSON.parse(read('package.json'))
+  if (typeof version !== 'string' || version === '') {
+    throw new Error('package.json has no version, so a pin has nothing to name')
+  }
+  return version
 }
 
 function read(relative) {
@@ -278,6 +328,29 @@ const REFERENCES = [
 ]
 
 /**
+ * A pin, which is the version and not the command after it.
+ *
+ * Separate from the shapes above because it is a different question. Those ask
+ * whether a name resolves to something that exists; this asks whether a number
+ * is the number. The two `dbmd@` shapes above throw the version away and read
+ * the word after it, and one of the four pins in this tree has no word after it
+ * at all.
+ *
+ * The character class is the one those shapes use, plus `+` for build
+ * metadata. Trailing punctuation falls outside it, so a fenced line ending a
+ * sentence after a pin does not have the full stop read as part of the version.
+ */
+const PIN = /dbmd@([\w.^~+-]+)/g
+
+/**
+ * What a moving target looks like: letters, and no number to compare.
+ *
+ * `latest`, `next`, `beta`. See the header for why one is in this tree and
+ * why it is skipped rather than failed.
+ */
+const DIST_TAG = /^[a-z][a-z0-9-]*$/
+
+/**
  * The marker, which is the word and the reference and nothing else, so that a
  * markdown author writes `<!-- hypothetical: dbmd fmt -->` and a TypeScript
  * author writes `// hypothetical: dbmd fmt` and both are the same convention.
@@ -300,7 +373,7 @@ const PROMPT = /^\s*(?:[$>]\s+)?/
  * and one holding example output that says "this build of dbmd reads version
  * 1". Neither is a command and neither begins a line of code.
  */
-function referencesIn(file, text) {
+function codeIn(file, text) {
   const markdown = extname(file) === '.md'
   const found = []
   let fenced = false
@@ -312,16 +385,41 @@ function referencesIn(file, text) {
     }
     const segments = codeSpans(line)
     if (fenced) segments.push(line.replace(PROMPT, ''))
-    for (const segment of segments) {
-      for (const { kind, pattern, anchored, named } of REFERENCES) {
-        for (const match of segment.matchAll(pattern)) {
-          if (anchored && match.index !== 0) continue
-          found.push({ kind, named: named(match[1]), line: index + 1 })
-        }
-      }
-    }
+    for (const segment of segments) found.push({ segment, line: index + 1 })
   })
   return found
+}
+
+function referencesIn(file, text) {
+  const found = []
+  for (const { segment, line } of codeIn(file, text)) {
+    for (const { kind, pattern, anchored, named } of REFERENCES) {
+      for (const match of segment.matchAll(pattern)) {
+        if (anchored && match.index !== 0) continue
+        found.push({ kind, named: named(match[1]), line })
+      }
+    }
+  }
+  return found
+}
+
+/**
+ * Every version pinned in one file, once per line it is pinned on.
+ *
+ * A line inside a fence is read both as code and as its spans, the same way a
+ * reference is, so the same pin can be found twice. Where it is wrong is a
+ * line, so a line is what is reported.
+ */
+function pinsIn(file, text) {
+  const found = new Map()
+  for (const { segment, line } of codeIn(file, text)) {
+    for (const [, version] of segment.matchAll(PIN)) {
+      if (DIST_TAG.test(version)) continue
+      const at = `${line} ${version}`
+      if (!found.has(at)) found.set(at, { version, line })
+    }
+  }
+  return [...found.values()]
 }
 
 /**
@@ -391,6 +489,7 @@ function documentedCommands() {
 
 const commands = cliCommands()
 const scripts = npmScripts()
+const version = packageVersion()
 
 function kindOf(named) {
   if (named.startsWith('npm run ')) return 'npm script'
@@ -421,6 +520,8 @@ function describe(kind) {
 
 const files = scannedFiles()
 const problems = []
+const mispinned = []
+let pinned = 0
 
 for (const file of files) {
   const text = readFileSync(join(ROOT, file), 'utf8')
@@ -441,6 +542,11 @@ for (const file of files) {
       continue
     }
     problems.push({ file, line, text: `\`${named}\` is not ${describe(kind)}` })
+  }
+
+  for (const { version: pin, line } of pinsIn(file, text)) {
+    pinned++
+    if (pin !== version) mispinned.push({ file, line, pin })
   }
 
   // A marker is checked too, so that it cannot outlive what it excused. Both
@@ -495,6 +601,28 @@ again on the day it stops being hypothetical. ADR 0036.
 `)
 }
 
+if (mispinned.length > 0) {
+  failed = true
+  console.error(
+    `${mispinned.length} pinned version${mispinned.length === 1 ? '' : 's'} ${mispinned.length === 1 ? 'names' : 'name'} something this package is not:\n`,
+  )
+  for (const { file, line, pin } of mispinned) {
+    console.error(`  ${file}:${line}`)
+    console.error(`    pins ${pin} and package.json says ${version}`)
+  }
+  console.error(`
+A pinned version is a copy of the number in package.json, and there are five of
+them across two pages and this script. They agreed for one reason only, which is
+that nobody had released anything yet; the release that moves package.json
+leaves every page telling a reader to install the version before it, and the
+page that told them to pin is the page that went stale.
+
+Move them with the version. Nothing here says the version is on the registry,
+because nothing in this repository can: \`npm view dbmd versions\` is the answer to
+that and both pages already send a reader to it. ADR 0080.
+`)
+}
+
 if (undocumented.length > 0) {
   failed = true
   console.error(
@@ -522,5 +650,5 @@ lines above the thing it counts is what went stale. ADR 0043.
 if (failed) process.exit(1)
 
 console.log(
-  `${files.length} files scanned, every \`dbmd\`, \`npm run\` and \`scripts/\` reference resolves, and ${DOCUMENTATION} documents all ${commands.size} commands.`,
+  `${files.length} files scanned, every \`dbmd\`, \`npm run\` and \`scripts/\` reference resolves, ${pinned} pinned version${pinned === 1 ? '' : 's'} ${pinned === 1 ? 'names' : 'name'} ${version}, and ${DOCUMENTATION} documents all ${commands.size} commands.`,
 )

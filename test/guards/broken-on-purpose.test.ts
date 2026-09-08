@@ -312,7 +312,7 @@ describe('check:commands, broken on purpose', () => {
   async function repository(files: Record<string, string>): Promise<string> {
     const root = await scratchWith('check-commands.mjs')
     const base: Record<string, string> = {
-      'package.json': `${JSON.stringify({ scripts: { check: 'true', build: 'true' } }, null, 2)}\n`,
+      'package.json': `${JSON.stringify({ version: '0.1.0', scripts: { check: 'true', build: 'true' } }, null, 2)}\n`,
       'README.md': [
         '# scratch',
         '',
@@ -709,6 +709,140 @@ describe('check:commands, broken on purpose', () => {
     const ran = await runScript(documented, 'check-commands.mjs')
     expect(ran.code).toBe(0)
     expect(ran.out).toContain('README.md documents all 3 commands')
+  })
+
+  // -------------------------------------------------------------------------
+  // The version after `dbmd@`, which is a number rather than a name
+  // -------------------------------------------------------------------------
+
+  test('a pin naming a version this package is not fails, with the line and both numbers', async () => {
+    const root = await repository({
+      'docs/ci.md': ['```yaml', '      - run: npx --yes dbmd@0.9.9 check db-model', '```', ''].join(
+        '\n',
+      ),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/ci.md:2')
+    // Both numbers, because "the pin is wrong" is not a fix: which of the two
+    // moved is the whole of what the reader has to decide.
+    expect(ran.err).toContain('pins 0.9.9 and package.json says 0.1.0')
+    // And not the other half of this check. `check` is a real command on the
+    // scratch registry, so the reference resolved and only the number did not.
+    expect(ran.err).not.toContain('is not a dbmd command')
+  })
+
+  test('the same block pinning what package.json says passes, so the failure was the number', async () => {
+    const root = await repository({
+      'docs/ci.md': ['```yaml', '      - run: npx --yes dbmd@0.1.0 check db-model', '```', ''].join(
+        '\n',
+      ),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    // The count, on the page, because a sweep that quietly stopped finding
+    // anything prints the same success line as one that swept.
+    expect(ran.out).toContain('1 pinned version names 0.1.0')
+  })
+
+  test('the release moving package.json under the pages is the same failure', async () => {
+    // The direction that actually bites, and the one nothing could see before.
+    // No page was edited. The number underneath them moved, which is what a
+    // release is, and every recipe a reader copies now installs the version
+    // before it.
+    const root = await repository({
+      'package.json': `${JSON.stringify({ version: '0.2.0', scripts: { check: 'true', build: 'true' } }, null, 2)}\n`,
+      'docs/ci.md': ['```yaml', '      - run: npx --yes dbmd@0.1.0 check db-model', '```', ''].join(
+        '\n',
+      ),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/ci.md:2')
+    expect(ran.err).toContain('pins 0.1.0 and package.json says 0.2.0')
+  })
+
+  test('a pin with no command after it is read, because one of the four is written that way', async () => {
+    // `docs/ci.md` says `node dist/cli.js` goes wherever the recipe says
+    // `npx --yes dbmd@<version>`, and the sentence stops there. Every other
+    // shape this script knows reads the word after the version, so a rule built
+    // out of those would have read three of the four pins in the tree.
+    const root = await repository({
+      'docs/ci.md': [
+        '# ci',
+        '',
+        'Use `node dist/cli.js` wherever the recipe says `npx --yes dbmd@0.9.9`.',
+        '',
+      ].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('docs/ci.md:3')
+    expect(ran.err).toContain('pins 0.9.9 and package.json says 0.1.0')
+  })
+
+  test('a range is not the version either, and is named as what it says', async () => {
+    const root = await repository({
+      'docs/ci.md': ['Run `npx --yes dbmd@^0.1.0 check db-model`.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('pins ^0.1.0 and package.json says 0.1.0')
+  })
+
+  test('a dist-tag is not a version and is not read', async () => {
+    // `docs/ci.md` writes one, in the paragraph that exists to say not to use
+    // it. There is nothing in `package.json` for a moving tag to equal, so it
+    // is skipped. This is the hole ADR 0080 names rather than a case it closes:
+    // the same word arriving in the recipe would pass here too.
+    const root = await repository({
+      'docs/ci.md': ['`npx dbmd@latest check db-model` is the thing not to do.', ''].join('\n'),
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('0 pinned versions name 0.1.0')
+  })
+
+  test('a decision record pinning an old version is not a finding', async () => {
+    // The same exclusion the commands half relies on, and the reason this rule
+    // lives inside that script rather than in a second one beside it: three
+    // records in the real tree name a pin as history, and failing one would ask
+    // an author to falsify it. A second script would keep a second copy of the
+    // exclusion list, and one of the two would eventually be edited alone.
+    const root = await repository({
+      'docs/architecture/decisions/0001-a-thing.md': 'The recipe pinned `dbmd@0.0.1` then.\n',
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(0)
+    expect(ran.out).toContain('0 pinned versions name 0.1.0')
+  })
+
+  test('a manifest with no version fails rather than comparing against nothing', async () => {
+    // A skip here is the guard that stopped guarding: every pin would pass, the
+    // success line would print, and nothing would say the comparison had not
+    // happened. ADR 0034.
+    const root = await repository({
+      'package.json': `${JSON.stringify({ scripts: { check: 'true', build: 'true' } }, null, 2)}\n`,
+    })
+
+    const ran = await runScript(root, 'check-commands.mjs')
+
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain('package.json has no version')
   })
 })
 

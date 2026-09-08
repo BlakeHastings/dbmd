@@ -68,6 +68,16 @@ standing in for a number nobody had chosen, and
 chose it, partly so that this page would become true rather than become wrong a
 second way.
 
+**On this page the number is not free.** `npm run check` reads every version
+written after `dbmd@` in this repository and fails unless it is the version in
+`package.json`. There are five: the two lines in the block above, the sentence
+below about running from a checkout, one in `README.md`, and one in the comment
+of the script that does the reading. That is a rule about this repository's own
+pages and not about your copy of the recipe, and it is deliberately not a claim
+that the version is on the registry, which is the next paragraph's subject and
+not something any file here can answer.
+[ADR 0080](architecture/decisions/0080-a-version-after-dbmd-names-the-version-this-package-is.md).
+
 **The current version comes from `npm view dbmd versions` and not from this
 page.** A list of releases written into prose is a second copy of something
 the registry already holds, and the second copy is the one that goes stale
