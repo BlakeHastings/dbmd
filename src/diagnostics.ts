@@ -111,7 +111,13 @@ export type ModelDiagnosticCode =
   | 'frontmatter-not-a-map'
   /** Two keys in one mapping resolve to the same name. */
   | 'duplicate-key'
-  /** A `kind:` that disagrees with the directory the file is in. */
+  /**
+   * A `kind:` that disagrees with the file's place: the directory an object
+   * file is in, or the name `_model.md`.
+   *
+   * The object file is not loaded and `_model.md` is, which is the one place
+   * the two halves of this code differ and why the message is not shared.
+   */
   | 'kind-mismatch'
   /** No `kind:` key at all. */
   | 'kind-missing'

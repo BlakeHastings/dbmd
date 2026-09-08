@@ -147,6 +147,27 @@ describe('the directory decides the kind', () => {
     expect(model.tables).toEqual([])
   })
 
+  test('`_model.md` is told its name decides, and its keys are read anyway', async () => {
+    // The counterfactual above says "in a directory of notes", "the directory
+    // decides" and "this file is not loaded", and all three are true there.
+    // None of them is true here: there is no directory of models in the format,
+    // the name `_model.md` is what makes this the model file, and
+    // `readModelFile` discards `checkKind`'s answer and carries on. The last
+    // clause is asserted rather than described, because it is the one that was
+    // checked by reading the model back.
+    const { model, diagnostics } = await withModel({
+      '_model.md': '---\nkind: table\nname: shop\nengine: postgres\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      '_model.md:2 error kind-mismatch: `kind: table` in `_model.md`; the file name decides what this file is, so write `kind: model`, and the `name:` and `engine:` are read either way',
+    ])
+    expect(model.name).toBe('shop')
+    expect(model.engine).toBe('postgres')
+    // An error while reading the file, so the writer will not save over it.
+    expect(model.complete).toBe(false)
+  })
+
   test('a missing kind is a diagnostic, and the directory still decides', async () => {
     const { model, diagnostics } = await withModel({
       'tables/orders.md': '---\ntable: orders\n---\n',

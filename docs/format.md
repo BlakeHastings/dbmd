@@ -1172,7 +1172,7 @@ leaves the line off.
 | `frontmatter-not-a-map` | error | The frontmatter parsed to a list or a scalar. | It has to be `key: value` lines. |
 | `duplicate-key` | error | The same key twice in one mapping. | Delete one. The first is used. |
 | `kind-missing` | error | No `kind:` key. | Add `kind: table`, `note`, `group` or `model`. |
-| `kind-mismatch` | error | `kind:` disagrees with the directory. The file is not loaded. | Fix the key, or move the file. |
+| `kind-mismatch` | error | `kind:` disagrees with the place the file is in: the directory, for an object file, and the name `_model.md` for the model file. An object file is not loaded; `_model.md` is, and its `name:` and `engine:` are read. | Fix the key, or move the file. |
 | `name-missing` | error | A table file with no `table:` key. | Add `table: <the file name>`. |
 | `name-mismatch` | error | `table:` disagrees with the file name. | Make them agree. The file name wins. |
 | `field-missing` | error | A required key is absent: a column's `name`, an index's `columns`, a layout's `x`, or the `ref:` that an `on delete` on the same column is about. | Add it. |

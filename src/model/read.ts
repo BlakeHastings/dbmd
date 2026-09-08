@@ -669,10 +669,20 @@ function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
 }
 
 /**
- * The directory already decided the kind. This checks what the file says
- * against it. A disagreement stops the file loading rather than reinterpreting
- * it as the directory's kind, because a table's keys read as a note produce a
- * page of secondary complaints that bury the one-line fix.
+ * The file's place already decided the kind. This checks what the file says
+ * against it. A disagreement stops an object file loading rather than
+ * reinterpreting it as the directory's kind, because a table's keys read as a
+ * note produce a page of secondary complaints that bury the one-line fix.
+ *
+ * **`_model.md` is the case every clause of the shared sentence is wrong
+ * about, so it gets a sentence of its own.** For `tables/orders.md` the file is
+ * in a directory of tables, the directory is what decides, and the caller
+ * throws the file away on `false`. None of the three holds one level up: there
+ * is no directory of models in the format, the *name* `_model.md` is what makes
+ * this the model file, and `readModelFile` discards this return and reads the
+ * `name:` and `engine:` anyway. The message says so rather than claiming a
+ * refusal that does not happen, and the error is still an error, so the model
+ * comes back `complete: false` and the writer leaves the file alone.
  */
 function checkKind(ctx: Ctx, fields: FieldSet, expected: ObjectKind | 'model'): boolean {
   const field = fields.take('kind')
@@ -687,11 +697,14 @@ function checkKind(ctx: Ctx, fields: FieldSet, expected: ObjectKind | 'model'): 
   }
   const declared = stringValue(field.node)
   if (declared === expected) return true
+  const written = rawOf(ctx, field.node)
   report(
     ctx,
     'kind-mismatch',
     'error',
-    `\`kind: ${rawOf(ctx, field.node)}\` in a directory of ${expected}s; the directory decides, so this file is not loaded`,
+    expected === 'model'
+      ? `\`kind: ${written}\` in \`${MODEL_FILE}\`; the file name decides what this file is, so write \`kind: model\`, and the \`name:\` and \`engine:\` are read either way`
+      : `\`kind: ${written}\` in a directory of ${expected}s; the directory decides, so this file is not loaded`,
     field.valueOffset,
   )
   return false
