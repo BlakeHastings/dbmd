@@ -242,6 +242,81 @@ describe('a block in README.md that quotes a committed file is that file', () =>
   }
 })
 
+/**
+ * A block outside the walkthrough that quotes what a command narrated.
+ *
+ * "The commands" opens by promising that every block below it is output, and
+ * the tags above keep that promise for one entry. The blocks either side of it
+ * are quoted by hand, and one of them drifted: the
+ * `dbmd query --engine postgres` block said the PostgreSQL introspection query
+ * was 9827 characters while the command printed 12403, off by a quarter, on the
+ * front page, in the block that shows a first-time reader their first command
+ * (dbmd-53w).
+ *
+ * The number was never the maintained thing. `runQuery` computes it from the
+ * SQL it has just printed, `test/cli/query.test.ts` holds it to that length,
+ * and `--json` carries it as `characters`. Only the page's transcription of it
+ * was written by hand, so taking it off the page would have left the block
+ * showing a line the command does not print, which is the shape of the defect
+ * ADR 0056 exists to end rather than a fix for it. ADR 0056's revisit rule says
+ * as much directly: a block outside the walkthrough going stale is evidence
+ * that the region is drawn too small, and the answer is to widen it rather than
+ * to fix the block. ADR 0069.
+ *
+ * WHY THIS IS NOT A FIFTH TAG
+ * The command is named here instead, the way `test/docs/payloads.test.ts` names
+ * the command over a plain ` ```json ` fence. A tag buys exhaustiveness, and
+ * exhaustiveness over this page's remaining fences is what ADR 0056's first
+ * revisit already declined, because most of them are prose. Naming the command
+ * costs the page nothing, so the block stays a plain shell session and reads as
+ * one.
+ *
+ * The `$` line is written out beside the argument list rather than parsed into
+ * it, because it ends in `> introspect.sql` and `sessionIn` below would hand
+ * `>` to `parseArgs` as a directory. The page shows that redirect on purpose:
+ * stdout is the SQL, and this block is the narration that went the other way.
+ *
+ * WHY ONLY A COMMAND THAT READS AND WRITES NOTHING
+ * `dbmd query` takes no directory, opens no file and binds no socket, so
+ * running it needs neither a sandbox nor a working directory. The other blocks
+ * on this page outside the walkthrough each need one: `dbmd init` and
+ * `dbmd check` want a directory in a known state, and `dbmd studio` prints a
+ * port the kernel chose, which is the reason ADR 0056 already gives for leaving
+ * that one alone. All four were read against a run by hand on 2026-09-07 and
+ * were exact to the byte. Widening to them is a sandbox, and the sandbox is
+ * what the walkthrough below already owns.
+ */
+const NARRATED = [
+  {
+    shown: '$ dbmd query --engine postgres > introspect.sql',
+    argv: ['query', '--engine', 'postgres'],
+  },
+] as const
+
+describe('a block in README.md that narrates a command is what that command narrated', () => {
+  for (const { shown, argv } of NARRATED) {
+    const command = `dbmd ${argv.join(' ')}`
+
+    test(`the block opening \`${shown}\` is what \`${command}\` wrote to stderr`, async () => {
+      const at = lines.indexOf(shown)
+      expect(at, `README.md shows \`${shown}\``).toBeGreaterThan(0)
+      expect(lines[at - 1], `the line above README.md:${at + 1} opens a fence`).toBe('```')
+      const end = lines.indexOf('```', at + 1)
+      expect(end, `README.md:${at + 1} is inside a fence that closes`).toBeGreaterThan(at)
+
+      const run = await runCli([...argv])
+      expect(run.err, `\`${command}\`, against the block at README.md:${at + 2}`).toBe(
+        `${lines.slice(at + 1, end).join('\n')}\n`,
+      )
+      // The redirect is why this block is here rather than in a `dbmd-run`, so
+      // the thing being redirected is worth one assertion of its own. What the
+      // page shows of this run is the narration, and that was just compared.
+      expect(run.out.length, `what \`${command}\` put on stdout`).toBeGreaterThan(0)
+      expect(run.code, `the exit code of \`${command}\``).toBe(0)
+    })
+  }
+})
+
 describe('the import walkthrough in README.md prints what it shows', () => {
   let sandbox = ''
   let original = ''

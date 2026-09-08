@@ -235,7 +235,7 @@ asks for a credential, so you run that SQL with the client you already trust.
 
 ```
 $ dbmd query --engine postgres > introspect.sql
-The PostgreSQL introspection query, 9827 characters, on stdout.
+The PostgreSQL introspection query, 12403 characters, on stdout.
 Read the comments at the top before you run it: they say what it touches,
 and how to save its result without cutting it short.
 Run it, save the one value it returns, then "dbmd import --file <that file>".
