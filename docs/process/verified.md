@@ -2834,22 +2834,41 @@ corrected by whoever fixed the thing and the other was nobody's job.
   code, has no tests, and Prettier formats a repeated paragraph exactly as
   happily as a unique one.
 
-  **The three runs were not equal, which is what made the repair decidable.** The
-  first two are pre-sweep and both are cut mid-sentence, ending inside the words
-  "The `refs` fence opens at `README.md:439` with its". The third is the swept
-  version, and it is what remains.
+  **The three runs were not equal, which is what made the repair decidable, and
+  they are not equal in the way I first wrote here.** An independent reviewer
+  corrected it and the corrected version is this one. **Only the first run is
+  pre-sweep.** The second is the swept text, truncated, differing from the third
+  by exactly one line, which is its own truncation scar. The two truncations cut
+  in different places: the first ends inside "The `refs` fence opens at
+  `README.md:439` with its", the second 1826 lines later inside "line at 440, and
+  the `export` fence at 501 with its". The third is whole, and it is what
+  remains.
 
-  **Proof, run in the direction that matters.** Every line of the file longer
-  than 20 characters after trimming was compared against the result. Of 2264
-  distinct such lines, 2259 survive and **five do not**, all five being the one
-  paragraph the truncation cut in half. Its substance was never at risk: the
-  sweep had already rewritten that correction, and the surviving text carries it
-  as "The two documentation blocks nothing checked did not, so it has one now.
-  ADR 0076 guarded both, and the entry stood for hours saying they were one edit
-  away from being wrong with nobody to notice."
+  **Proof, run in the direction that matters.** Every line longer than 20
+  characters after trimming was compared against the result: of 2264 distinct
+  such lines, 2259 survive and **five do not**. They are not one paragraph.
+  **Four are the first run's pre-sweep paragraph and the fifth is the second
+  run's fragment of the swept replacement for it**, which is the same fact as the
+  correction above.
 
-  So the deleted paragraph is a superseded draft that the duplication happened to
-  preserve half of. 6482 lines to 2828.
+  The correction's substance survives three times over, as "The two documentation
+  blocks nothing checked did not, so it has one now. ADR 0076 guarded both, and
+  the entry stood for hours saying they were one edit away from being wrong with
+  nobody to notice." The kept text says more than the deleted draft did: it
+  records **why** those two line numbers were wrong, that they were read from a
+  working tree carrying the owner's uncommitted edit, which the pre-sweep version
+  does not know.
+
+  **Two tokens do leave the file, and "nothing of substance was lost" was too
+  strong.** `440` and `501` appear nowhere in the result. They were the head of a
+  sentence whose tail is in the kept text and now reads "line at 502; the 438 and
+  500 above were read from a working tree...". That sentence was already
+  headless inside the third run before this deletion, so the repair does not
+  create the scar, and the two numbers are in git history at `871b389`. It is
+  still a thing this entry has to say rather than a thing it can round off.
+
+  6481 lines to 2860, both counted with `wc -l` on the committed files rather
+  than derived.
 
   **What this file needs and does not have is a reader.** Every page beside it is
   checked by something: the README's tagged blocks are executed, the format
@@ -2858,3 +2877,16 @@ corrected by whoever fixed the thing and the other was nobody's job.
   every command, flag and pinned version across 188 files. The one document kept
   so that work is not redone twice was the one thing nothing looked at, and it
   quietly held two thirds noise for two days.
+
+  **This entry was itself wrong on five points and was corrected by a reviewer
+  before it merged**, which is the only reason it is worth trusting. It said both
+  early runs were pre-sweep when one of them is not; it said they were cut in the
+  same words when they are cut 1826 lines apart in different ones; it called the
+  five lost lines one paragraph when they are two; it said nothing of substance
+  was lost when two line numbers do leave the file; and its own arithmetic did
+  not reproduce under `wc -l`. **A deletion of this size written by the person
+  who found the problem is exactly the change that should not have one reader**,
+  and the review that caught this was asked not to take the description as
+  evidence and to re-derive the duplication, the loss and the direction from
+  scratch. It did, by a sliding 25-line hash scan that found 3600 duplicate
+  windows at two offsets, which is a better method than the one the repair used.
