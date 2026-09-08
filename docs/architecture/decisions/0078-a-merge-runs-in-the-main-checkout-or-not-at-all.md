@@ -107,6 +107,15 @@ is not on `PATH`, or the command did not run from inside a checkout, the
 refusal says both causes and stops. That matches the missing-head-sha refusal
 above it: the alternative is a control that passes by being unable to run.
 
+**The question is asked about the directory the command was run in, not the
+directory the script lives in.** `git rev-parse` inherits the process's working
+directory, so what it answers about is where the caller is standing, which is
+what the accident was: an agent standing in its worktree, typing. The two
+answers only differ when somebody runs one checkout's copy of the script from
+another checkout, and in the case that matters there, an agent running the main
+checkout's copy from its worktree, the working directory is the stricter of the
+two and refuses.
+
 **The fact is an argument and the git call is in `main()`.** `decideMerge`
 gained a `checkout` parameter and `readCheckout` is a pure function of four
 strings, so all of this is unit tested against the answers git actually gives.
