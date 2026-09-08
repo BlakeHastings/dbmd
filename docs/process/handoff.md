@@ -4,8 +4,8 @@ A snapshot with a decay note. Where this disagrees with the repository, the
 repository is right: `bd ready`, `bd blocked`, `git log` and the decision records
 are the source of truth and this is only where the work stopped.
 
-**As of 2026-09-08, early, with nothing running, nothing open and every epic
-closed.**
+**As of 2026-09-08, late, with four agents out, two pull requests open and every
+epic closed.**
 
 ## Where the work is
 
@@ -17,11 +17,11 @@ measured just now.
 
 | | |
 | --- | --- |
-| merged pull requests | 214 |
-| decision records | 83 |
-| tests | 1219 passing, 1 skipped, across 44 files |
-| backlog | 123 closed, 3 open |
-| the gate | 55 to 63 seconds across five runs |
+| merged pull requests | 226 |
+| decision records | 86 |
+| tests | 1309 passing, 1 skipped, across 46 files |
+| backlog | 123 closed, 3 open, and it still cannot be written to |
+| the gate | 58, 58 and 60 seconds, timed three times on 2026-09-08 |
 
 **Three items are open and only two are the owner's.** An earlier version of this
 paragraph said all three were. It was wrong within an hour of being written,
@@ -53,8 +53,62 @@ two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
 ## In flight, and what is actually left
 
-**Nothing is running and nothing is open.** Fourteen agents worked between the
-afternoon and the small hours and every branch landed.
+**Four agents were dispatched on 2026-09-08, all on the CLI, and none has an item
+in the tracker because the tracker cannot be written to.** Each brief is the
+whole issue and each pull request body carries it, so nothing is lost if this
+file is. One of the four has already landed as #223. A fifth agent wrote nothing
+at all: it drove `dbmd check` and `dbmd init` against their own help text and
+reported, which is where three of the findings below came from. Nineteen agents
+have now worked between the afternoon of 2026-09-07 and here.
+
+- **LANDED as #222.** `dbmd export` told a README holding both diagram markers,
+  in the wrong order, that it was missing one. It now says they are out of order,
+  and a refused write answers in the command's voice. It also writes through
+  `writeAtomically` now, so "nothing was changed" is true rather than usually
+  true. Verified by building the sha and measuring the file, not by reading the
+  report.
+- **LANDED as #223.** `dbmd refs` counted the reader's errors and the
+  validator's together and explained all of them as a file that failed to load.
+  Three banners for three states now, and `readErrors` beside `errors` in the
+  JSON. It also amended ADR 0042, whose claim was one size larger than its own
+  reason, which is where the code came from.
+
+**Two more waves went out after those, both from driving the command line.**
+
+- **LANDED as #225.** `offendingOption` returned the first argv token starting
+  with a dash rather than the one that offended, so every command could name a
+  valid flag as unknown in a sentence that then listed it as accepted. It now
+  takes the object the command handed `parseArgs`, types included, which is what
+  lets it tell a mistyped short flag from an option's value. Sent back once,
+  because the first version traded away a case that had been correct. Verified by
+  building the sha and driving twelve command lines.
+- **LANDED as #226**, the largest change of the night. `dbmd init` told a plain
+  file it was a directory that is not empty and offered a remedy that provably
+  failed; `dbmd check` counted diagnostic headings and called them files,
+  including headings that were directories or nothing at all; and `dbmd check`
+  said there was no `_model.md` on the line above the one that named
+  `_model.md/`. `DiagnosticLocation` gained a third variant,
+  `{ in: 'directory', path }`, with no `line`, and ADR 0086 is the argument.
+  Sent back once, because the one code the branch added broke the rule its own
+  record states. Verified by building the sha and driving both sides of the rule,
+  every counterfactual, and the seam with #225.
+
+**LANDED as #227.** The held import finding is done.  It was held until the export branch
+settled the wording, and #222 settled it: a refused write leads with the
+developer's file, says what happened to it, and hands over the system's words
+with the temporary explained rather than stripped. `import/a-failure-half-way-says-what-it-wrote`
+copies that shape and adds the part export did not need, which is a report that
+names the files a failed run did land.
+
+**What the held finding was.** `dbmd import` has the same
+uncaught write failure, it leads with a temporary file whose name is gone by the
+time anybody looks, and worse, a failure half way through writes files and then
+reports nothing about them, because `writeModel` returns its list of written
+paths after the loop and a throw discards it. Reproduced on two tables where only
+the second was unwritable: the first was rewritten on disk and the entire output
+was one `EPERM` about the second. It is held because the export agent is settling
+the wording that ADR 0083 asks for, and the import fix should copy a landed
+pattern rather than invent a second one beside it. Dispatch it once export lands.
 
 **The studio is running for the owner** at `http://127.0.0.1:49192/`, started at
 20:37 on 2026-09-07 with `npm run studio:dev`, with the feedback overlay on it.
@@ -359,6 +413,139 @@ same question, and because the file the entry sends a reader to,
 this repository. **This is not a recommendation to move it.** It is that the
 answer should be chosen once, and written into ADR 0002 as an appended section
 either way.
+
+**Four more are owed from 2026-09-08, found by driving the CLI rather than the
+studio.** Two are out with agents and the third is deliberately held; the fourth
+is a note rather than a defect. File all of them when `bd` runs again, and check
+the pull requests before closing any of them.
+
+```bash
+# Out with an agent on 2026-09-08. Its whole brief is in its pull request body.
+bd create --ignore-schema-skew -p 2 -t task   "export tells a README holding both markers that it is missing one"
+
+# Out with the same agent, in the same branch, for the same reason.
+bd create --ignore-schema-skew -p 2 -t task   "export prints a write failure in Node's voice with an absolute path"
+
+# Out with a second agent on 2026-09-08.
+bd create --ignore-schema-skew -p 2 -t task   "refs explains a validation error as a file that did not load"
+
+# LANDED as #227. Filing it is bookkeeping; the reasoning is in ADR 0087.
+bd create --ignore-schema-skew -p 1 -t task   "import fails half way, leaves files written, and reports none of them"
+
+# Out with a third agent on 2026-09-08. All seven commands are affected.
+bd create --ignore-schema-skew -p 2 -t task   "Every command names the first dash token as the unknown one, not the wrong one"
+
+# Out with a fourth agent on 2026-09-08, as one branch.
+bd create --ignore-schema-skew -p 2 -t task   "init tells a plain file it is a directory that is not empty"
+bd create --ignore-schema-skew -p 2 -t task   "check counts diagnostic headings and calls them files"
+bd create --ignore-schema-skew -p 2 -t task   "check says there is no _model.md above the line that names _model.md/"
+
+# Found 2026-09-08 and NOT dispatched. Its fix has to edit README.md, which
+# carries the owner's uncommitted edit, so it waits on them.
+bd create --ignore-schema-skew -p 3 -t task   "The README shows thirteen command sessions and two of them are checked"
+
+# Found 2026-09-08 and not dispatched. Lower than the rest.
+bd create --ignore-schema-skew -p 3 -t task   "studio prints a busy port in Node's voice, with the advice it already knows"
+
+# Found 2026-09-08 by driving docs/ci.md claim by claim. The page is not wrong,
+# it says to commit the file first and calls the shape untested, so this is a
+# sharp edge in a recipe that is about to ship.
+bd create --ignore-schema-skew -p 3 -t task   "The CI recipe's git diff --exit-code shape is silent on an untracked README"
+
+# Found 2026-09-08 by enumerating the class rather than hunting it. The last
+# command that still reports a failure in Node's voice, with an absolute
+# backslashed path that ADR 0006 rule 4 forbids.
+bd create --ignore-schema-skew -p 2 -t task   "init leaks a raw ENOTDIR when the parent of its target is a plain file"
+```
+
+**The last three above are one branch**, `cli/a-busy-port-and-a-gate-that-cannot-fail`,
+dispatched on 2026-09-08. With it and the import branch landed, no command
+reports a failure through the last-resort handler any more. That was checked by
+driving fourteen failure modes across all seven commands with `--json` and
+reading `error.code`, not by counting the ones that had been fixed.
+
+**Two more were found on 2026-09-08 and both are out with agents.** The agent
+skill contradicted itself within an hour of #227, saying in one place that a
+failed write's record is lost and in another that it is reported, both from the
+same author in the same commit. And `scripts/check-commands.mjs` resolves every
+`dbmd` command name written anywhere in the repository and no flag, so
+a flag no command declares passes in the README, in the published recipe and in
+the skill, all three measured. It is deliberately not quoted, because these
+files are scanned by that same guard once it learns about flags. The recipe is the sharp one: that line would ship to a
+stranger and exit 2 in their CI.
+
+**Three of the four not-dispatched items are one small branch when a slot
+frees**: the studio's busy port, the CI recipe's untracked-README hazard, and
+whatever the README needs. The third is the one that waits on the owner, because
+it edits a file holding their uncommitted work.
+
+**One of those is blocked on the owner rather than on an agent, and it is one
+block, not a page.** `README.md` holds thirteen lines beginning `$ dbmd`: two in
+the `dbmd-run` blocks the test suite executes, one in the `dbmd-sketch` block,
+and ten in plain fences. **All ten were then run by hand.** Nine match what the
+built CLI prints, several byte for byte. One prints a port the operating system
+picked and so can never match exactly. **Exactly one is wrong**, and it is
+`dbmd refs addresses shop` around line 472: #223 replaced its two-line banner
+with a three-line one saying the opposite, and the rest of the block still
+matches. The replacement text is known and was produced by reconstructing the
+model that block describes and running the command.
+
+So the work here is one block plus, if wanted, moving the other nine under
+`dbmd-run` so they cannot drift again. Both edit a file holding the owner's
+uncommitted work, so both wait on them.
+
+**The third of those is the one to read first if time is short.** ADR 0083
+decided that a refusal from the disk leads with the file and keeps the system's
+words. It was applied to the studio and to nothing else, so the two commands that
+document a write failure in their own exit-code lists both leak the raw error
+instead, and `dbmd import` names a temporary file that no longer exists. That is
+a decision that was made and then not carried to the surfaces it was about, which
+is a different failure from a decision nobody made.
+
+## Six diagnostic messages are queued and the queue is the point
+
+**A sweep triggered all 35 model diagnostic codes and read each message against
+the state that produced it.** Nine came back suspect. Three are out with an agent
+on `model/what-the-model-knows-is-not-what-the-disk-says`. **The other six are
+held only because two agents cannot both be in `src/model/read.ts`**, and they
+are written out here so that a successor can dispatch them without re-running the
+sweep.
+
+- **`kind-mismatch` on `_model.md` has three false clauses.** Reproduced twice.
+  A `_model.md` carrying `kind: table` is told it is "in a directory of models",
+  that "the directory decides", and "so this file is not loaded". There is no
+  directory of models in the format; the file name decides and `readModelFile`
+  passes the literal `'model'`; and the file loads, which was measured by reading
+  `model.name` and `model.engine` back out of it through the library. Every
+  clause is true one level down, on `tables/orders.md` with `kind: note`.
+  `docs/format.md` repeats the false clause in that code's row.
+- **`kind-missing` on `_model.md`** says "the directory says this is a model".
+  The model root says nothing about kinds. This is the case the format page ships
+  as its worked example.
+- **`unknown-key` offers keys the same reader refuses.** One run says `w` and
+  `h` belong to a note and not to a table, then three lines later lists
+  `h, w, x, y` as that layout's known keys. Following the second produces the
+  first. A group's message lists `layout` as known while a group's `layout` is
+  separately refused. `reportUnknown` builds its list from every key passed to
+  `take()`, and both of these are taken in order to be refused; the `reject()`
+  path exists for exactly this and its own comment says so.
+- **`frontmatter-empty`** fires on frontmatter holding a comment, where both the
+  code's own doc and the format page describe delimiters with nothing between
+  them.
+- **`duplicate-key`'s documented input is unreachable**, since two identical
+  keys are refused by the YAML parser first. It is only reached when two keys
+  YAML sees as different resolve to one dbmd name. In one of its two live cases
+  its "the first one is used" clause is false, because `reject()` deleted it.
+- **`superseded-key`** tells a nameless column to write `columns: [this column]`,
+  which is not writable YAML. Only reachable beside a `field-missing`, so low.
+
+**One code is unreachable by `dbmd check` and that is correct.**
+`duplicate-table` cannot happen there because a table's name comes from its
+file's basename, and both `src/diagnostics.ts` and `docs/format.md` already say
+it is import-only.
+
+**Eighteen remedies were followed literally and every one cleared its
+diagnostic**, which is the half of that sweep worth as much as the suspects.
 
 ## What a successor would otherwise have to reconstruct
 **SETTLED, and my framing of it was wrong.** I recorded here that my briefs and

@@ -5901,3 +5901,581 @@ corrected by whoever fixed the thing and the other was nobody's job.
   the owner, so the last of the three open items is now a decision they can make
   by looking rather than by reading numbers. Nothing was committed and the
   tracked example was never touched.
+
+- **`dbmd export` tells a file that holds both markers that it is missing one.**
+  `splice` finds the opening marker and then searches for the closing one
+  starting from the opening marker's index, so a file whose closing marker sits
+  above its opening one reports `markers-unbalanced` and prints "has
+  `<!-- dbmd:diagram -->` and not `<!-- /dbmd:diagram -->`". The file has both.
+  Its advice, add the missing marker or delete the one that is there, fits
+  neither: adding leaves the stray marker embedded in the prose for good, and
+  deleting the one the message names lands the reader in the opposite error.
+  Reproduced against the built CLI in both the text and `--json` forms.
+
+- **Three CLI write failures come out in Node's voice, and one of them leads
+  with a temporary file.** ADR 0083 decided the shape of a refusal from the
+  disk: lead with the file the developer was working on, keep the operating
+  system's own words. It was applied to the studio and to nothing else. Neither
+  `dbmd export` nor `dbmd import` catches its write failure, so both fall
+  through to `failure()` in `src/cli/main.ts` and print the raw error with an
+  absolute backslashed path, reporting the generic `"code": "failed"` and
+  dropping every field their successful reports carry. Both commands document
+  the case in their own exit-code lists, so it was meant to be reported rather
+  than to leak. `dbmd import` is the worse of the two: it names
+  `.orders.md.<uuid>.tmp`, a file that no longer exists by the time the reader
+  looks for it, which is the exact sentence ADR 0083 exists to prevent. The
+  temporary files themselves are cleaned up correctly; only the reporting is
+  wrong.
+
+- **A `dbmd import` that fails half way writes files and then says nothing about
+  them.** `writeModel` sorts its jobs by path and pushes each written path onto
+  a list it only returns after the loop, so a throw discards the record of
+  everything already on disk. Reproduced: a model of two tables, both needing a
+  change, with only the second unwritable in sort order. `order_line.md` was
+  rewritten and the removed column came back; `orders.md` failed; the command's
+  entire output was one raw `EPERM` about `orders.md` and it exited 1. A
+  developer reading that has no reason to think their tree changed at all, and
+  it did.
+
+- **`dbmd refs` explains every error as a file that did not load.** It counts
+  the reader's diagnostics and the validator's together and hands one number to
+  a sentence written only about the reader's. On a model whose one error is a
+  dangling `ref:`, the command warns that a file failed to load and that the
+  answer may be short, then prints the dangling ref as the second row of that
+  answer. Every file loaded and the answer was complete. The counterfactual was
+  run too: with a genuinely unparseable file the same banner is accurate, so the
+  warning is right for one of the two kinds it is printed for.
+
+- **Everything else driven on `dbmd refs` matched its help exactly.** A name
+  nothing in the model has heard of exits 1 and says so; a table that no file
+  defines but a ref still names exits 0 and lists the ref, which is the
+  mid-rename state the help promises to answer; `--outgoing` alone narrows the
+  text; and the JSON carries both directions whichever flags were given, with
+  the file, the nullability and the referential actions on each row.
+
+- **Every command names the wrong flag when the command line is wrong, and the
+  sentence contradicts itself.** `offendingOption` in `src/cli/command.ts`
+  returns the first argv token that starts with a dash, not the one that
+  offended, so a valid flag standing before a bad one is reported as unknown.
+  `dbmd query --engine postgres --bogus` answers `unknown option "--engine".
+  "dbmd query" takes --engine and nothing else`, naming a flag as unknown and
+  then listing it as accepted, while `--bogus` is never mentioned. Reproduced on
+  `query`, `studio` and `refs`; all seven commands call the helper. A second
+  shape: `dbmd studio --no-open --port -1` blames `--no-open` when the real
+  error is `ERR_PARSE_ARGS_INVALID_OPTION_VALUE` on `--port`, so a value problem
+  on one flag becomes an unknown-option claim about a different, valid one.
+
+- **`dbmd init` tells a file it is a directory that is not empty, and its advice
+  provably fails.** A zero-byte `model.md` is answered with `model.md already
+  exists and is not empty` and the JSON code `directory-not-empty`. Three clauses
+  are false: the file is empty, it is not a directory, and that code names a
+  condition that did not fire. The remedy was run rather than assumed: a file
+  with content, truncated exactly as instructed, produces the identical sentence
+  on the retry. `isVacant` folds `ENOTDIR` into the same `false` as a directory
+  with entries in it, and there is no branch for the file case.
+
+- **`dbmd check` counts headings and calls them files.** Three reproductions. A
+  model with a stray subdirectory under `tables/` and an unknown `views/`
+  directory reports `1 error and 1 warning across 2 files` when zero files are
+  involved and both diagnostics say in their own text that they are about
+  directories. A model directory that does not exist reports `1 error across 1
+  file`. An empty directory reports `1 warning across 1 file`, and the one file
+  counted is the `_model.md` the line above says is absent.
+
+- **`dbmd check` says there is no `_model.md` on the line above the one that
+  names it.** With `_model.md` present as a directory, one run prints `no
+  _model.md, so the model has no name and no engine; add one` and then
+  ``  `_model.md/` is not a kind of object dbmd knows``, under a single heading.
+  The fix clause is false too: writing that path answers `EISDIR`. The reader's
+  `else` branch is reached by two states and asserts the first of them.
+
+- **`dbmd studio` prints a busy port in Node's voice.** A second studio on a port
+  already bound answers `dbmd: listen EADDRINUSE: address already in use
+  127.0.0.1:49999`, exit 1, with the generic `"code": "failed"` in JSON. The same
+  command's own port validator already knows the sentence that would help,
+  because `--port abc` answers `"--port" takes a number from 0 to 65535, and got
+  "abc". 0, the default, lets the operating system pick a free one.` The advice
+  exists and is not given in the one situation where the reader needs it.
+
+- **Ten of the README's thirteen command lines are in fences nothing reads, and
+  exactly one of the ten is wrong.**
+  Counted by enumerating each line and the fence enclosing it, from
+  `git show origin/main:README.md` because the working copy carries the owner's
+  uncommitted edit. **This is the third count of the same thing and the first one
+  taken this way**; the two before it were arrived at by subtraction and were
+  both a little wrong, which is the failure this file exists to catch, committed
+  by the person keeping it. Thirteen lines begin `$ dbmd`: two inside the two
+  `dbmd-run` blocks that `test/docs/readme.test.ts` executes, one inside the
+  `dbmd-sketch` block, which is tagged and read but by its own definition not
+  run, and ten in plain fences.
+
+  **All ten were then run by hand and compared.** Nine match what the built CLI
+  prints, several byte for byte: `dbmd init`, `dbmd query --engine postgres`
+  including its "12403 characters" which is also the byte count of the file it
+  wrote, `dbmd check examples/shop`, `dbmd check` over a model with one dangling
+  ref including its `$?` of 1, `dbmd refs orders examples/shop` including all
+  three legend lines, `dbmd export shop --stdout`, and `dbmd export` run twice.
+  The `dbmd studio` block prints a port the operating system picked, so its shape
+  matches and its text cannot.
+
+  **The one that is wrong is `dbmd refs addresses shop`.** Reconstructed the
+  model the block describes, two tables whose refs both point at an
+  `addresses` table nobody wrote, and ran it. Everything in the block still
+  matches except the banner, which #223 replaced: the two lines about a file that
+  did not load are now three lines saying the opposite, that every file loaded
+  and nothing is missing. Which is correct, and is exactly the case that page is
+  illustrating.
+
+  **This is not the same as the README being unchecked**, and an earlier version
+  of this entry said "thirteen command sessions and two of them are checked",
+  which reads that way and is loose about what a session is. The page's other
+  blocks are covered by machinery that exists and works: a file's head, a file's
+  whole content and a sketch each carry their own tag and are read by the same
+  test file, and its one plain JSON payload is claimed by
+  `test/docs/payloads.test.ts`, which fails if a new payload block appears that
+  no case claims. What has no such cover is the command sessions.
+
+  The drift that machinery exists to catch then happened while it was watched:
+  merging #223 changed the `dbmd refs` banner for a model whose errors are all
+  the validator's, and the README's `dbmd refs addresses shop` block still shows
+  the old wording. It is a plain fence, so nothing went red.
+
+- **PR #223 was verified by building its sha and driving four states**, not by
+  reading its report: a dangling ref alone, an unparseable file alone, both
+  together, and neither. Each printed a banner true of that model, the clean case
+  printed none, and the JSON carried `{"errors":2,"warnings":0,"readErrors":1}`
+  for the mixed one, so `errors` keeps its meaning and the new field is the part
+  that means the lists may be short.
+
+- **A branch cannot be named `refs/anything`.** Git reserves that namespace and
+  GitHub rejects the push with `GH014: branch or tag names starting with 'refs/'
+  are not allowed`. A brief that hands an agent a branch name is handing it a
+  thing that can be invalid; this one cost an agent a push and a rename.
+
+- **The studio flushes a pending write on demand, and an interrupt does reach
+  that flush, which I first recorded here as untestable.** `dbmd studio
+  --help` promises that "Ctrl-C flushes any edit still waiting to be written and
+  then stops listening", and the claim has two halves. The second half was
+  driven: a `PATCH` to a table's layout, then `POST /api/flush` inside the 250ms
+  debounce, and the file on disk carried the new coordinates the instant flush
+  returned, with `pendingWrite` false. `close()` calls the same flush. The first
+  half, that a console interrupt reaches the handler, was not driven **by me**,
+  and I wrote here that it could not be. That was wrong. Neither `taskkill`
+  without `/F` nor `kill -INT` from Git Bash delivers a console control event to
+  a Node process this harness started, which is true and is as far as I took it.
+
+  **An agent then did it.** It gave the studio its own console and sent
+  `CTRL_C_EVENT` through `GenerateConsoleCtrlEvent`, read the exit code off the
+  process object, and drove all three of the command's exit codes that way. So
+  the signal path is testable here and the earlier entry was a limit of the
+  harness I reached for rather than a limit of the machine. **The honest form of
+  a negative result is "I could not", and this one was written as "it cannot".**
+
+- **A `PATCH` that moves a table does not move the studio's revision, and that
+  is deliberate.** Two edits in a row were accepted against `x-dbmd-revision: 0`,
+  which looked like optimistic concurrency failing to bite. It is not.
+  `src/studio/edits.ts` moves the revision only when the model's *shape* changes,
+  and its comment gives the reason: a change that leaves every object saying what
+  the session already says cannot make an edit made against the old picture lose
+  anything. A layout is not shape. Filed nowhere, recorded here so the next
+  reader who notices it does not spend the same twenty minutes.
+
+- **PR #222 was verified by building its sha and measuring, not by reading its
+  report.** A `db-model/README.md` of 1748 bytes with a paragraph above the
+  diagram and another below it, made stale, then refused with the Windows
+  read-only attribute: same md5 before and after, same byte count, no temporary
+  file left in the directory, both paragraphs intact. Clearing the attribute and
+  rerunning wrote normally. The three marker states still said three different
+  true things after the rebase and `dbmd refs` still answered correctly, so
+  nothing regressed across it.
+
+- **A plain `writeFile` truncates at open, which is why "nothing was changed" was
+  not true before that change.** Demonstrated on a copy of a README: 195 bytes
+  before, 0 bytes after the open alone and before any data. So a failure part way
+  through a plain write leaves the developer's prose gone under a message
+  promising the opposite. `dbmd export` now writes through the same
+  `writeAtomically` the model writer uses, which is what makes the sentence true
+  rather than usually true.
+
+- **My own instruction about the temporary file was the opposite of the record it
+  cited.** The brief said not to let the temporary's name reach the reader and
+  named ADR 0083 as the reason. ADR 0083 prescribes almost the exact sentence the
+  agent wrote instead: the temporary is explained, and only when there is one,
+  because those paths are the only part that can say the write went to a network
+  share. What it forbids is the temporary arriving cold and first. The agent read
+  the record rather than obeying the brief and was right. The import brief had
+  been written on the same wrong reading and was corrected before dispatch.
+
+- **`docs/ci.md`, the recipe published for somebody else's repository, was driven
+  claim by claim and every testable one held.** The clean line it quotes came
+  back verbatim: `examples/shop: 8 tables, 2 notes, 1 group, no problems.`
+  `dbmd check` writes zero bytes to stdout and puts its diagnostics on stderr.
+  `dbmd export --stdout` writes the document to stdout and zero bytes to stderr.
+  No ANSI escape reaches either stream when neither is a terminal. `--json`
+  carries the same exit code as the text form on 0, 1 and 2, checked on all
+  three. And the whole "why the upload cannot be empty" argument is exact: a
+  model with one bad ref exits 1, leaves the shell's redirect target at zero
+  bytes, and prints the refusal on stderr, with the check job's sample error
+  matching the page word for word.
+
+- **The version guard has a control behind it, and it was made to fire.** A
+  worktree with one pinned version in the published recipe changed to a number
+  this package is not made `scripts/check-commands.mjs` exit 1 and name the
+  file, the line, the version pinned and the version in `package.json`. **The
+  mutated version is deliberately not written here**: this file is scanned too,
+  so quoting it would make the guard fire on the sentence describing the guard,
+  which it did once before this paragraph was reworded. On the unmutated tree it
+  exits 0 and says what it covered: 186 files scanned, 5 pinned versions naming
+  0.1.0, and all 7 commands documented in the README. A guard that says what it
+  checked is a guard somebody can tell has stopped checking.
+
+- **One hazard in `docs/ci.md`, and the page is not wrong about it.** The
+  alternative shape it offers, `dbmd export db-model` followed by
+  `git diff --exit-code db-model`, is silent when the README does not exist yet,
+  because `git diff` does not look at untracked files. Run against
+  `examples/shop`, which has no committed README, the export created one and the
+  diff still exited 0, so a job whose whole purpose is to fail on a stale diagram
+  would go green having proved nothing. The page does say to commit the file
+  first, and it labels the whole shape untested here, so this is a sharp edge
+  rather than a false sentence. `git status --porcelain` on the directory, or
+  `git add -N` before the diff, closes it in one line. Worth doing before the
+  recipe ships with the package.
+
+- **PR #225 was verified by building its sha and driving twelve command lines.**
+  Every one of the seven commands names the flag that was actually wrong, in both
+  orders, and `dbmd export -abc` names `-abc`, which is a case nobody asked for.
+  The three value cases come out on one line with no doubled full stop and keep
+  Node's `use '--port=-XYZ'`, which is the only sentence in that message telling
+  the reader what to type. `dbmd import --file --dir` is the case the rework
+  found on its own: `--dir` is a flag the command takes, sitting where a value
+  belongs, so nothing is called unknown and the sentence is about `--file`. A
+  names-only helper would have called an accepted flag unknown there, which is
+  the original defect in a new place. Nothing ordinary moved: `init`, `check` on
+  the example model, `refs`, `export`, `query` at its 12403 bytes and `import`
+  all behave as they did.
+
+- **The one thing that helper now stands aside on cannot happen yet, and says
+  so.** A short cluster like `-qz` is one token to the helper and two options to
+  `parseArgs`, so it falls back rather than guessing. No command declares a short
+  option today. The trade is deliberate and written down: a helper that guesses
+  there could call an accepted flag unknown the day somebody adds one, which is
+  worse than a fallback that reads slightly louder.
+
+- **The mermaid diagram tells the truth about the model, checked table by table
+  and relationship by relationship.** This is the one output where being wrong is
+  invisible to its reader, which is the argument ADR 0023 makes for refusing to
+  draw a model with an error in it. Drawn from `examples/shop`: all 8 tables and
+  all 64 columns reach the diagram, and all 11 refs in the model become 11
+  relationships. Every cardinality matches the file. A required ref draws the
+  parent as exactly one and a nullable ref draws it as zero or one, on all
+  eleven. The one relationship drawn with a solid line rather than a dashed one
+  is `orders` to `order_items`, whose `order_id` is part of `order_items`' own
+  primary key, which is exactly what an identifying relationship means. A primary
+  key column with no explicit nullability is drawn as exactly one, which is right
+  because a key column cannot be null, and is the case a naive reading of the
+  file gets wrong.
+
+- **A quoted heredoc in this harness halves consecutive backslashes, and it
+  destroyed an instrument in a way that looked like a serious product defect.**
+  Measured, writing four lines through `<<'EOF'`:
+
+  | written | arrived |
+  | --- | --- |
+  | `\s` | `\s` |
+  | `\s` | `\s` |
+  | `\\s` | `\s` |
+  | `\\s` | `\s` |
+
+  So a JavaScript string literal written as `'\s'` lands on disk as `'\s'`,
+  which JavaScript then reads as the letter `s`. Every regex escape written the
+  normal way is silently gone.
+
+  **What that cost.** A script checking whether every column reaches the diagram
+  reported all 64 of them missing from all 8 tables. That is precisely what an
+  export dropping every column would look like, and the numbers were right for
+  the wrong reason, so nothing about the output said the instrument was broken.
+  It was caught by printing `regex.source` and finding `(^|s)id(s|$)` where
+  `(^|\s)id(\s|$)` was written.
+
+  **The rule: any script containing a backslash goes through the Write tool, not
+  a heredoc.** This is the third quoting failure in one session, after a
+  `node -e` that could not carry an apostrophe and an argv order that wrote a
+  directory into the main checkout.
+
+- **PR #226 was verified by building its sha and driving both sides of the rule
+  it settles.** A `_model.md` that is a directory now reports `1 warning across 1
+  directory`; a `_model.md` that is absent still reports `1 warning across 1
+  file`; two directory diagnostics report `2 directories`; two broken files
+  report `2 files`; and a model with both reports `2 errors and 1 warning across
+  2 files and 1 directory`. Both `dbmd init` refusals are distinct and correct.
+  The seam with #225 was checked rather than assumed: `dbmd init --force` and
+  `dbmd check --fix` each name the flag that was wrong, after a rebase past the
+  branch that changed how that sentence is built.
+
+- **The agent's argument for the rule was better than mine.** I said the location
+  follows what is at the path. It noticed that the reasoning being corrected
+  proves too much: "a file that has to exist" would have given
+  `object-not-a-file` a file location too, leaving the new variant with almost no
+  members. That is the sharper form, it is in ADR 0086, and the record also says
+  where its own author went wrong first, which is worth more than a rejected-
+  alternatives list written from outside.
+
+- **The whole "reported in Node's voice" class was swept rather than sampled, and
+  one case is left.** `failure()` in `src/cli/main.ts` reports `"code": "failed"`
+  and the raw error for anything a command did not catch, and three instances of
+  that were found by hand tonight. So fourteen failure modes across all seven
+  commands were driven with `--json` and their `error.code` read: a plain file
+  where a directory belongs, a missing directory, a directory where a file
+  belongs, a file that is not JSON, an unknown engine, and the rest.
+
+  Thirteen report properly, each with its own stable code: `no-such-table`,
+  `model-has-errors`, `not-a-directory`, `file-unreadable`, `input-not-json`,
+  `no-model-directory`, `usage`, and `dbmd check`'s own diagnostic list.
+
+  **The one that leaks is `dbmd init` with a plain file as the parent of its
+  target.** `dbmd init plain.md/sub` answers `ENOTDIR: not a directory, mkdir
+  '<absolute path with backslashes>'` under the generic code. Three things are
+  wrong with it and none is that the sentence is false: the path is absolute and
+  backslashed, which ADR 0006 rule 4 forbids and `slashed()` exists to prevent;
+  it names `plain.md` when the developer typed `plain.md/sub`; and its code is
+  the generic one. `dbmd check plain.md` handles the same situation properly one
+  command away, with a relative path, the system's own words and its own code.
+
+  It escapes both of `init`'s refusals because the platforms disagree about what
+  the nested form even raises: #226 measured Linux answering `ENOTDIR` and
+  Windows 11 on Node 24 answering `ENOENT`, so on Windows `vacancy()` reads the
+  path as free and the failure happens later, inside the writer.
+
+  Dispatched with the busy-port branch, which makes that branch the one that
+  closes the class. The script that swept it is worth keeping rather than
+  describing: it lives in the scratchpad as `failedsweep.mjs` and is eleven lines
+  of cases plus a runner.
+
+- **PR #227 was verified by building its sha and driving both halves against the
+  disk.** Two tables both needing a rewrite with only the second in sort order
+  unwritable: the refusal names `db-model/tables/orders.md`, lists
+  `tables/order_line.md` as already written, and says the directory has some of
+  the changes and not the rest. The disk matched exactly, with the column back in
+  one file and not the other, and no temporary left. With the first file in sort
+  order refusing instead, it says nothing had been written before it and that the
+  directory is as it was, and neither file had moved. Before the change the whole
+  output was one line about the second file and nothing at all about the first.
+  **Its closing sentence is a claim, so it was run**: the next run found one
+  change instead of two, took it, and exited 0.
+
+- **The JSON envelope holds on all seventeen runs across all seven commands.**
+  ADR 0006 and ADR 0011 say `--json` puts one report on stdout with the same exit
+  code the text form has. Driven in success and failure and usage error: every
+  run parses as exactly one JSON document, every `schema` is 1, every `ok` agrees
+  with the exit code, and every `--json` run leaves stderr empty. Exit codes 0, 1
+  and 2 are all represented. The script is kept in the scratchpad as
+  `envelope.mjs` rather than described, so the next person can rerun it after
+  adding a command.
+
+- **A merge falsified a document elsewhere in the repository and nothing noticed,
+  including the agent that made both edits.** #227 gave `WriteFailed` the list of
+  files a failed run had already written, and its author correctly added a bullet
+  to `.claude/skills/dbmd/SKILL.md` saying so. Two hundred lines earlier the same
+  file still says "the throw took the `written` array with them, so `git status`
+  is the only record of what landed", which was true that morning and is not now.
+  An agent reading top to bottom meets the false sentence first.
+
+  **The gap is narrower than "the skill has no machinery", which is what an
+  earlier version of this entry said.** That was wrong and the correction was
+  measured rather than reasoned. `scripts/check-commands.mjs` does scan the
+  skill: a worktree with a command name misspelled there made it exit 1 and name
+  twelve lines, and an `npm run` script that does not exist made it exit 1 too.
+  The misspelling is not quoted here for the reason above.
+
+  **What it does not catch is a flag, and that is general rather than a property
+  of the skill.** A flag no command declares passes in the skill, in `README.md`
+  and in `docs/ci.md`, all three measured on a worktree. The guard's own summary is
+  honest about it, saying every `dbmd`, `npm run` and `scripts/` **reference**
+  resolves, and a flag is not a reference. The sharpest case is the published
+  recipe, because a line carrying one would ship to a stranger and exit 2 in
+  their CI.
+
+  So the skill's real gap is prose about behaviour, which nothing checks
+  anywhere, and it shares that with every page. What makes it worse there is that
+  the skill is the one document written to be obeyed rather than read.
+
+  Sent back to the agent that wrote both halves, with the four merges of the
+  night named so the sweep covers what they changed rather than only what it
+  finds.
+
+- **All 35 model diagnostic codes were triggered and their messages read against
+  the state that produced them.** Thirty-four were reached through `dbmd check`;
+  the thirty-fifth, `duplicate-table`, cannot be reached by `check` at all
+  because a table's name comes from its file's basename, and both
+  `src/diagnostics.ts` and `docs/format.md` already say it is import-only, so it
+  is dead there by design rather than by accident. **The count is 35 and not the
+  33 the brief said**, which the sweep corrected against
+  `test/docs/format.test.ts`.
+
+  Nine messages are suspect. Two were reproduced independently before anything
+  was dispatched:
+
+  - **`ref-table-unknown` says "there is no tables/customers.md" while printing
+    `tables/customers.md` as a heading four lines above**, with its own error on
+    it. The file is 33 bytes. What the validator knows is that no table of that
+    name loaded, which is the true half; the claim about the disk is the half a
+    reader acts on.
+  - **`unknown-key` offers, as known keys, keys the same reader refuses.** One
+    run says `w` and `h` belong to a note and not to a table, and three lines
+    later lists `h, w, x, y` as that layout's known keys. Following the second
+    produces the first. A group's message lists `layout` as known while a group's
+    `layout` is separately refused. The mechanism is that `reportUnknown` builds
+    its list from every key passed to `take()`, and both of these are taken in
+    order to be refused; the `reject()` path exists for exactly this and its own
+    comment says so.
+
+  The other seven: `group-unknown` and `group-empty` make the same disk claim;
+  `kind-mismatch` on `_model.md` has three false clauses and the sweep proved the
+  file loads by reading its `name` and `engine` out of the model afterwards;
+  `kind-missing` on `_model.md` says "the directory says this is a model" when
+  the file name is what decides; `frontmatter-empty` fires on frontmatter holding
+  a comment; `duplicate-key`'s documented input is unreachable and one of its two
+  live cases says "the first one is used" when neither is; and `superseded-key`
+  tells a nameless column to write `columns: [this column]`, which will not
+  parse.
+
+- **Eighteen remedies were followed literally and every one cleared its
+  diagnostic**, which is the half of that sweep worth as much as the suspects.
+  Including writing `{ expression: lower(email) }` verbatim from an
+  `index-column-unknown` message, which parses. The newest code,
+  `model-file-not-a-file`, was verified by doing what it says on the broken
+  directory itself and reaching `no problems`. The ADR 0086 summary line was
+  right in all five shapes it can take.
+
+- **PR #229 was verified by running the script the page ships, extracted from the
+  branch's own copy of the file.** Clean, it reports both files skipped as
+  unchanged and exits 0. With both files edited into non-canonical form and the
+  second given the Windows read-only attribute, it prints
+  `{"written":["tables/accounts.md"],"skipped":[],"refused":"tables/api_keys.md","message":"EPERM: ..."}`,
+  exits 1 and puts nothing on stderr. That is the block on the page, byte for
+  byte, producing the output the page claims for it.
+
+  **The sentence I sent it to check was wrong in a way I had not guessed.** The
+  page said the script "prints nothing at all in that case". It printed, as an
+  unhandled rejection, and since #227 that dump carries `written` too. So the
+  claim was wrong about the mechanism and not only stale, and the page now says
+  what happens without the `catch` rather than quietly gaining one.
+
+  The same false claim had a second home two hundred lines away, which is the
+  failure the sweep was sent after: a targeted edit leaves the rest standing.
+
+- **Measured on 2026-09-08, late, and none of it derived:** 226 merged pull
+  requests, 86 decision records, 1309 tests passing and 1 skipped across 46
+  files, and the gate at 58, 58 and 60 seconds over three consecutive runs.
+
+- **`kind-mismatch` on `_model.md` has three false clauses and I reproduced all
+  three.** A `_model.md` carrying `kind: table` gets:
+
+  ```
+  _model.md
+    2  error  `kind: table` in a directory of models; the directory decides, so this file is not loaded (kind-mismatch)
+  ```
+
+  There is no directory of models anywhere in the format: `_model.md` sits at the
+  model root. The directory does not decide either; the file name does, and
+  `readModelFile` passes the literal `'model'`. And the file **is** loaded, which
+  is not an inference: reading the same directory through the library gives
+  `model.name` of `"shop"` and `model.engine` of `"postgres"`, both taken out of
+  the file the message says was not loaded. `checkKind`'s return value is
+  discarded and the reader carries straight on.
+
+  Every clause is true one level down. `tables/orders.md` carrying `kind: note`
+  really is in a directory of tables, the directory really does decide, and the
+  table really does not load. `docs/format.md` repeats the false clause in that
+  code's row.
+
+- **`docs/process/verified.md` on `main` contains its own body three times over,
+  and #220 is where it happened.** That pull request was called "The evidence
+  log, swept for entries its own work overtook". It took the file from 2197 lines
+  to 5885. Measured across the history: every commit before it grows the file by
+  tens of lines, and that one nearly tripled it.
+
+  **It is not three clean copies.** The body restarts mid-sentence: the first
+  run of the file ends inside the words "The `refs` fence opens at
+  `README.md:439` with its", and the next line is the file's own opening again.
+  So it is a truncate-and-restart rather than an append, twice.
+
+  **And the copies are not identical, so a naive dedup would lose evidence.** The
+  first copy carries a paragraph beginning "Corrected within the day: they are
+  guarded now, and two of the line numbers above are wrong", about ADR 0076
+  adding two fences to the `NARRATED` table, and the third copy does not have it
+  at all. The third has 313 substantial lines the first does not. Whichever copy
+  a reader lands in, they are reading a version of the record that somebody else
+  is not.
+
+  1356 distinct long lines appear more than once and 1354 of them appear three
+  times or more. **Every entry written into this file tonight went after the
+  third copy**, so nothing recorded today is duplicated; the damage is entirely
+  from #220 and is entirely in what came before it.
+
+  Not fixed here. Reconstructing one copy needs the differences between the three
+  reconciled rather than discarded, and it wants a reviewable diff of its own
+  rather than being buried in a documentation branch.
+
+- **The guard fired on the paragraph describing the guard, and it was right to.**
+  Two entries above were written by quoting the deliberately-wrong references
+  used to make `scripts/check-commands.mjs` fire: a misspelled command name and a
+  pinned version this package is not. This file is one of the 188 the guard
+  scans, so quoting them put two real broken references into the repository, and
+  the branch went red on exactly the check the paragraphs were praising.
+
+  Both are now described rather than quoted. **The lesson is not to add an
+  exemption**: ADR 0036's `<!-- hypothetical: ... -->` marker exists for a
+  reference that will become real, which is a different thing from one that must
+  never be real. A sentence that has to name a wrong reference to make its point
+  usually does not, and reads better without it.
+
+  It also matters for what comes next: the same guard is being taught to resolve
+  flags, so a passage quoting a flag no command declares would break that branch
+  the day it lands. Those are now described too.
+
+- **Three entries above quote a command line that was deliberately wrong, and
+  they are marked rather than reworded.** `dbmd query --engine postgres --bogus`,
+  `dbmd init --force` and `dbmd check --fix` are each the input that produced an
+  error message worth recording, so the message cannot be recorded without them.
+  ADR 0036's marker is the sanctioned way to write a reference that does not
+  resolve, and although it was built for one that does not exist **yet**, its
+  behaviour is exactly right here: it fails on the day the thing exists, and if
+  `dbmd query` ever grows a `--bogus` then the paragraph calling it an unknown
+  flag has become false and somebody should be told.
+
+  The markers are below. Each holds for this whole file and names a command and
+  the one flag, which is the pair the guard checks. **A marker naming the longer
+  command line does not work**: measured, `dbmd query --engine postgres --bogus`
+  as a marker leaves the flag unmarked and is then itself reported as stale,
+  because the reference it parses out is `dbmd query --engine`, which exists.
+
+<!-- hypothetical: dbmd query --bogus -->
+<!-- hypothetical: dbmd init --force -->
+<!-- hypothetical: dbmd check --fix -->
+
+- **The repair of that triplication is worked out and provable, and it is one
+  deletion.** The three runs are not equal. The first two are pre-sweep and both
+  are cut mid-sentence, ending inside the words "The `refs` fence opens at
+  `README.md:439` with its". The third is the swept version and it is the one to
+  keep.
+
+  Simulated on a copy: dropping everything between the heading and the third run
+  takes the file from 5903 lines to 2250. Checked mechanically afterwards, every
+  substantial line of the original appears in the result **except five**, and all
+  five are the one paragraph the truncation cut. Its substance is not lost: the
+  sweep rewrote it, and the kept text carries "The two documentation blocks
+  nothing checked did not, so it has one now. ADR 0076 guarded both, and the
+  entry stood for hours saying they were one edit away from being wrong with
+  nobody to notice."
+
+  So the pre-sweep paragraph is a superseded draft that the duplication happened
+  to preserve half of. **The proof is a script rather than an assertion**: it
+  reads both files, takes every line longer than 20 characters after trimming,
+  and lists what the repair would drop. It lives in the scratchpad as
+  `nolost.mjs` and belongs in the pull request that does the repair, run in both
+  directions.
+
+  Held until the documentation branch lands, because the repair deletes lines
+  3 to 3656 and that branch appends at the end, so the two commute and doing them
+  in one diff would bury a 3654-line deletion under a thousand lines of prose.

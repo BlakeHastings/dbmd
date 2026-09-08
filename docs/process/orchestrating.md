@@ -855,3 +855,330 @@ comes back correct and annoyed, which has happened here.
 argument against the method: the fifth was real, nothing else had found it, and
 two more defects came out of the one brief it produced. The cost of the four was
 about twenty minutes and no agent was dispatched at any of them.
+
+## The help text is the list of claims, and reading it as one found four defects
+
+The section above says how to check a finding. This one says where to get the
+list of things to check, because "drive the product" is not a plan and an
+orchestrator with an hour and no list drives whatever is on screen.
+
+**In this repository the list already exists, and it is `--help`.** These
+commands do not print a synopsis and a flag table. They print exit codes with a
+sentence explaining why each one is separate, the shape of the file they write,
+what they refuse and what they leave alone. `dbmd refs` states that a name
+nothing has heard of exits 1 while a table nothing defines but a ref still names
+exits 0, and gives the reason: the answer to a typo must not read as permission
+to delete.
+
+Every one of those sentences is an assertion about behaviour, so a pass over one
+command is: print the help, turn each sentence into a state to construct, build
+that state, run the command in it, and read the exit code and the message
+against what the sentence promised.
+
+**Four defects came out of one evening of that, across three commands.** Two of
+them are in `dbmd export`, one in `dbmd refs`, and the fourth is not a message at
+all: an import that fails part way writes files and reports none of them. That
+one was reached only because the help promised an exit code for a write failure,
+which is a promise that a write failure is reported, which is a state worth
+constructing.
+
+**What made it cheap is that the claims are written down by the author.** A pass
+over a surface with no such text is a pass over whatever the person driving
+thought of, and the two are not the same activity. Where a command has no help
+text worth reading, the honest move is to say the pass covered what you thought
+of rather than to imply it covered the surface.
+
+**The counterfactual is part of the method and it is not optional.** For each
+suspected false sentence, construct the state in which it would be true. The
+`refs` banner explains an error as a file that failed to load, which is wrong for
+a dangling ref and right for a file with broken frontmatter. Running the second
+one is what turned "this message is wrong" into "this message is right for one of
+the two kinds it is printed for", which is a different fix and a smaller one. A
+finding filed without its counterfactual sends an agent to delete a warning that
+was doing its job.
+
+**And read the workflow before filing anything about CI.** Three suspicions came
+up in the same pass, all of them about the merge gate accepting less than it
+appears to: a four-second required job beside two fifty-second ones, and two more
+jobs that are not required at all. All three were answered by the files
+themselves. The fast job exists to assert the slow matrix passed, `model.yml`
+opens by saying it is not the merge gate and why, and `merge-pr.mjs` prints a
+note saying it is proceeding with something outside the required set red. Reading
+those cost a few minutes; filing any of them would have cost an agent an hour and
+come back saying the repository was already right.
+
+## I told an agent the opposite of a record, and it read the record instead
+
+The brief for a write-failure message said, in bold, do not let the temporary
+file's name reach the reader, and cited ADR 0083 as the reason. ADR 0083 says the
+opposite. Its decision section contains almost the exact sentence the agent then
+wrote:
+
+> The write goes through a temporary file in the same folder, which is why the
+> system names that one first: EPERM: operation not permitted, rename '...tmp'
+> -> '...orders.md'
+
+The record's position is that the temporary is **explained, and only when there
+is one**, because those paths are the only part of the message that can say the
+write went to a network share. What it forbids is the temporary arriving cold
+and first, which is a different thing from the temporary arriving.
+
+**The error was paraphrasing a record from memory of the defect it fixed.** The
+defect had been "the message led with a temporary file", and the paraphrase that
+survived was "the temporary file must not appear", which is a stronger claim the
+record never made. That is a one-word difference and it inverts the instruction.
+
+Three things follow.
+
+**Quote the record, or send the agent to it.** A brief that paraphrases a
+decision is a second copy of that decision, made by somebody who is not reading
+it, and the two drift on the first retelling. Naming the file and the section
+costs a line and cannot invert.
+
+**An agent that reads the record and contradicts the brief is doing the job.**
+This one wrote out what ADR 0083 actually says, said it was not stripping the
+name, and said why. That is the third lens working in the direction it is
+usually not expected to: the brief was the thing that failed review.
+
+**Say so in the pull request, not only in chat.** The correction was posted on
+the pull request that carried it, because the next person to write a brief about
+a disk refusal will read that thread and not this session.
+
+The same mistake was already in the queue: the import fix had been written up on
+the same wrong reading, and its brief was corrected before dispatch rather than
+after. The cost of catching it late would have been one agent's full pass.
+
+## I quoted the same count three times and enumerated it once
+
+The README's unchecked command blocks were counted three times in one evening.
+The first said "thirteen command sessions and two of them are checked", the
+second said eleven of thirteen were in plain fences, and the third, which
+enumerated each line beside the fence enclosing it, said ten.
+
+Each wrong one was arrived at the same way: **by subtracting one grep from
+another.** Thirteen lines beginning `$ dbmd`, two blocks tagged `dbmd-run`,
+therefore eleven unchecked. That arithmetic is right and its premise is not,
+because a third block carries a different tag and the subtraction cannot see it.
+
+**This file already has a section about quoting a number that arithmetic
+produced.** It was written about a merged-pull-request count, and the rule it
+gives is to measure rather than derive. The rule was in the file, written by the
+person who then broke it twice on the same number in one evening, which is worth
+recording because it says something about where the rule fails: it fires when
+you are aware you are counting, and a count that arrives as a by-product of
+describing something does not feel like counting at all.
+
+**The fix that worked was enumeration, and it cost eight lines of script.** It
+prints every line, its number, and the tag of the fence around it. Nothing was
+left to subtract, and the answer came with its own evidence attached, so the next
+person can check it without rerunning anything.
+
+**Then the audit that the count was in service of turned out to be the valuable
+part.** Ten unchecked blocks sounds like ten liabilities. Running all ten against
+the built CLI found nine correct, several byte for byte, one unverifiable because
+it prints a port the operating system picks, and exactly one wrong. A number
+describing a risk is worth much less than the list of which items carry it, and
+the list took twenty minutes.
+
+## Check the instrument before you believe what it says about the product
+
+A script written to check whether every column in the model reaches the exported
+diagram reported that all 64 columns were missing from all 8 tables. The counts
+were right. The table names were right. The output was exactly what a serious
+defect in the exporter would produce, presented with the confidence of a
+measurement.
+
+The exporter was fine. The script's regexes had no backslashes in them by the
+time they reached disk, because a quoted heredoc in this harness halves
+consecutive backslashes, so a JavaScript literal written as a regex escape
+arrives as a bare letter and matches nothing.
+
+**The thing that saved it was that the result was too good.** Every column
+missing from every table is not how software fails. A real defect drops one
+column, or one kind of column, or the last one. A clean sweep of nothing means
+the instrument, and the next step was to print the regex rather than to write the
+issue.
+
+Three rules come out of it, and only the first is about backslashes.
+
+**Any script with a backslash in it goes through the Write tool.** This is the
+third quoting failure of the session, after a `node -e` that could not carry an
+apostrophe and an argv order that wrote a stray directory into the main checkout.
+The pattern is the shell, every time, and the fix is to stop putting code through
+it.
+
+**A negative result is a claim and needs the same standard as a positive one.**
+Every check here is aimed at the product, so a check that says the product is
+broken feels like it has done its job and a check that says nothing is wrong
+feels like it failed. That is backwards: the alarming answer is the one to
+distrust first, because it is the one that costs an agent a day.
+
+**"Read the code before filing" applies to your own tools.** The rule was written
+here about agents describing what a page appeared to do. It reads as advice about
+somebody else's report, and its sharpest case is your own instrument, which you
+trust more because you wrote it ten minutes ago.
+
+## After the third instance, stop hunting and enumerate the class
+
+Three commands were caught reporting a failure in Node's voice tonight, one at a
+time, each by driving a different surface and noticing the same shape. Export's
+write, import's write, the studio's listen. Each cost twenty minutes of driving
+and each was found by luck rather than by looking.
+
+**The fourth was found in four minutes by a script, and the same script proved
+there is no fifth.** The generic report has a signature: `"code": "failed"` in
+the JSON envelope, which is what the last-resort handler writes and what no
+command that reports properly ever writes. So the class is enumerable. Fourteen
+failure modes across all seven commands, each run with `--json`, each
+`error.code` read and printed beside its case. Thirteen came back with their own
+code. One did not.
+
+The rule that comes out of it is about when to switch, not about what to write:
+
+**One instance is a defect. Two is a pattern. Three means you are still hunting
+when you could be enumerating.** By the third, you know the signature, and the
+signature is the thing a script can look for. Writing it is cheaper than finding
+the fourth by hand, and unlike finding the fourth by hand it also tells you when
+you are done.
+
+**The enumeration is worth more than the instance it finds**, because it converts
+"we fixed three of these" into "there is one left and here it is". A brief can
+say that. A pull request can close the class rather than adding to a pile, and
+the agent holding it knows what finishing means.
+
+Two things make it work here and both are properties of this codebase rather
+than of the method. Every command has a `--json` form with the same envelope, so
+one field answers the question for all of them. And the generic code is
+genuinely generic: nothing writes `failed` on purpose, so a hit is never a false
+positive.
+
+**Keep the script.** It is the difference between a claim that the class was
+swept and a thing the next person can re-run after adding a command.
+
+## The document that is written to be obeyed is the one with no machinery on it
+
+This repository checks its documentation harder than most projects check their
+code. The README's tagged blocks are executed and compared. The format page's
+error blocks are run and their codes asserted. Every plain JSON fence on four
+pages is claimed by exactly one test case, so a new payload turns that file red
+until somebody says which command it came from. A script reads every version
+written after `dbmd@` across 186 files and fails unless it matches the manifest.
+
+**The one document with none of that is the agent skill**, which is the only
+document in the tree written to be obeyed rather than read.
+
+That sentence was wrong when first written here, and the correction belongs in
+front of the argument rather than in a footnote. `check-commands.mjs` does scan
+the skill, and a command name or an `npm run` script that does not exist fails
+there like anywhere else. What nothing catches, in the skill or on any other
+page, is a **flag**: one that no command declares passes in all three of the
+skill, the README and the published recipe, measured. It is not quoted here,
+because this file is scanned by that same guard once it learns about flags. So the skill's real gap is prose
+about behaviour, which it shares with every page, and what makes it worse there
+is only that this is the document written to be obeyed.
+
+**Three overstatements in one evening, all in the same direction.** The README's
+unchecked blocks were counted too high twice, and the skill's cover was described
+as absent when it is partial. Every one of them made a gap sound larger than it
+is, and every one was corrected by measuring rather than by thinking harder. A
+gap that sounds larger is the more comfortable error to make while writing a
+finding, which is exactly why it needs the same evidence a defect does.
+
+It went stale within the hour. A merge gave a thrown error the list of files a
+failed run had already written, and the agent that made the change correctly
+added a bullet to the skill saying so. Two hundred lines earlier, the same file
+still said that the record was lost and `git status` was the only way to find
+out. Both sentences shipped in one commit, from one author, in one file.
+
+**The mechanism is that a skill is prose about behaviour, spread out.** A page of
+examples has its examples in one place and a test can run them. A skill's claims
+are scattered through argument, which is what makes it useful and also what makes
+a targeted edit leave the rest standing. The author who adds the correct new
+bullet has read the section they are editing, not the one two hundred lines up
+that says the opposite.
+
+Two things follow, and the second matters more.
+
+**When a change alters observable behaviour, the brief should name the skill as a
+file to re-read, not only to edit.** "Update the skill if needed" invites the
+targeted edit. "Read the whole skill against what you changed" is a different
+instruction and costs a few minutes.
+
+**And a document nobody can check is a document to distrust in proportion to how
+long it has been since somebody drove it.** That is an uncomfortable property for
+the file agents are pointed at first, and the honest response is to sweep it on a
+schedule rather than to trust it because it was correct when written. Five false
+claims were found in this same file once before, in one pass.
+
+## "It cannot be tested" is a claim about you, and it was wrong within the hour
+
+The studio's help says Ctrl-C flushes an edit still waiting to be written. The
+flush half was easy to prove. The signal half was not: neither `taskkill` without
+`/F` nor `kill -INT` from git-bash delivers a console control event to a Node
+process started here, and both were tried, and both left the studio answering.
+
+That much was measured and is true. What went into the record was **"it cannot be
+tested from here"**, which is a different sentence, and an agent disproved it a
+few hours later by giving the studio its own console and sending it a real
+`CTRL_C_EVENT` through `GenerateConsoleCtrlEvent`. It then drove all three of the
+command's exit codes that way.
+
+**The gap between "I could not" and "it cannot" is one word and a whole
+conclusion.** The first invites the next person to try something else. The second
+closes the question, and it closed it in the file this project keeps specifically
+so that nobody re-does work somebody already did. A false "cannot" there is worse
+than no entry at all, because it converts a gap into a settled fact.
+
+Two things make this failure mode likely rather than rare.
+
+**A negative result feels finished.** Two attempts that both fail feel like
+evidence about the problem, when they are evidence about the two attempts. The
+honest write-up names the attempts, which is also what lets somebody else see
+what was not tried.
+
+**And the person recording it is the person who ran out of ideas.** Nobody writes
+"I could not think of a third approach" and then keeps thinking. The record gets
+written at the moment of giving up, in the words of giving up.
+
+The fix is small and mechanical: **in an evidence log, write what you ran and what
+happened, and let "cannot" be a conclusion somebody else is free to overturn.**
+Every entry in `verified.md` that says a thing is impossible should name the
+attempts that led there, and this one now does.
+
+## I merged a pull request that tripled the file it was sweeping
+
+`docs/process/verified.md` is the evidence log, and PR #220 was called "The
+evidence log, swept for entries its own work overtook". It took the file from
+2197 lines to 5885. The body is in there three times, restarting mid-sentence,
+and the three copies are not identical, so a paragraph correcting an earlier
+entry survives in the first copy and is absent from the third.
+
+It was found hours later, by accident, while checking a documentation branch for
+internal contradictions.
+
+**Nothing in the review caught it and the review was not careless.** The diff was
+large because the change was large. The gate was green because a duplicated
+markdown file passes every check this repository has: it is not code, it has no
+tests, and `prettier` formats a repeated paragraph exactly as happily as a
+unique one. The pull request body described the sweep accurately. The one thing
+that would have caught it is a number, and nobody asked for it.
+
+**So the rule is a number, and it is cheap.** For a change to a prose file, the
+line count before and the line count after belong in the pull request body, and
+a review should look at whether the delta matches the description. "Removed
+eleven stale entries" and "+3688 lines" cannot both be true, and neither figure
+is hard to produce.
+
+**The deeper reason this one got through is that the file has no reader.** Code
+gets read because it runs. Decision records get read because agents are pointed
+at them. An evidence log is written far more often than it is read, and its whole
+value is that somebody can trust it later, which is exactly the property that
+decays without anybody noticing. Three sessions appended to a file whose first
+two thirds were a duplicate, and every one of them added to the end, where the
+duplication is invisible.
+
+**A file nobody reads end to end needs a check that does.** Not prose review: a
+count, a duplicate-line scan, something mechanical that runs in the gate. This
+repository already checks the README's examples, the format page's error blocks,
+every pinned version and every command name. The one file it keeps specifically
+so that work is not redone was the one thing nothing looked at.
