@@ -1060,3 +1060,44 @@ makes them evidence rather than a rule to remember.
   something a person maintains, and an entry is content that has to exist.** A
   check that reads a heading is the check whose job a rewrite removes.
 
+
+## 2026-09-07, evening: four things measured before anybody pushes a tag
+
+- **The overlay is on the page in a real browser, not just in the bundle.** The
+  startup banner claims it and a banner is a claim. Chromium at 1600x1000 against
+  the running dev studio reports `document.getElementById('agentation-host')` is
+  not null, with 8 tables, 58 edge segments, no console errors and no page
+  errors. The served `main.js` carries 241 occurrences of `agentation`, 22 of
+  `Agentation`, 6 of `createRoot` and the literal `4747`. The release bundle is a
+  different file built from a different entry, which is what ADR 0064 and
+  `check:guards` are about.
+
+- **The annotation server answers plain HTTP and needs no MCP registration.**
+  This was believed to require a session restart, and the handoff said so. It
+  does not. `POST /mcp` with an `initialize` call returns an `mcp-session-id`
+  response header; after `notifications/initialized` all nine tools answer.
+  Read by hand this way: two sessions belong to this studio and the rest of the
+  store belongs to another project on this machine, most of them on port 4300.
+  Both of ours held no annotations. **The store is shared between projects**,
+  which is the thing a reader of that store has to handle rather than discover.
+
+- **The clipped ref target is fixed, measured rather than assumed.** The visuals
+  epic recorded 7 of 64 column rows overflowing their box, the worst by 61
+  pixels, with no `title` to recover the hidden text. The same measurement now
+  returns 0 of 64. The row count matching at 64 is what says the two measurements
+  looked at the same population.
+
+- **The npm name is free and so are the spellings that could crowd it.** npm
+  refuses a new name that is too close to an existing one, and that refusal
+  arrives at the last step of a publish, after a token has been minted and a tag
+  has been pushed. `dbmd` returns 404 from the registry, and so do `db-md`,
+  `db.md`, `db_md`, `dbmd-cli`, `dmbd`, `bdmd` and `dbm-d`. That is seven
+  neighbouring spellings rather than a claim about npm's rule, which is not
+  written down anywhere this project can read.
+
+- **What is still unobserved is still unobserved.** `release.yml` says in its own
+  comments that whether `actions/checkout@v7` populates `refs/remotes/origin/main`
+  on a tag push has never been seen, because no tag has ever been pushed here.
+  Nothing above changes that. It stays unobserved on purpose: settling it needs a
+  tag push, that is the one act no agent here may take, and the failure is safe
+  and names the checkout rather than the tag.
