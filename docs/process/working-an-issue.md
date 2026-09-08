@@ -127,10 +127,14 @@ forbids deletion and force-push, and has an empty bypass list. The owner cannot
 bypass it either. What the ruleset does not do is stop an agent merging *its
 own* pull request, which is why the layers below still exist:
 
-1. **`node scripts/merge-pr.mjs <n>`**, the sanctioned way to land a PR. It
-   reads the check rollup, refuses unless every required check is green, and
-   always squash merges.
+1. **`node scripts/merge-pr.mjs <n> <sha-you-reviewed>`**, the sanctioned way to
+   land a PR. It reads the check rollup, refuses unless every required check is
+   green, refuses a branch behind its base, refuses unless the sha you name is
+   the head it is about to merge, and always squash merges.
    *Not covered:* anyone who does not use the command. It is a tool, not a gate.
+   And it cannot make you read the commit you name, only refuse to merge one you
+   did not name.
+   [ADR 0077](../architecture/decisions/0077-the-merge-names-the-commit-the-reviewer-read.md).
 2. **`scripts/guard-merge.mjs`**, a PreToolUse hook wired up in
    `.claude/settings.json`. It denies the commands above before they run.
    *Not covered:* sessions that did not load it. A net, not a guarantee.
@@ -162,11 +166,16 @@ node scripts/report-merge-aftermath.mjs
 That form writes nothing anywhere. A run that has not appeared yet is reported
 as such rather than as a failure, which matters in the minute after a merge.
 
-Landing a PR:
+Landing a PR, where `a1b2c3d` is the head sha you read when you reviewed it:
 
 ```bash
-node scripts/merge-pr.mjs 42
+gh pr view 42 --json headRefOid --jq .headRefOid
+node scripts/merge-pr.mjs 42 a1b2c3d
 ```
+
+**Read that sha at review time, not at merge time.** Reading it now makes the
+argument a formality; reading it when you read the diff is what makes the merge
+refuse when the branch has moved underneath you since.
 
 **Squash, always.** One issue becomes one commit, so the log stays a readable
 list of changes and reverting means reverting one commit.

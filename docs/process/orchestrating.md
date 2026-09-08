@@ -148,9 +148,16 @@ item is probably not specified yet.
 
 ## Merging
 
-`node scripts/merge-pr.mjs <n>`. It reads the check rollup, refuses on anything
-red, and squash merges. A ruleset on `main` refuses a direct push from anyone
-including the owner, so this is not a convention: it is the only path.
+`node scripts/merge-pr.mjs <n> <sha-you-reviewed>`. It reads the check rollup,
+refuses on anything red, refuses a branch behind its base, refuses unless the sha
+you name is the head it is about to merge, and squash merges. A ruleset on `main`
+refuses a direct push from anyone including the owner, so this is not a
+convention: it is the only path.
+
+The second argument is the head sha you read when you reviewed, which is
+`gh pr view <n> --json headRefOid --jq .headRefOid` at **review** time. Seven
+characters are enough. The section below headed "A pull request you reviewed is
+not the pull request you merge" is why it exists.
 
 Post the three-lens review record on the beads item before merging, with
 `bd comment <id> --file review.md`. The pull request body carries the same three
@@ -473,8 +480,16 @@ decision record and a sixteenth finding. Nothing unsafe landed and the merge
 wrapper did its job: the green it checked was against the head it merged. **The
 gap is mine and it is that I checked the body against my memory.** The wrapper
 knows the head sha and I do not tell it which sha I read, so nothing can notice
-the difference. Until something does, read the head sha at review time and
-compare it at merge time, and treat a moved head as an unreviewed pull request.
+the difference. Read the head sha at review time and treat a moved head as an
+unreviewed pull request.
+
+**Something notices now, and it is this paragraph made mechanical.** The merge
+takes the sha you read as a second argument and refuses when it is not the head
+it is about to merge, printing the two next to each other so the call can be
+fixed by copying. It cannot make anybody read: a mismatch can be answered by
+copying the new sha out of the refusal, and the refusal says so rather than
+pretending otherwise. What it removes is "the head moved and I did not know".
+[ADR 0077](../architecture/decisions/0077-the-merge-names-the-commit-the-reviewer-read.md).
 
 **An identity field names a token, not a person.** `gh pr view --json mergedBy`
 answered `BlakeHastings` for a merge an agent-driven session made through

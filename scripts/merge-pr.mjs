@@ -16,6 +16,20 @@
 // requires up-to-date branches, that ruleset catches it. Here nothing else
 // does: the merge succeeds and the untested combination is what ships.
 //
+// And it refuses a merge that does not name the commit being merged. The two
+// refusals above are about the branch; this one is about the person. On
+// 2026-09-07 an orchestrator read a pull request body describing an eleven line
+// change, said so in a written report, and merged it about twenty minutes
+// later. In between, the agent that owned the branch had force-pushed a second
+// commit carrying a correction to its own earlier work, an append to a second
+// decision record and a further finding. Nothing unsafe landed and nothing here
+// could have objected: the green this script checked was against the head it
+// merged, and the head it merged was fine. What was missing is that **it was
+// merged unread and nothing could say so**. This script knows the head sha and
+// was never told which sha the reviewer read, so the one comparison that would
+// have caught it was between a value it holds and a value nobody said out loud.
+// Now the reviewer says it out loud, as an argument.
+//
 // Always squash: one issue becomes one commit on main, so `git log --oneline`
 // stays a readable list of changes rather than a wall of "fix lint" noise, and
 // reverting a change means reverting one commit.
@@ -38,11 +52,13 @@
 // HOW THIS IS TESTED
 // Every refusal below is a function whose facts are arguments, and the network
 // lives in `main()`, which runs only when this file is the entry point. That
-// split is what makes the four refusals ordinary unit tests rather than
-// something reachable only with a real pull request in a particular state.
-// ADR 0058, closing the condition ADR 0034 recorded.
+// split is what makes the refusals ordinary unit tests rather than something
+// reachable only with a real pull request in a particular state. ADR 0058,
+// closing the condition ADR 0034 recorded. The reviewed-sha refusals are in
+// `decideMerge` for the same reason and not in the argument parsing, which is
+// the half of this file nothing asserts.
 //
-//   node scripts/merge-pr.mjs 42
+//   node scripts/merge-pr.mjs 42 a1b2c3d
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
@@ -70,6 +86,15 @@ const REFUSE_WHEN_BEHIND = true
 const MERGE_STATE_ATTEMPTS = 6
 const MERGE_STATE_WAIT_MS = 2500
 
+// SETUP: how much of the head sha the caller has to type. Seven is what git
+// abbreviates to and what GitHub prints beside a commit, so it is the number
+// somebody already has in front of them rather than one this script invented.
+// A shorter prefix is refused rather than matched loosely: a prefix short
+// enough to collide is a control that can be satisfied by accident, and this
+// one is cheap to satisfy on purpose. Raising it costs typing and buys nothing
+// measurable here; lowering it is the change to argue against.
+const REVIEWED_SHA_MIN_LENGTH = 7
+
 // ---------------------------------------------------------------------------
 // The decision. Nothing below this line talks to the network: every fact it
 // needs arrives as an argument, which is the whole of ADR 0058.
@@ -79,13 +104,16 @@ const MERGE_STATE_WAIT_MS = 2500
  * Whether this pull request may be merged, and what to say either way.
  *
  * `pr` is what `gh pr view --json` answered. `behind` is how many commits the
- * head is behind its base, or `null` when that could not be compared. The
- * return is `{ merge, why, notes, warnings }`: `why` is the refusal, and the
- * other two are lines a merge prints on its way through.
+ * head is behind its base, or `null` when that could not be compared.
+ * `reviewed` is the sha the caller says they read, as they typed it, or `null`
+ * when they said nothing. The return is `{ merge, why, notes, warnings }`:
+ * `why` is the refusal, and the other two are lines a merge prints on its way
+ * through.
  */
 export function decideMerge({
   pr,
   behind,
+  reviewed = null,
   required = REQUIRED,
   refuseWhenBehind = REFUSE_WHEN_BEHIND,
   waitedSeconds = 0,
@@ -175,7 +203,72 @@ export function decideMerge({
     )
   }
 
-  const notes = []
+  // The last question, and the only one here that is about the person rather
+  // than about the branch. It is asked last on purpose: everything above is a
+  // fact about the pull request, and a caller whose checks are red or whose
+  // green is stale should be told that first. Asking this first would spend a
+  // round trip on the sha and a second one on the real problem, and a wrapper
+  // that costs two round trips for one broken branch is a wrapper people call
+  // less often.
+  const head = typeof pr.headRefOid === 'string' ? pr.headRefOid.toLowerCase() : ''
+  const named = typeof reviewed === 'string' ? reviewed.trim().toLowerCase() : ''
+
+  if (head === '') {
+    return refuse(
+      `GitHub did not answer with a head sha for this pull request, so nothing here\n` +
+        `  can tell whether the commit you read is the commit that would merge.\n\n` +
+        `  That is a defect in this script or a change in the API rather than anything\n` +
+        `  about your branch: readPr asks for headRefOid and something else came back.\n` +
+        `  Refusing is the safe direction, because the alternative is a check that\n` +
+        `  passes by being unable to run.`,
+    )
+  }
+
+  if (named === '') {
+    return refuse(
+      `you have not said which commit you read. This script knows the commit it is\n` +
+        `  about to merge and cannot know the one you reviewed, so you name it:\n\n` +
+        `    node scripts/merge-pr.mjs ${pr.number} <the head sha you read>\n\n` +
+        `  Read that sha when you review, which is the moment it means something:\n\n` +
+        `    gh pr view ${pr.number} --json headRefOid --jq .headRefOid\n\n` +
+        `  It is deliberately not printed here. A sha this refusal handed you would be\n` +
+        `  a sha you had not read, and the whole of what this asks is that the commit\n` +
+        `  merged and the commit reviewed are one commit. See orchestrating.md, "A pull\n` +
+        `  request you reviewed is not the pull request you merge".`,
+    )
+  }
+
+  if (!/^[0-9a-f]+$/.test(named) || named.length < REVIEWED_SHA_MIN_LENGTH) {
+    return refuse(
+      `what you named is not a commit sha: ${JSON.stringify(reviewed)}.\n\n` +
+        `  It wants at least ${REVIEWED_SHA_MIN_LENGTH} hexadecimal characters of the head sha you read, which\n` +
+        `  is what git abbreviates to and what GitHub prints beside a commit. A shorter\n` +
+        `  prefix is refused rather than matched loosely, because a prefix short enough\n` +
+        `  to collide is a check that can pass by accident.\n\n` +
+        `    gh pr view ${pr.number} --json headRefOid --jq .headRefOid`,
+    )
+  }
+
+  if (!head.startsWith(named)) {
+    return refuse(
+      `the commit you named is not the head of this pull request.\n\n` +
+        `    you read     ${named}\n` +
+        `    would merge  ${head}\n\n` +
+        `  The head moved after you read it, so what would land is not what you\n` +
+        `  reviewed. Nothing else here objects to that, and that is the point: the\n` +
+        `  required check(s) are green against this head and the branch is level with\n` +
+        `  ${pr.baseRefName}, which is exactly the state a force-push leaves behind. A moved\n` +
+        `  head is an unreviewed pull request.\n\n` +
+        `  Read the diff again at the head above, then name that head:\n\n` +
+        `    gh pr diff ${pr.number}\n` +
+        `    node scripts/merge-pr.mjs ${pr.number} ${head.slice(0, 12)}\n\n` +
+        `  Copying the second line without running the first satisfies this script and\n` +
+        `  nothing else. See orchestrating.md, "A pull request you reviewed is not the\n` +
+        `  pull request you merge".`,
+    )
+  }
+
+  const notes = [`Head ${head}, which is the commit you named as reviewed.`]
   const warnings = []
 
   if (pr.mergeStateStatus === 'UNSTABLE') {
@@ -260,7 +353,7 @@ function readPr(prNumber) {
         prNumber,
         '--json',
         'number,title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,' +
-          'baseRefName,headRefName,statusCheckRollup',
+          'baseRefName,headRefName,headRefOid,statusCheckRollup',
       ]),
     )
   } catch (error) {
@@ -314,9 +407,15 @@ function otherOpenPulls() {
 async function main() {
   const prNumber = process.argv[2]
   if (!prNumber || !/^\d+$/.test(prNumber)) {
-    console.error('Usage: node scripts/merge-pr.mjs <pr-number>')
+    console.error('Usage: node scripts/merge-pr.mjs <pr-number> <sha-you-reviewed>')
     process.exit(1)
   }
+
+  // A missing sha is a value handed to the decision, not a usage error handled
+  // here, so the sentence explaining it sits beside the other refusals and is
+  // asserted by a test. A branch in main() that decides something is the defect
+  // ADR 0058 removed from this file.
+  const reviewed = process.argv[3] ?? null
 
   let pr = readPr(prNumber)
   let polls = 0
@@ -332,6 +431,7 @@ async function main() {
   const decision = decideMerge({
     pr,
     behind: commitsBehindBase(pr),
+    reviewed,
     waitedSeconds: (polls * MERGE_STATE_WAIT_MS) / 1000,
   })
 
