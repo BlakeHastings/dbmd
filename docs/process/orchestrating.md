@@ -1409,3 +1409,57 @@ designing it:
 of not running it is not a conflict, which git would catch. It is an agent given
 a false statement in writing, which it has no reason to doubt and every reason to
 act on.
+## I typed a commit sha I had not read, and the merge script knew
+
+`gh pr list` prints a seven-character head sha. `merge-pr.mjs` wants the whole
+forty, because naming the sha you reviewed is the one thing in the merge path
+that a person has to supply rather than a machine. So I extended the seven I had
+into forty by taking the rest from a different commit's sha, which is a thing I
+did without noticing I was doing it.
+
+**It refused, and it refused for the right reason rather than by luck.** The
+message is not "that is not a valid sha". It is that the head moved after I read
+it, that the checks are green against the real head, and that a moved head is an
+unreviewed pull request. Then it prints the two commands in order, `gh pr diff`
+before the merge, and says that copying the second without running the first
+satisfies the script and nothing else.
+
+**The lesson is not about shas.** It is that the guard was built for a
+force-push, caught a fabrication instead, and its message was right about both,
+because both are the same fact: the thing about to land is not the thing that was
+read. A guard written against the general fact catches the case nobody thought
+of. One written against "detect a truncated sha" would have said something
+useless here.
+
+What I did next is what the message said: read the diff at the real head, then
+name that head. That is not ceremony when the reason you are there is that you
+just made something up.
+
+## A PowerShell loop that kept the last file's contents
+
+A three-file loop normalising line endings. `[System.IO.File]::ReadAllText`
+resolves a relative path against .NET's own working directory, which
+`Set-Location` does not change, so two of the three reads threw. The loop kept
+going, `$t` still held the first file's text, and `WriteAllText` put
+`orchestrating.md` into `scripts/held.mjs` and `scripts/freeadr.mjs` in the main
+checkout.
+
+**Nothing failed.** The exit code was zero, the guards that ran afterwards passed
+because they ran in the worktree where the real files were, and the only reason I
+found it was a routine `git status` that showed two untracked files in a
+directory I had not meant to write to.
+
+Three things to take from it, in order of how much they cost:
+
+- **`git status` on the main checkout after any batch of file writes.** It is one
+  command and it is the only thing that noticed. The main checkout is supposed to
+  hold exactly one modification, the owner's `README.md`, so anything else in
+  that output is a mistake by definition, which makes it the cheapest check
+  available.
+- **Never write a loop that continues past a failed read.** A `$t` that survives
+  an exception is a variable holding the previous iteration's answer, and the
+  write after it is confident and wrong.
+- **In PowerShell, pass absolute paths to .NET methods**, or the file you
+  operate on is not the file you named. This is the seventh false step from
+  tooling in this session and the fourth from a shell rather than from the
+  product.
