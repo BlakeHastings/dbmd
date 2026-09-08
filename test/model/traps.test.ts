@@ -126,6 +126,29 @@ columns:
     ])
     expect(model.tables[0]?.complete).toBe(false)
   })
+
+  test('and a column with no name is not told to write a line that will not parse', async () => {
+    // The remedy above is a line you can copy because there is a name to put in
+    // it. Here there is not, and the fallback used to produce
+    // `columns: [this column]`, in a code span, which no file will parse. This
+    // state is only ever reached beside the `field-missing` on the line above
+    // it, so the sentence sends the reader to that instead.
+    const { diagnostics } = await withModel({
+      'tables/customers.md': `---
+kind: table
+table: customers
+columns:
+  - type: citext
+    unique: true
+---
+`,
+    })
+
+    expect(diagnostics.map((d) => `${d.severity} ${d.code}: ${d.message}`)).toEqual([
+      'error field-missing: `name` is required',
+      'error superseded-key: `unique` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an `indexes:` entry with `unique: true`, whose `columns:` names this column once it has a `name:`',
+    ])
+  })
 })
 
 describe('a SQL default survives as SQL', () => {

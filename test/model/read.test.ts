@@ -114,6 +114,19 @@ describe('absent, empty and unterminated frontmatter are three different things'
     ])
   })
 
+  test('frontmatter that is only comments is not called empty', async () => {
+    // The same code and a different sentence, because the file above has
+    // nothing between its delimiters and this one has a line of English. The
+    // consequence is the same and is the half the code is named for.
+    const { diagnostics } = await withModel({
+      'tables/orders.md': '---\n# nothing here yet, but I mean to write it\n---\n\nProse.\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md error frontmatter-empty: every line of the frontmatter is a comment, so the file declares nothing',
+    ])
+  })
+
   test('frontmatter that is a list rather than a mapping', async () => {
     const { diagnostics } = await withModel({ 'tables/orders.md': '---\n- orders\n---\n' })
 
@@ -147,6 +160,27 @@ describe('the directory decides the kind', () => {
     expect(model.tables).toEqual([])
   })
 
+  test('`_model.md` is told its name decides, and its keys are read anyway', async () => {
+    // The counterfactual above says "in a directory of notes", "the directory
+    // decides" and "this file is not loaded", and all three are true there.
+    // None of them is true here: there is no directory of models in the format,
+    // the name `_model.md` is what makes this the model file, and
+    // `readModelFile` discards `checkKind`'s answer and carries on. The last
+    // clause is asserted rather than described, because it is the one that was
+    // checked by reading the model back.
+    const { model, diagnostics } = await withModel({
+      '_model.md': '---\nkind: table\nname: shop\nengine: postgres\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      '_model.md:2 error kind-mismatch: `kind: table` in `_model.md`; the file name decides what this file is, so write `kind: model`, and the `name:` and `engine:` are read either way',
+    ])
+    expect(model.name).toBe('shop')
+    expect(model.engine).toBe('postgres')
+    // An error while reading the file, so the writer will not save over it.
+    expect(model.complete).toBe(false)
+  })
+
   test('a missing kind is a diagnostic, and the directory still decides', async () => {
     const { model, diagnostics } = await withModel({
       'tables/orders.md': '---\ntable: orders\n---\n',
@@ -156,6 +190,23 @@ describe('the directory decides the kind', () => {
       'tables/orders.md error kind-missing: no `kind:` key; the directory says this is a table',
     ])
     expect(model.tables[0]?.name).toBe('orders')
+  })
+
+  test('`_model.md` with no kind is told its name says so, not its directory', async () => {
+    // The counterfactual above is true in every word: `tables/orders.md` is in
+    // a directory of tables and that is what says it is a table. This file is
+    // at the model root, where there is no directory of models to say
+    // anything, so the same sentence would have been false here. It is the
+    // case `docs/format.md` ships as its worked example, under prose calling
+    // it the thing everybody gets wrong first.
+    const { model, diagnostics } = await withModel({
+      '_model.md': '---\nname: shop\nengine: postgres\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      '_model.md error kind-missing: no `kind:` key; the file name says this is the model file',
+    ])
+    expect(model.name).toBe('shop')
   })
 
   test('a directory that is not a kind is ignored, loudly', async () => {
@@ -978,6 +1029,20 @@ describe('group membership is declared by the member', () => {
     expect(diagnostics[0]?.message).toContain('a group has no coordinates')
     expect(model.groups[0]).not.toHaveProperty('layout')
   })
+
+  test('and a group does not offer `layout` as a key it knows', async () => {
+    // Two commands used to disagree: an unknown key on a group answered
+    // `known keys are color, kind, label, layout`, and writing the `layout` it
+    // named answered that a group has no coordinates. It was on the list only
+    // because the reader takes the key in order to refuse it.
+    const { diagnostics } = await withModel({
+      'groups/billing.md': '---\nkind: group\nlabel: Billing\nzz: 1\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'groups/billing.md:4 warning unknown-key: `zz` means nothing on a group; known keys are color, kind, label',
+    ])
+  })
 })
 
 describe('layout', () => {
@@ -1008,6 +1073,32 @@ describe('layout', () => {
     ])
     expect(model.tables[0]?.layout).toBeUndefined()
   })
+
+  test('a table layout does not offer back the keys it refuses', async () => {
+    // The two sentences used to contradict each other three lines apart: one
+    // said `w` and `h` do not belong on a table, and the other listed them as
+    // this layout's known keys, in the same run over the same file.
+    const { diagnostics } = await withModel({
+      'tables/orders.md':
+        '---\nkind: table\ntable: orders\nlayout: { x: 1, y: 2, w: 3, h: 4, z: 5 }\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      "tables/orders.md:4 warning unknown-key: `w` and `h` belong to a note, not to a table: a note's size is a design choice and a table's is a consequence of its columns (ADR 0005). They are ignored",
+      'tables/orders.md:4 warning unknown-key: `z` means nothing on a layout; known keys are x, y',
+    ])
+  })
+
+  test("and a note's layout still offers them, because there they are known", async () => {
+    const { model, diagnostics } = await withModel({
+      'notes/why.md': '---\nkind: note\nlayout: { x: 1, y: 2, w: 3, h: 4, z: 5 }\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'notes/why.md:3 warning unknown-key: `z` means nothing on a layout; known keys are h, w, x, y',
+    ])
+    expect(model.notes[0]?.layout).toEqual({ x: 1, y: 2, w: 3, h: 4 })
+  })
 })
 
 describe('keys that mean nothing', () => {
@@ -1029,13 +1120,19 @@ columns:
     ])
   })
 
-  test('two spellings of the same name are a duplicate, and the first wins', async () => {
+  test('two spellings of one name name both lines, and the second is the one thrown away', async () => {
     // YAML itself rejects a literally repeated key, and it rejects `on:` against
     // `"on":` as well, because both of those resolve to the same string. The
     // retired `null` key is the case it cannot see: plain `null` resolves to the
     // null value and `"null"` to a string, so the parser thinks they are two
     // keys and dbmd knows they are one. Both complaints below are worth having
     // and neither replaces the other.
+    //
+    // The message names both spellings because that is the only way to point at
+    // a line here: the two never look alike, and printing the collapsed name on
+    // its own described neither of them. It says the second is ignored, and not
+    // that the first is used, because on this column the first is deleted by
+    // `reject('null')` and the assertion under this one is what proves it.
     const { model, diagnostics } = await withModel({
       'tables/orders.md': `---
 kind: table
@@ -1051,9 +1148,56 @@ columns:
 
     expect(lines(diagnostics)).toEqual([
       'tables/orders.md:7 error superseded-key: `null` is now `nullable` and means the same thing: write `nullable: false`',
-      'tables/orders.md:8 error duplicate-key: `null` is given twice; the first one is used',
+      'tables/orders.md:8 error duplicate-key: the key `null` is written twice, as `null` and as `"null"`; the second is ignored',
     ])
     expect(model.tables[0]?.columns[0]?.nullable).toBeUndefined()
+  })
+
+  test('a name the format does not know reaches it the same way', async () => {
+    // The other live case, and the reason the message says nothing about what
+    // becomes of the first: here it is reported as unknown and dropped, so
+    // neither line reaches the column in this one either.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: uuid
+    1: false
+    "1": true
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:7 warning unknown-key: `1` means nothing on a column; known keys are default, name, nullable, on delete, on update, pk, ref, type',
+      'tables/orders.md:8 error duplicate-key: the key `1` is written twice, as `1` and as `"1"`; the second is ignored',
+    ])
+    expect(model.tables[0]?.columns[0]).toEqual({ name: 'id', type: 'uuid' })
+  })
+
+  test('the same key written the same way twice is a complaint of YAML, not of this', async () => {
+    // The input `docs/format.md` used to describe. It cannot reach
+    // `duplicate-key` at all, which is why that row now describes the input
+    // that can, and why there is no state left where "the first one is used"
+    // would have been the true sentence.
+    const { diagnostics } = await withModel({
+      'tables/orders.md': `---
+kind: table
+table: orders
+columns:
+  - name: id
+    type: uuid
+    nullable: false
+    nullable: true
+---
+`,
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:8 error frontmatter-invalid: Map keys must be unique',
+    ])
   })
 })
 

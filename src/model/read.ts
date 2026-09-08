@@ -647,11 +647,17 @@ function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
   }
 
   if (doc.contents === null) {
+    // Not the same state as `splitFrontmatter`'s `empty`, and it never was:
+    // that one is delimiters with nothing but whitespace between them, and it
+    // returns before this function is called. What is left to arrive here is
+    // frontmatter with characters in it that YAML made no node out of, which
+    // is comments. Saying "the frontmatter is empty" over a file with a
+    // sentence in it was the reader denying what the reader was looking at.
     push(ctx.out, {
       code: 'frontmatter-empty',
       severity: 'error',
       at: inFile(ctx.path),
-      message: 'the frontmatter is empty, so the file declares nothing',
+      message: 'every line of the frontmatter is a comment, so the file declares nothing',
     })
     return undefined
   }
@@ -669,29 +675,48 @@ function parseFrontmatter(ctx: Ctx): YAMLMap<unknown, unknown> | undefined {
 }
 
 /**
- * The directory already decided the kind. This checks what the file says
- * against it. A disagreement stops the file loading rather than reinterpreting
- * it as the directory's kind, because a table's keys read as a note produce a
- * page of secondary complaints that bury the one-line fix.
+ * The file's place already decided the kind. This checks what the file says
+ * against it. A disagreement stops an object file loading rather than
+ * reinterpreting it as the directory's kind, because a table's keys read as a
+ * note produce a page of secondary complaints that bury the one-line fix.
+ *
+ * **`_model.md` is the case every clause of the shared sentence is wrong
+ * about, so it gets a sentence of its own.** For `tables/orders.md` the file is
+ * in a directory of tables, the directory is what decides, and the caller
+ * throws the file away on `false`. None of the three holds one level up: there
+ * is no directory of models in the format, the *name* `_model.md` is what makes
+ * this the model file, and `readModelFile` discards this return and reads the
+ * `name:` and `engine:` anyway. The message says so rather than claiming a
+ * refusal that does not happen, and the error is still an error, so the model
+ * comes back `complete: false` and the writer leaves the file alone.
  */
 function checkKind(ctx: Ctx, fields: FieldSet, expected: ObjectKind | 'model'): boolean {
+  // What decides. `_model.md` is not in a directory of models, so the answer
+  // there is its name, and the sentence is otherwise the one a table gets.
+  const decides =
+    expected === 'model'
+      ? 'the file name says this is the model file'
+      : `the directory says this is a ${expected}`
   const field = fields.take('kind')
   if (field === undefined) {
     push(ctx.out, {
       code: 'kind-missing',
       severity: 'error',
       at: inFile(ctx.path),
-      message: `no \`kind:\` key; the directory says this is a ${expected}`,
+      message: `no \`kind:\` key; ${decides}`,
     })
     return true
   }
   const declared = stringValue(field.node)
   if (declared === expected) return true
+  const written = rawOf(ctx, field.node)
   report(
     ctx,
     'kind-mismatch',
     'error',
-    `\`kind: ${rawOf(ctx, field.node)}\` in a directory of ${expected}s; the directory decides, so this file is not loaded`,
+    expected === 'model'
+      ? `\`kind: ${written}\` in \`${MODEL_FILE}\`; the file name decides what this file is, so write \`kind: model\`, and the \`name:\` and \`engine:\` are read either way`
+      : `\`kind: ${written}\` in a directory of ${expected}s; the directory decides, so this file is not loaded`,
     field.valueOffset,
   )
   return false
@@ -801,9 +826,18 @@ function readColumn(ctx: Ctx, node: unknown): Column | undefined {
     'null',
     '`null` is now `nullable` and means the same thing: write `nullable: false`',
   )
+  // The remedy is writable YAML only when there is a name to put in it. Without
+  // one the fallback wrote `columns: [this column]`, in a code span, which is a
+  // line no file will parse; a nameless column is only ever reached beside the
+  // `field-missing` above, so the sentence sends the reader there instead. The
+  // named half is unchanged, because there the line can be copied.
+  const uniqueRemedy =
+    name === undefined
+      ? 'write it as an `indexes:` entry with `unique: true`, whose `columns:` names this column once it has a `name:`'
+      : `write it as an \`indexes:\` entry with \`columns: [${name}]\` and \`unique: true\``
   fields.reject(
     'unique',
-    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; write it as an \`indexes:\` entry with \`columns: [${name ?? 'this column'}]\` and \`unique: true\``,
+    `\`unique\` is declared on an index and not on a column, because a unique constraint has a name and a column has nowhere to put one; ${uniqueRemedy}`,
   )
   const defaultField = fields.take('default')
   const columnDefault =
@@ -1020,7 +1054,11 @@ function readNote(ctx: Ctx, fields: FieldSet, path: string, name: string, body: 
 function readGroup(ctx: Ctx, fields: FieldSet, path: string, name: string, body: string): Group {
   const label = takeString(ctx, fields, 'label')
   const color = takeString(ctx, fields, 'color')
-  const layoutField = fields.take('layout')
+  // Dropped rather than taken, because a group never has one: taking it put
+  // `layout` on the list of known keys `reportUnknown` offers below, so a
+  // group with an unknown key was told to write the one key the next run
+  // refuses.
+  const layoutField = fields.drop('layout')
   if (layoutField !== undefined) {
     report(
       ctx,
@@ -1042,7 +1080,13 @@ function readGroup(ctx: Ctx, fields: FieldSet, path: string, name: string, body:
   }
 }
 
-/** `allowSize` is false for a table: `w` and `h` belong to a note (ADR 0005). */
+/**
+ * `allowSize` is false for a table: `w` and `h` belong to a note (ADR 0005).
+ *
+ * Where they are not allowed they are not read either, so `w: "big"` on a
+ * table is the one warning that says the key does not belong here rather than
+ * that warning and a second one about the type of a value nothing will use.
+ */
 function takeLayout(ctx: Ctx, fields: FieldSet, allowSize: boolean): Layout | undefined {
   const field = fields.take('layout')
   if (field === undefined) return undefined
@@ -1059,24 +1103,34 @@ function takeLayout(ctx: Ctx, fields: FieldSet, allowSize: boolean): Layout | un
   const inner = fieldsOf(ctx, field.node)
   const x = requiredNumber(ctx, inner, 'x', field.valueOffset)
   const y = requiredNumber(ctx, inner, 'y', field.valueOffset)
-  const w = takeNumber(ctx, inner, 'w')
-  const h = takeNumber(ctx, inner, 'h')
-  if (!allowSize && (w !== undefined || h !== undefined)) {
-    report(
-      ctx,
-      'unknown-key',
-      'warning',
-      "`w` and `h` belong to a note, not to a table: a note's size is a design choice and a table's is a consequence of its columns (ADR 0005). They are ignored",
-      field.valueOffset,
-    )
+  // Taken where they are allowed and dropped where they are not, rather than
+  // taken and then argued with. A table's layout used to answer `z` with
+  // `known keys are h, w, x, y` three lines under the warning below, which is
+  // the reader offering back, in one run, the two keys it had just refused.
+  const w = allowSize ? takeNumber(ctx, inner, 'w') : undefined
+  const h = allowSize ? takeNumber(ctx, inner, 'h') : undefined
+  if (!allowSize) {
+    // Both dropped, then the pair reported once. Stopping at the first one
+    // found would leave the other on the list `reportUnknown` offers, which is
+    // the whole of what this is about.
+    const size = [inner.drop('w'), inner.drop('h')]
+    if (size.some((dropped) => dropped !== undefined)) {
+      report(
+        ctx,
+        'unknown-key',
+        'warning',
+        "`w` and `h` belong to a note, not to a table: a note's size is a design choice and a table's is a consequence of its columns (ADR 0005). They are ignored",
+        field.valueOffset,
+      )
+    }
   }
   inner.reportUnknown('a layout')
   if (x === undefined || y === undefined) return undefined
   return {
     x,
     y,
-    ...(allowSize && w !== undefined ? { w } : {}),
-    ...(allowSize && h !== undefined ? { h } : {}),
+    ...(w === undefined ? {} : { w }),
+    ...(h === undefined ? {} : { h }),
   }
 }
 
@@ -1095,10 +1149,29 @@ interface Field {
 interface FieldSet {
   take(key: string): Field | undefined
   /**
+   * A key this file is not allowed to have, out of the mapping and out of the
+   * list of known keys `reportUnknown` offers, with the caller left to say
+   * what is wrong with it.
+   *
+   * `take` is the wrong tool for one of these and the difference is the whole
+   * point: `take` means "this key belongs here", and it is what builds the
+   * list. A key that is taken and then argued with is offered back as known a
+   * few lines later, in the same run, by the same reader, which is the
+   * contradiction this exists to prevent. A table's `layout` answered `z` with
+   * `known keys are h, w, x, y` three lines under a warning that `w` and `h`
+   * belong to a note, and a group offered `layout` as known and then refused
+   * it when it was written.
+   *
+   * The message is the caller's because the answer differs: `null:` has a
+   * replacement to name, a table's `w` has a note to point at, and a group's
+   * `layout` has a reason it can never have one.
+   */
+  drop(key: string): Field | undefined
+  /**
    * A key the format understands well enough to say what to write instead.
    *
-   * It is taken out of the mapping without joining the list of known keys that
-   * `reportUnknown` offers, because the answer to `null:` is `nullable:` and
+   * `drop` plus the one code that fits, so the key is out of the list of known
+   * keys for `drop`'s reason: the answer to `null:` is `nullable:`, and
    * offering `null` back would be worse than the generic warning it replaces.
    */
   reject(key: string, message: string): void
@@ -1108,6 +1181,18 @@ interface FieldSet {
 
 function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
   const entries = new Map<string, Field>()
+  /**
+   * How each name was first written, for the message below.
+   *
+   * The two lines never look alike, which is the whole of why this code is
+   * reachable: YAML refuses a key it sees twice before dbmd is asked, so the
+   * only way here is two keys YAML reads as different that `keyText` collapses
+   * onto one name, and the difference is in the characters the author typed.
+   * Printing the name alone told somebody who had written `null:` and
+   * `"null":` that `null` was given twice, which is true and does not point at
+   * either line.
+   */
+  const written = new Map<string, string>()
   for (const pair of map.items) {
     const key = keyText(ctx, pair.key)
     if (key === undefined) {
@@ -1115,15 +1200,23 @@ function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
       continue
     }
     if (entries.has(key)) {
+      // What happens to the first one is not this message's to say, and used to
+      // be said anyway. On a column, `null:` beside `"null":` reaches
+      // `reject('null')`, which deletes it, so neither value gets near the
+      // column and "the first one is used" was false. Every other name that can
+      // arrive here is one the format does not know, where the run's next line
+      // is an `unknown-key` warning and nothing is used either. What is true in
+      // every case is that the second one is thrown away.
       report(
         ctx,
         'duplicate-key',
         'error',
-        `\`${key}\` is given twice; the first one is used`,
+        `the key \`${key}\` is written twice, as \`${written.get(key) ?? key}\` and as \`${rawOf(ctx, pair.key)}\`; the second is ignored`,
         offsetOf(pair.key),
       )
       continue
     }
+    written.set(key, rawOf(ctx, pair.key))
     entries.set(key, {
       node: pair.value,
       keyOffset: offsetOf(pair.key),
@@ -1132,15 +1225,21 @@ function fieldsOf(ctx: Ctx, map: YAMLMap<unknown, unknown>): FieldSet {
   }
 
   const taken = new Set<string>()
+  const drop = (key: string): Field | undefined => {
+    const field = entries.get(key)
+    if (field === undefined) return undefined
+    entries.delete(key)
+    return field
+  }
   return {
     take(key) {
       taken.add(key)
       return entries.get(key)
     },
+    drop,
     reject(key, message) {
-      const field = entries.get(key)
+      const field = drop(key)
       if (field === undefined) return
-      entries.delete(key)
       report(ctx, 'superseded-key', 'error', message, field.keyOffset)
     },
     reportUnknown(what) {

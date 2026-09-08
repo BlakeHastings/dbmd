@@ -103,7 +103,14 @@ export type ModelDiagnosticCode =
   | 'frontmatter-absent'
   /** `---` on the first line and no closing `---` anywhere after it. */
   | 'frontmatter-unterminated'
-  /** The delimiters are there with nothing but whitespace between them. */
+  /**
+   * The delimiters are there and nothing between them declares anything: only
+   * whitespace, or only comments.
+   *
+   * Two states and two messages, because a file whose frontmatter holds a
+   * sentence is not one a reader will accept being called empty. What they
+   * share is the consequence, which is the half the code is named for.
+   */
   | 'frontmatter-empty'
   /** The YAML parser rejected the frontmatter. */
   | 'frontmatter-invalid'
@@ -111,7 +118,13 @@ export type ModelDiagnosticCode =
   | 'frontmatter-not-a-map'
   /** Two keys in one mapping resolve to the same name. */
   | 'duplicate-key'
-  /** A `kind:` that disagrees with the directory the file is in. */
+  /**
+   * A `kind:` that disagrees with the file's place: the directory an object
+   * file is in, or the name `_model.md`.
+   *
+   * The object file is not loaded and `_model.md` is, which is the one place
+   * the two halves of this code differ and why the message is not shared.
+   */
   | 'kind-mismatch'
   /** No `kind:` key at all. */
   | 'kind-missing'
