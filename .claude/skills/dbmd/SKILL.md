@@ -116,11 +116,8 @@ matters are the ones full of prose. (Grep is the right tool for the prose
 itself, which is a different question and is under
 [Rename a table](#rename-a-table).)
 
-```bash
-dbmd refs customers shop
-```
-
-```
+```dbmd-run
+$ dbmd refs customers shop
 3 refs point at customers in shop:
 
   addresses.customer_id     -> customers.id  tables/addresses.md      required  on delete: restrict
@@ -260,7 +257,7 @@ Short enough to paste, so that rule 3 costs nothing. This is the canonical
 writer, the same one the studio and `dbmd import` write through, pointed at
 exactly the files you touched.
 
-```javascript
+```javascript dbmd-script
 // canonicalise.mjs <dbmd checkout> <model dir> <path> [path...]
 // Paths are relative to the model dir, slash-separated: tables/orders.md
 import { pathToFileURL } from 'node:url'
@@ -279,20 +276,21 @@ try {
 }
 ```
 
-```
+```dbmd-script-out
 { "written": ["tables/products.md"], "skipped": [] }
 ```
 
 The `catch` is there because a write can be refused half way and the throw is
 the only thing that knows what landed. Measured, with the second of two files
-given the Windows read-only attribute, absolute paths elided:
+given the Windows read-only attribute, absolute paths and the temporary file's
+own random name elided:
 
-```
+```dbmd-script-out
 {
   "written": ["tables/accounts.md"],
   "skipped": [],
   "refused": "tables/api_keys.md",
-  "message": "EPERM: operation not permitted, rename '...\\.api_keys.md.608ce92a-....tmp' -> '...\\api_keys.md'"
+  "message": "EPERM: operation not permitted, rename '...\\.api_keys.md....tmp' -> '...\\api_keys.md'"
 }
 ```
 
