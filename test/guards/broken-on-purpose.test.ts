@@ -59,9 +59,22 @@
  * and nothing had ever proved it detects. Both are covered below now. ADR 0058.
  *
  * What is still not covered in either is the shell around the decision: the
- * `gh` invocations, the argument parsing and the exit codes. Reaching those
- * needs the network and a pull request in a particular state, which is the wall
- * ADR 0034 described. It now stands in front of a great deal less.
+ * `gh` invocations and the exit codes. Reaching those needs the network and a
+ * pull request in a particular state, which is the wall ADR 0034 described. It
+ * now stands in front of a great deal less.
+ *
+ * `scripts/report-merge-aftermath.mjs` was the third one, and it was missing
+ * from this list for the length of a day for the reason the paragraph above
+ * describes: ADR 0057 argued it was untestable by citing the provenance audit
+ * as the precedent, and ADR 0058 stopped that being true the next morning
+ * without coming back here. It is covered below now. ADR 0082.
+ *
+ * The one thing in it that is deliberately not exercised is the POST that
+ * writes the comment. That is not the same kind of gap: asking a decision
+ * function a question costs nothing, while firing the delivering half seeds a
+ * real pull request with a test alarm about an old run, which is the cry-wolf
+ * failure the whole design is built to avoid. ADR 0057 decided that and it
+ * still stands.
  *
  * ONE THING THIS DIRECTORY IS EXEMPT FROM
  * `scripts/check-commands.mjs` does not scan `test/guards/`, and this file is
@@ -72,7 +85,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process'
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -2310,5 +2323,701 @@ describe('the provenance audit, broken on purpose', () => {
     // Exempt is not the same as asked about and cleared, so it is not listed
     // among the commits this run stands behind.
     expect(said).not.toContain(ANCIENT)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// report-merge-aftermath.mjs: a merge that left `main` red, and the silences
+// that are as load bearing as the report
+// ---------------------------------------------------------------------------
+
+interface WorkflowFile {
+  readonly file: string
+  readonly text: string
+}
+
+interface Watched {
+  readonly file: string
+  readonly name: string
+}
+
+interface Verdict {
+  readonly kind: 'green' | 'red' | 'running' | 'unverified'
+  readonly word: string
+}
+
+interface RunFacts {
+  readonly id: number
+  readonly name: string
+  readonly status: string
+  readonly conclusion: string | null
+  readonly head_branch: string
+  readonly head_sha: string
+  readonly head_commit: { readonly timestamp: string } | null
+  readonly event: string
+  readonly run_attempt: number
+  readonly html_url: string
+  readonly updated_at: string
+}
+
+interface Finding {
+  readonly report: boolean
+  readonly verdict?: Verdict
+  readonly line: string
+}
+
+interface JobFacts {
+  readonly name: string
+  readonly conclusion: string | null
+}
+
+interface Asked {
+  readonly mode?: 'run' | 'commit'
+  readonly runId?: string
+  readonly sha?: string
+  readonly post?: boolean
+  readonly error?: string
+}
+
+const aftermath = await guardModule<{
+  GREEN: ReadonlySet<string>
+  RED: ReadonlySet<string>
+  watchedIn: (files: readonly WorkflowFile[], defaultBranch?: string) => Watched[]
+  nothingWatchedReport: (defaultBranch?: string) => string
+  verdictOf: (run: Pick<RunFacts, 'status' | 'conclusion'>) => Verdict
+  failedJobNames: (jobs: readonly JobFacts[] | undefined) => string[]
+  marker: (run: Pick<RunFacts, 'id' | 'run_attempt'>) => string
+  commentBody: (
+    run: RunFacts,
+    verdict: Verdict,
+    jobs: readonly string[],
+    defaultBranch?: string,
+  ) => string
+  runFinding: (run: RunFacts, defaultBranch?: string) => Finding
+  landedPullOf: (
+    pulls: readonly AssociatedPull[] | null,
+    defaultBranch?: string,
+  ) => AssociatedPull | null
+  findLandedPull: (
+    sha: string,
+    io: {
+      pullsFor: (sha: string) => Promise<readonly AssociatedPull[] | null>
+      wait?: () => Promise<void>
+      attempts?: number
+      defaultBranch?: string
+    },
+  ) => Promise<AssociatedPull | null>
+  saidAlready: (comments: unknown, run: Pick<RunFacts, 'id' | 'run_attempt'>) => boolean
+  summariseRuns: (entries: readonly { workflow: Watched; runs: readonly RunFacts[] }[]) => {
+    lines: string[]
+    red: number
+  }
+  floorReport: (
+    counts: readonly { name: string; failed: number }[],
+    defaultBranch?: string,
+  ) => string
+  parseArgs: (argv: readonly string[]) => Asked
+}>('report-merge-aftermath.mjs')
+
+describe('which workflows the aftermath watches, broken on purpose', () => {
+  const workflow = (file: string, text: string): WorkflowFile => ({ file, text })
+
+  const names = (files: readonly WorkflowFile[]) =>
+    aftermath.watchedIn(files).map((entry) => entry.name)
+
+  test('a push filtered to the default branch is watched, in the inline form', () => {
+    expect(
+      names([workflow('check.yml', 'name: check\n\non:\n  push:\n    branches: [main]\n')]),
+    ).toEqual(['check'])
+  })
+
+  test('and in the list form, which is the same fact written down differently', () => {
+    expect(
+      names([workflow('model.yml', 'name: model\n\non:\n  push:\n    branches:\n      - main\n')]),
+    ).toEqual(['model'])
+  })
+
+  test('a push with no branch filter is watched, because it runs on every branch', () => {
+    // The generous direction, on purpose. Being wrong towards watching too much
+    // costs a line of output; being wrong the other way is the defect this
+    // whole script exists to close.
+    expect(names([workflow('everything.yml', 'name: everything\n\non:\n  push:\n')])).toEqual([
+      'everything',
+    ])
+  })
+
+  test('a branches line this cannot read is watched rather than dropped', () => {
+    // The claim ADR 0057 makes and the first thing this function was ever
+    // asked. It was false: the list form fell through to watching because an
+    // unreadable list yields no items, but the inline form was compared as
+    // text, and `*the-usual` does not contain "main", so the workflow was
+    // dropped in silence. That is the defect this whole script exists to close,
+    // wearing the parse's clothes. ADR 0082 is the fix.
+    expect(
+      names([workflow('odd.yml', 'name: odd\n\non:\n  push:\n    branches: *the-usual\n')]),
+    ).toEqual(['odd'])
+    expect(
+      names([
+        workflow('gen.yml', 'name: gen\n\non:\n  push:\n    branches: [ "${{ env.BRANCH }}" ]\n'),
+      ]),
+    ).toEqual(['gen'])
+    // And the list form, which honoured the claim before and must keep doing so.
+    expect(
+      names([
+        workflow('anch.yml', 'name: anch\n\non:\n  push:\n    branches:\n      *elsewhere\n'),
+      ]),
+    ).toEqual(['anch'])
+  })
+
+  test('a push aimed only somewhere else is not watched', () => {
+    expect(
+      names([
+        workflow('docs.yml', 'name: docs\n\non:\n  push:\n    branches: [gh-pages]\n'),
+        workflow(
+          'legacy.yml',
+          'name: legacy\n\non:\n  push:\n    branches:\n      - "release/1.x"\n',
+        ),
+      ]),
+    ).toEqual([])
+  })
+
+  test('a push on tags and not branches is a release, not a merge', () => {
+    // release.yml is the real instance. Watching it would report a red release
+    // as a red merge and send the comment to whatever pull request the tagged
+    // commit came through, which is a different event and a wrong sentence.
+    expect(
+      names([workflow('release.yml', 'name: release\n\non:\n  push:\n    tags:\n      - "v*"\n')]),
+    ).toEqual([])
+  })
+
+  test('a workflow with no push trigger at all is not watched', () => {
+    // aftermath.yml itself, which runs on workflow_run. A parse that read this
+    // as a push would have the reporter watching the reporter.
+    expect(
+      names([
+        workflow(
+          'aftermath.yml',
+          'name: aftermath\n\non:\n  workflow_run:\n    workflows: [check]\n    types: [completed]\n',
+        ),
+      ]),
+    ).toEqual([])
+  })
+
+  test('a pull_request trigger beside a push is not what is read', () => {
+    // The `on:` block holds both and only the push half decides. A parse that
+    // took the first `branches:` it found would read the pull_request one.
+    expect(
+      names([
+        workflow(
+          'check.yml',
+          'name: check\n\non:\n  pull_request:\n    branches: [gh-pages]\n  push:\n    branches: [main]\n\njobs:\n  verify:\n',
+        ),
+      ]),
+    ).toEqual(['check'])
+  })
+
+  test('a workflow with no name is listed by its file, so it is still watched', () => {
+    // A watcher that dropped a workflow for lacking a cosmetic field would go
+    // quiet for a reason that has nothing to do with what it watches.
+    expect(names([workflow('unnamed.yml', 'on:\n  push:\n    branches: [main]\n')])).toEqual([
+      'unnamed.yml',
+    ])
+  })
+
+  test('the default branch is a parameter, not the word main', () => {
+    const files = [workflow('ship.yml', 'name: ship\n\non:\n  push:\n    branches: [trunk]\n')]
+
+    expect(aftermath.watchedIn(files, 'trunk').map((entry) => entry.name)).toEqual(['ship'])
+    expect(aftermath.watchedIn(files, 'main')).toEqual([])
+  })
+
+  test('watching nothing is a refusal with a reason, not an empty report', () => {
+    // The defect this script exists to close, one level up. Whoever reads this
+    // has to be told it might be the parse rather than the repository.
+    expect(aftermath.watchedIn([])).toEqual([])
+    const said = aftermath.nothingWatchedReport()
+    expect(said).toContain('No workflow in .github/workflows/ appears to run on a push to main')
+    expect(said).toContain('a watcher that silently watches nothing is the defect')
+  })
+
+  test("this repository's own workflows, which a fixture cannot prove", async () => {
+    // ADR 0057's third revisit condition is "a fourth workflow starts running
+    // on main and is not watched". Everything above is the parse against YAML
+    // somebody wrote for the test; this is the parse against the files it will
+    // actually be handed, which is the only version of the question that can go
+    // wrong quietly. Containment rather than equality: a fourth workflow that
+    // is correctly watched must not turn this red.
+    const dir = join(ROOT, '.github', 'workflows')
+    const files = await Promise.all(
+      (await readdir(dir))
+        .filter((file) => file.endsWith('.yml') || file.endsWith('.yaml'))
+        .map(async (file) => ({ file, text: await readFile(join(dir, file), 'utf8') })),
+    )
+
+    const watched = aftermath.watchedIn(files).map((entry) => entry.name)
+    expect(watched).toContain('check')
+    expect(watched).toContain('model')
+    expect(watched).toContain('provenance')
+    expect(watched).not.toContain('aftermath')
+    expect(watched).not.toContain('release')
+  })
+})
+
+describe('the aftermath verdict, broken on purpose', () => {
+  const finished = (conclusion: string | null) =>
+    aftermath.verdictOf({ status: 'completed', conclusion })
+
+  test('a cancelled run is no verdict rather than fine', () => {
+    // The one usually got wrong, and the reason there are three answers rather
+    // than two. A cancelled run is a commit nobody verified, and calling it
+    // green is how an unverified main becomes invisible.
+    expect(finished('cancelled')).toEqual({ kind: 'unverified', word: 'cancelled' })
+    expect(aftermath.GREEN.has('cancelled')).toBe(false)
+    expect(aftermath.RED.has('cancelled')).toBe(false)
+  })
+
+  test('a conclusion nobody has seen before is no verdict, not silence', () => {
+    // GitHub adding a word is the failure mode a two-way sort cannot survive.
+    expect(finished('action_required')).toEqual({ kind: 'unverified', word: 'action_required' })
+    expect(finished(null)).toEqual({ kind: 'unverified', word: 'no conclusion' })
+  })
+
+  test('success, skipped and neutral are the whole of green', () => {
+    for (const word of ['success', 'skipped', 'neutral']) {
+      expect(finished(word).kind).toBe('green')
+    }
+  })
+
+  test('failure, timed out and startup failure are the whole of red', () => {
+    for (const word of ['failure', 'timed_out', 'startup_failure']) {
+      expect(finished(word).kind).toBe('red')
+    }
+  })
+
+  test('a run still going has no verdict to report, and says which state it is in', () => {
+    expect(aftermath.verdictOf({ status: 'in_progress', conclusion: null })).toEqual({
+      kind: 'running',
+      word: 'in_progress',
+    })
+    expect(aftermath.verdictOf({ status: 'queued', conclusion: null }).kind).toBe('running')
+  })
+
+  test('only a red job is named, so the comment does not blame a cancelled one', () => {
+    expect(
+      aftermath.failedJobNames([
+        { name: 'verify (22)', conclusion: 'success' },
+        { name: 'verify (24)', conclusion: 'failure' },
+        { name: 'check', conclusion: 'timed_out' },
+        { name: 'model', conclusion: 'cancelled' },
+      ]),
+    ).toEqual(['verify (24)', 'check'])
+  })
+
+  test('jobs the API would not answer for are no jobs, not a crash', () => {
+    // The listing is fetched soft on purpose: a comment naming the failed jobs
+    // beats one that does not, and a comment beats no comment at all.
+    expect(aftermath.failedJobNames(undefined)).toEqual([])
+  })
+})
+
+describe('what the aftermath reports and what it stays quiet about, broken on purpose', () => {
+  /** The seventh failure, as the API answered for it on 2026-09-07. */
+  function run(overrides: Partial<RunFacts> = {}): RunFacts {
+    return {
+      id: 34152213762,
+      name: 'check',
+      status: 'completed',
+      conclusion: 'failure',
+      head_branch: 'main',
+      head_sha: '85cac58c1d2e3f405162738495a6b7c8d9e0f102',
+      head_commit: { timestamp: '2026-09-07T18:34:00Z' },
+      event: 'push',
+      run_attempt: 1,
+      html_url: 'https://github.com/owner/repo/actions/runs/34152213762',
+      updated_at: '2026-09-07T18:35:00Z',
+      ...overrides,
+    }
+  }
+
+  test('a red run on the default branch is the finding, and the log line names it', () => {
+    const finding = aftermath.runFinding(run())
+
+    expect(finding.report).toBe(true)
+    expect(finding.verdict?.kind).toBe('red')
+    expect(finding.line).toContain('check finished failure on 85cac58c')
+    expect(finding.line).toContain('https://github.com/owner/repo/actions/runs/34152213762')
+  })
+
+  test('a run on a feature branch is not reported, and says whose branch it was', () => {
+    // A red run on a branch is already in front of its author. Commenting on it
+    // is the second notification that teaches somebody to close the first.
+    const finding = aftermath.runFinding(run({ head_branch: 'tooling/a-branch' }))
+
+    expect(finding.report).toBe(false)
+    expect(finding.line).toContain('is on tooling/a-branch, not main')
+  })
+
+  test('a run the merge did not start is not reported', () => {
+    // workflow_dispatch and schedule reach main too. Neither is a merge, and a
+    // comment about one lands on a pull request that did not cause it.
+    const finding = aftermath.runFinding(run({ event: 'workflow_dispatch' }))
+
+    expect(finding.report).toBe(false)
+    expect(finding.line).toContain('triggered by workflow_dispatch rather than a push')
+  })
+
+  test('a run that has not finished is not a red one', () => {
+    const finding = aftermath.runFinding(run({ status: 'in_progress', conclusion: null }))
+
+    expect(finding.report).toBe(false)
+    expect(finding.line).toContain('No verdict yet, so nothing to report')
+  })
+
+  test('a green run says main is fine and writes nothing', () => {
+    const finding = aftermath.runFinding(run({ conclusion: 'success' }))
+
+    expect(finding.report).toBe(false)
+    expect(finding.line).toContain('check finished success on 85cac58c. main is fine.')
+  })
+
+  test('a cancelled run is reported, because nothing verified that commit', () => {
+    // The case a two-way sort loses. It is not red, and reporting it as fine
+    // would be the only silence here that hides something.
+    const finding = aftermath.runFinding(run({ conclusion: 'cancelled' }))
+
+    expect(finding.report).toBe(true)
+    expect(finding.verdict?.kind).toBe('unverified')
+  })
+
+  test('the branch is a parameter, so a repository landing on trunk is not misread', () => {
+    expect(aftermath.runFinding(run(), 'trunk').report).toBe(false)
+    expect(aftermath.runFinding(run({ head_branch: 'trunk' }), 'trunk').report).toBe(true)
+  })
+})
+
+describe('the comment a red merge earns, broken on purpose', () => {
+  const RUN: RunFacts = {
+    id: 34152213762,
+    name: 'check',
+    status: 'completed',
+    conclusion: 'failure',
+    head_branch: 'main',
+    head_sha: '85cac58c1d2e3f405162738495a6b7c8d9e0f102',
+    head_commit: { timestamp: '2026-09-07T18:34:00Z' },
+    event: 'push',
+    run_attempt: 1,
+    html_url: 'https://github.com/owner/repo/actions/runs/34152213762',
+    updated_at: '2026-09-07T18:35:00Z',
+  }
+
+  const FAILED: Verdict = { kind: 'red', word: 'failure' }
+
+  test('it opens with the whole finding, because it is read in an email', () => {
+    const body = aftermath.commentBody(RUN, FAILED, ['verify (24)', 'check'])
+
+    expect(body).toContain('**`main` went red when this merged.**')
+    expect(body).toContain('`check` failed on `85cac58c`, the commit this pull request put on')
+    // The address on its own line, so it is clickable in a notification.
+    expect(body).toContain('https://github.com/owner/repo/actions/runs/34152213762 (attempt 1)')
+    expect(body).toContain('The job that failed: `verify (24)`, `check`.')
+  })
+
+  test('it says how long after the merge main went red, in whole minutes', () => {
+    // Measured against the real run: one minute. The number is what tells a
+    // reader this was the merge rather than something that drifted in later.
+    expect(aftermath.commentBody(RUN, FAILED, [])).toContain(
+      'That is 1 minute after the commit landed.',
+    )
+    expect(
+      aftermath.commentBody({ ...RUN, updated_at: '2026-09-07T18:52:00Z' }, FAILED, []),
+    ).toContain('That is 18 minutes after the commit landed.')
+  })
+
+  test('a timestamp the API did not answer with is left out rather than guessed', () => {
+    const body = aftermath.commentBody({ ...RUN, head_commit: null }, FAILED, [])
+
+    expect(body).not.toContain('after the commit landed')
+    // And the rest of the comment is still the whole finding.
+    expect(body).toContain('**`main` went red when this merged.**')
+  })
+
+  test('it says nothing is blocked, because the remedy is a decision', () => {
+    // The sentence that stops this being read as a revert or a rollback. What
+    // is wanted is that somebody opens the run, and saying so is the comment's
+    // entire job.
+    const body = aftermath.commentBody(RUN, FAILED, [])
+
+    expect(body).toContain('Nothing is blocked and nothing has been reverted')
+    expect(body).toContain('the next pull request built on it inherits that')
+    // And where it came from, so a reader can go and turn it off.
+    expect(body).toContain('Posted by `scripts/report-merge-aftermath.mjs`.')
+  })
+
+  test('a no-verdict run gets a different sentence, not the red one', () => {
+    // "went red" about a cancelled run is a false statement, and a signal that
+    // says one false thing is one people stop reading.
+    const body = aftermath.commentBody(RUN, { kind: 'unverified', word: 'cancelled' }, [])
+
+    expect(body).toContain('**`main` reached no verdict when this merged.**')
+    expect(body).toContain('finished `cancelled`')
+    expect(body).toContain('so nothing has verified it')
+    expect(body).not.toContain('went red when this merged')
+  })
+
+  test('no failed job is named when none was answered for, rather than an empty list', () => {
+    expect(aftermath.commentBody(RUN, FAILED, [])).not.toContain('The job that failed')
+  })
+
+  test('the marker names the run and the attempt, and the body carries it', () => {
+    // The duplicate scan is a substring match on this, so its shape is the
+    // behaviour rather than a detail.
+    expect(aftermath.marker(RUN)).toBe('<!-- merge-aftermath: run 34152213762 attempt 1 -->')
+    expect(aftermath.commentBody(RUN, FAILED, [])).toContain(aftermath.marker(RUN))
+    expect(aftermath.marker({ ...RUN, run_attempt: 2 })).not.toBe(aftermath.marker(RUN))
+  })
+
+  test('the same attempt is not reported twice, and a second failure is news', () => {
+    const comments = [
+      { body: 'unrelated chatter' },
+      { body: `${aftermath.marker(RUN)}\n**\`main\` went red when this merged.**` },
+    ]
+
+    expect(aftermath.saidAlready(comments, RUN)).toBe(true)
+    // A re-run that fails again is a different attempt and gets its own
+    // comment. Collapsing the two would hide the second failure entirely.
+    expect(aftermath.saidAlready(comments, { ...RUN, run_attempt: 2 })).toBe(false)
+    expect(aftermath.saidAlready([], RUN)).toBe(false)
+  })
+
+  test('a comment listing that could not be read does not silence the report', () => {
+    // The listing is fetched soft. Answering "already said" on a failure to ask
+    // would swallow a red main on the day the API is unhappy, which is the one
+    // direction this must not fail in.
+    expect(aftermath.saidAlready(null, RUN)).toBe(false)
+    expect(aftermath.saidAlready([{}], RUN)).toBe(false)
+  })
+})
+
+describe('the pull request an aftermath comment goes to, broken on purpose', () => {
+  const SHA = '85cac58c1d2e3f405162738495a6b7c8d9e0f102'
+
+  const merged: AssociatedPull = {
+    number: 137,
+    state: 'MERGED',
+    merged_at: '2026-09-07T18:34:00Z',
+    base: { ref: 'main' },
+  }
+
+  test('the rule is merged, and into the default branch', () => {
+    // The same narrowing check-main-provenance.mjs makes. An open pull request
+    // associates a commit without landing it, so it is not the channel the
+    // author is subscribed to for this merge.
+    const pulls: readonly AssociatedPull[] = [
+      { number: 138, state: 'OPEN', merged_at: null, base: { ref: 'main' } },
+      { number: 139, state: 'MERGED', merged_at: '2026-09-07T09:00:00Z', base: { ref: 'other' } },
+      merged,
+    ]
+
+    expect(aftermath.landedPullOf(pulls)?.number).toBe(137)
+    expect(aftermath.landedPullOf(pulls, 'other')?.number).toBe(139)
+    expect(aftermath.landedPullOf([])).toBe(null)
+    expect(aftermath.landedPullOf(null)).toBe(null)
+  })
+
+  test('an association that arrives late is waited for rather than reported as absent', async () => {
+    // The API lists the pull request a moment after the merge, not always
+    // during it, and this script runs seconds after one. Without the loop the
+    // comment would say it could not find the pull request that plainly exists.
+    const answers: (readonly AssociatedPull[])[] = [[], [], [merged]]
+    let asked = 0
+    let waited = 0
+
+    const found = await aftermath.findLandedPull(SHA, {
+      pullsFor: async () => answers[Math.min(asked++, answers.length - 1)] ?? [],
+      wait: async () => {
+        waited += 1
+      },
+      attempts: 5,
+    })
+
+    expect(found?.number).toBe(137)
+    expect(asked).toBe(3)
+    // Waited between attempts and not after the answer arrived.
+    expect(waited).toBe(2)
+  })
+
+  test('a commit that never gets one is an answer after the waiting, not before it', async () => {
+    // The direct-push case. It is a real finding and provenance is already red
+    // about it, so this reports it in the log rather than treating it as an
+    // error, but only once every attempt has been spent.
+    let asked = 0
+
+    const found = await aftermath.findLandedPull(SHA, {
+      pullsFor: async () => {
+        asked += 1
+        return []
+      },
+      attempts: 5,
+    })
+
+    expect(found).toBe(null)
+    expect(asked).toBe(5)
+  })
+
+  test('an API that answered nothing at all is not an association', async () => {
+    // `soft: true` hands back null rather than exiting. Reading that as a pull
+    // request would throw inside the delivering half.
+    const found = await aftermath.findLandedPull(SHA, {
+      pullsFor: async () => null,
+      attempts: 2,
+    })
+
+    expect(found).toBe(null)
+  })
+
+  test('an open pull request does not stop the waiting, because it did not land it', async () => {
+    // The case that makes the narrowing and the retry one mechanism rather than
+    // two. A commit associated with an open pull request early would end the
+    // loop with the wrong answer if the filter were dropped.
+    const open: AssociatedPull = {
+      number: 138,
+      state: 'OPEN',
+      merged_at: null,
+      base: { ref: 'main' },
+    }
+    const answers: (readonly AssociatedPull[])[] = [[open], [open, merged]]
+    let asked = 0
+
+    const found = await aftermath.findLandedPull(SHA, {
+      pullsFor: async () => answers[Math.min(asked++, answers.length - 1)] ?? [],
+      attempts: 3,
+    })
+
+    expect(found?.number).toBe(137)
+    expect(asked).toBe(2)
+  })
+})
+
+describe('what the aftermath says about main right now, broken on purpose', () => {
+  const workflow = (name: string): Watched => ({ file: `${name}.yml`, name })
+
+  function run(name: string, conclusion: string | null, status = 'completed'): RunFacts {
+    return {
+      id: 1,
+      name,
+      status,
+      conclusion,
+      head_branch: 'main',
+      head_sha: 'af8c1907000000000000000000000000000000000',
+      head_commit: null,
+      event: 'push',
+      run_attempt: 1,
+      html_url: `https://github.com/owner/repo/actions/runs/${name}`,
+      updated_at: '2026-09-07T18:35:00Z',
+    }
+  }
+
+  test('a workflow with no run yet is said to have none, and is not counted red', () => {
+    // The mode a person runs in the minute after a merge, which is exactly when
+    // the run has not been listed yet. Counting an absence as a failure is the
+    // cry-wolf failure, and it would fire on every merge rather than rarely.
+    const summary = aftermath.summariseRuns([{ workflow: workflow('check'), runs: [] }])
+
+    expect(summary.red).toBe(0)
+    expect(summary.lines.join('\n')).toContain('no run yet, which is not the same as a red one')
+  })
+
+  test('the head of the listing is the current answer, because a re-run replaces in place', () => {
+    // Newest first. Reading the oldest would report a failure that was re-run
+    // green an hour ago, which is a report about history dressed as one about
+    // now.
+    const summary = aftermath.summariseRuns([
+      { workflow: workflow('check'), runs: [run('check', 'success'), run('check', 'failure')] },
+    ])
+
+    expect(summary.red).toBe(0)
+    expect(summary.lines[0]).toContain('success')
+    expect(summary.lines[0]).not.toContain('failure')
+  })
+
+  test('a red run and a cancelled one both count, and a green one does not', () => {
+    const summary = aftermath.summariseRuns([
+      { workflow: workflow('check'), runs: [run('check', 'failure')] },
+      { workflow: workflow('model'), runs: [run('model', 'cancelled')] },
+      { workflow: workflow('provenance'), runs: [run('provenance', 'success')] },
+    ])
+
+    expect(summary.red).toBe(2)
+    expect(summary.lines).toHaveLength(3)
+  })
+
+  test('a run still going is neither red nor a reason to stay quiet about the others', () => {
+    const summary = aftermath.summariseRuns([
+      { workflow: workflow('check'), runs: [run('check', null, 'in_progress')] },
+      { workflow: workflow('model'), runs: [run('model', 'failure')] },
+    ])
+
+    expect(summary.red).toBe(1)
+    expect(summary.lines.join('\n')).toContain('in_progress')
+  })
+
+  test('the all-time count is a total across workflows and says it is a floor', () => {
+    // Measured against production on 2026-09-07: check 7, model 0, provenance
+    // 1. The sentence after it is the load-bearing half, because a re-run
+    // updates a run in place and every number here is therefore a lower bound.
+    const said = aftermath.floorReport([
+      { name: 'check', failed: 7 },
+      { name: 'model', failed: 0 },
+      { name: 'provenance', failed: 1 },
+    ])
+
+    expect(said).toContain(
+      'Runs that finished red on main, all time: 8 (check 7, model 0, provenance 1)',
+    )
+    expect(said).toContain('That is a floor and not a rate')
+    expect(said).toContain('failure that was later re-run green has stopped being counted')
+  })
+})
+
+describe('what the aftermath was asked to do, broken on purpose', () => {
+  test('--post on a commit summary is refused rather than quietly ignored', () => {
+    // The only argument that writes anything, and the rule about it is a
+    // judgement: there is one comment to write and it is about one finished
+    // run. Ignoring the flag would let a caller believe it had delivered.
+    const asked = aftermath.parseArgs(['--post'])
+
+    expect(asked.mode).toBe(undefined)
+    expect(asked.error).toContain('--post only means something with --run')
+    expect(aftermath.parseArgs(['af8c1907', '--post']).error).toBeTruthy()
+  })
+
+  test('a --run that is not a run id is refused, not looked up', () => {
+    expect(aftermath.parseArgs(['--run']).error).toContain('--run <id>')
+    expect(aftermath.parseArgs(['--run', '--post']).error).toContain('--run <id>')
+    expect(aftermath.parseArgs(['--run', 'main']).error).toContain('--run <id>')
+  })
+
+  test("the workflow's own invocation is the delivering form", () => {
+    // What .github/workflows/aftermath.yml passes. Nothing else in this tree
+    // passes --post, and this is the assertion that says what that line means.
+    expect(aftermath.parseArgs(['--run', '34152213762', '--post'])).toEqual({
+      mode: 'run',
+      runId: '34152213762',
+      post: true,
+    })
+  })
+
+  test('the read-only forms carry no post, which is what makes them safe to run', () => {
+    expect(aftermath.parseArgs(['--run', '34152213762'])).toEqual({
+      mode: 'run',
+      runId: '34152213762',
+      post: false,
+    })
+    expect(aftermath.parseArgs([])).toEqual({ mode: 'commit', sha: undefined, post: false })
+    expect(aftermath.parseArgs(['af8c1907'])).toEqual({
+      mode: 'commit',
+      sha: 'af8c1907',
+      post: false,
+    })
   })
 })
