@@ -152,8 +152,10 @@ Diagnostics carry a `code` a program reads, a `message` a person reads, a
 diagnostics are always `at: { in: 'document', jsonPath: '$.tables[3].columns[1]
 .name' }`, and never carry a line, because the input is a JSON value dbmd was
 handed rather than a file dbmd read. The model reader raises the same type with
-`at: { in: 'file', path, line }`, and ADR 0014 says why there is one type and
-what a consumer does with the difference. They sort deterministically before
+`at: { in: 'file', path, line }`, or `at: { in: 'directory', path }` where the
+thing it is complaining about is a directory rather than a file, and ADR 0014
+says why there is one type and what a consumer does with the difference. They
+sort deterministically before
 anything prints them, as everything emitted here does. ADR 0006.
 
 ## The envelope

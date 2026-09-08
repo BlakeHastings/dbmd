@@ -40,6 +40,7 @@ import {
   compareCodeUnits as byText,
   compareDiagnostics,
   errnoText as messageOf,
+  inDirectory,
   inFile,
 } from '../diagnostics.js'
 import { KIND_DIRECTORIES, MODEL_FILE } from './paths.js'
@@ -82,7 +83,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
     push(diagnostics, {
       code: 'model-directory-unreadable',
       severity: 'error',
-      at: inFile('.'),
+      at: inDirectory('.'),
       message: `cannot read the model directory: ${messageOf(error)}`,
     })
     return { model: emptyModel(), diagnostics }
@@ -109,7 +110,7 @@ export async function readModel(dir: string): Promise<ReadResult> {
       body = read.body
       complete = read.complete
     }
-  } else {
+  } else if (modelFile === undefined) {
     // The clause after the semicolon is the fix, because every other refusal in
     // this tool names one and this is the message a first-run reader is most
     // likely to meet. It says what to write rather than which command to run,
@@ -118,6 +119,10 @@ export async function readModel(dir: string): Promise<ReadResult> {
     // exactly what the studio leaves behind, since it can create tables, notes
     // and groups and cannot create this file) the command that would have
     // helped no longer will. Writing the file works in both cases. ADR 0068.
+    //
+    // Both cases are the two ADR 0068 enumerated: an empty directory, and a
+    // model whose `_model.md` was deleted. A third state reaches this `else` and
+    // is not one of them, which is why it has a branch of its own below.
     push(diagnostics, {
       code: 'model-file-missing',
       severity: 'warning',
@@ -125,6 +130,21 @@ export async function readModel(dir: string): Promise<ReadResult> {
       message:
         `no ${MODEL_FILE}, so the model has no name and no engine; ` +
         `add one with \`kind: model\`, a \`name:\` and an \`engine:\``,
+    })
+  } else {
+    // `_model.md` exists and is a directory. The warning above would be false
+    // twice here: the name is taken, and its fix cannot be followed, because
+    // writing a file over a directory fails with `EISDIR`. So the fix is the
+    // opposite one and it is named the same way, and the location stays a file
+    // because the path is where a file has to end up.
+    push(diagnostics, {
+      code: 'model-file-not-a-file',
+      severity: 'warning',
+      at: inFile(MODEL_FILE),
+      message:
+        `\`${MODEL_FILE}\` is a directory rather than a file, so the model has no name and ` +
+        `no engine; move it aside, then write \`${MODEL_FILE}\` with \`kind: model\`, a ` +
+        `\`name:\` and an \`engine:\``,
     })
   }
 
@@ -151,10 +171,16 @@ export async function readModel(dir: string): Promise<ReadResult> {
       // business, and warning about a name only because it is not a directory
       // would warn about all of them.
       if (!entry.isDirectory()) continue
+      // A `_model.md` that is a directory already has `model-file-not-a-file`
+      // above, which names the same directory and says what to do about it.
+      // Saying "not a kind of object dbmd knows" as well would be the second
+      // complaint about one mistake that ADR 0017 exists to prevent, and it is
+      // the weaker of the two: it advises ignoring what the other says to move.
+      if (entryName === MODEL_FILE) continue
       push(diagnostics, {
         code: 'unknown-kind-directory',
         severity: 'warning',
-        at: inFile(entryName),
+        at: inDirectory(entryName),
         message: `\`${entryName}/\` is not a kind of object dbmd knows; its files are ignored`,
       })
       continue
@@ -1329,7 +1355,7 @@ async function markdownFiles(
     push(out, {
       code: 'file-unreadable',
       severity: 'error',
-      at: inFile(relative),
+      at: inDirectory(relative),
       message: `cannot list the directory: ${messageOf(error)}`,
     })
     return []
@@ -1354,7 +1380,7 @@ async function markdownFiles(
       push(out, {
         code: 'object-in-subdirectory',
         severity: 'error',
-        at: inFile(`${relative}/${name}`),
+        at: inDirectory(`${relative}/${name}`),
         message: `\`${name}/\` is a directory inside \`${relative}/\`, and dbmd reads only the files directly in \`${relative}/\`, so \`${relative}/${name}/${claim}\` is not a ${kind}; move the markdown up into \`${relative}/\``,
       })
       continue
@@ -1372,7 +1398,7 @@ async function markdownFiles(
       push(out, {
         code: 'object-not-a-file',
         severity: 'error',
-        at: inFile(`${relative}/${name}`),
+        at: inDirectory(`${relative}/${name}`),
         message: `\`${name}\` is a directory rather than a file, so there is no ${kind} \`${name.slice(0, -'.md'.length)}\`; a link that resolves to a directory looks exactly like this`,
       })
       continue

@@ -10,11 +10,18 @@ import { validate } from '../../src/model/validate.js'
 import { fixtureModel, withModel } from './helpers.js'
 
 /**
- * The file location, asserted rather than assumed: every diagnostic the model
- * reader raises points at a file, and `at.in` is what says so.
+ * The file location, asserted rather than assumed: `at.in` is what says a
+ * diagnostic points at a file, and since ADR 0086 the model reader raises
+ * directory locations too, so this can fail rather than merely narrow.
  */
 function location(diagnostic: Diagnostic | undefined): { path: string; line?: number } {
   if (diagnostic?.at.in !== 'file') throw new Error('not a file location')
+  return diagnostic.at
+}
+
+/** The directory location, asserted the same way and for the same reason. */
+function directoryLocation(diagnostic: Diagnostic | undefined): { path: string } {
+  if (diagnostic?.at.in !== 'directory') throw new Error('not a directory location')
   return diagnostic.at
 }
 
@@ -1088,6 +1095,18 @@ describe('_model.md', () => {
     expect(model.tables).toHaveLength(1)
   })
 
+  test('and an empty directory gets the same sentence, unchanged', async () => {
+    // The other half of the counterfactual for the directory case below: with
+    // `_model.md` genuinely absent, every clause of this warning is true, so it
+    // stays exactly as it was.
+    const { diagnostics } = await withModel({}, { modelFile: false })
+
+    expect(lines(diagnostics)).toEqual([
+      '_model.md warning model-file-missing: no _model.md, so the model has no name and no engine; ' +
+        'add one with `kind: model`, a `name:` and an `engine:`',
+    ])
+  })
+
   // The warning above names a fix, and a named fix that has quietly stopped
   // working is worse than no advice at all. This writes exactly the three keys
   // the sentence asks for and nothing else, so the advice is checked rather
@@ -1100,6 +1119,50 @@ describe('_model.md', () => {
     expect(diagnostics).toEqual([])
     expect(model.name).toBe('kettleback')
     expect(model.engine).toBe('postgres')
+  })
+
+  // The third state the `else` above used to serve. It is not "no _model.md":
+  // the name is taken, and the fix the missing-file warning names cannot be
+  // followed, because writing a file over a directory fails with `EISDIR`.
+  test('one that is a directory says so, and says the opposite fix', async () => {
+    const { model, diagnostics } = await withModel(
+      { '_model.md/keep.md': 'anything at all\n' },
+      { modelFile: false },
+    )
+
+    expect(lines(diagnostics)).toEqual([
+      '_model.md warning model-file-not-a-file: `_model.md` is a directory rather than a file, ' +
+        'so the model has no name and no engine; move it aside, then write `_model.md` with ' +
+        '`kind: model`, a `name:` and an `engine:`',
+    ])
+    expect(model.name).toBeUndefined()
+  })
+
+  test('and it is not also told that there is no _model.md', async () => {
+    const { diagnostics } = await withModel(
+      { '_model.md/keep.md': 'anything at all\n' },
+      { modelFile: false },
+    )
+
+    // Two consecutive lines, the first saying there is no `_model.md` and the
+    // second naming `_model.md/`, is what this used to print.
+    expect(diagnostics.map((d) => d.code)).not.toContain('model-file-missing')
+    expect(diagnostics.map((d) => d.code)).not.toContain('unknown-kind-directory')
+  })
+
+  test('the fix it names is one a developer can actually carry out', async () => {
+    // `model-file-missing` says to write the file, and `test/model/read.test.ts`
+    // proves that advice works where it is given. This proves the other half:
+    // over a directory it does not, which is why the message is different.
+    const parent = await mkdtemp(join(tmpdir(), 'dbmd-model-file-'))
+    try {
+      await mkdir(join(parent, '_model.md'), { recursive: true })
+      await expect(writeFile(join(parent, '_model.md'), 'x', 'utf8')).rejects.toMatchObject({
+        code: 'EISDIR',
+      })
+    } finally {
+      await rm(parent, { recursive: true, force: true })
+    }
   })
 
   test('one that is all prose is all body', async () => {
@@ -1116,7 +1179,10 @@ describe('never throwing, and always in the same order', () => {
 
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]?.code).toBe('model-directory-unreadable')
-    expect(location(diagnostics[0]).path).toBe('.')
+    // A directory location and not a file one: the thing that could not be read
+    // is the model directory, and `dbmd check` counts these by what they say
+    // they are. ADR 0086.
+    expect(directoryLocation(diagnostics[0]).path).toBe('.')
     // ADR 0006 forbids absolute paths in output, so the message carries the
     // errno and not the path the caller already knows. The words beside it are
     // dbmd's own, for the same reason: `errnoText` in `src/diagnostics.ts`

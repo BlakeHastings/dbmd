@@ -28,7 +28,9 @@ import type { Diagnostic } from '../model/types.js'
  * cannot be listed leaves every table missing from the read for exactly the
  * same reason one locked file does, and anything refused for that has the same
  * two candidate explanations. Its clause reads `cannot list the directory:` and
- * says so.
+ * says so, and since ADR 0086 its location says `in: 'directory'` rather than
+ * claiming to be a file, which is why both are asked for here. The set of
+ * diagnostics this matches is the one it has always matched.
  *
  * Only `file-unreadable`, and deliberately. A file that is there and does not
  * parse is also missing from the read, and for that one "did not parse" is
@@ -40,7 +42,7 @@ import type { Diagnostic } from '../model/types.js'
 export function saidAbout(diagnostics: readonly Diagnostic[], path: string): string | undefined {
   const directory = path.slice(0, path.lastIndexOf('/'))
   for (const diagnostic of diagnostics) {
-    if (diagnostic.code !== 'file-unreadable' || diagnostic.at.in !== 'file') continue
+    if (diagnostic.code !== 'file-unreadable' || diagnostic.at.in === 'document') continue
     if (diagnostic.at.path === path || (directory !== '' && diagnostic.at.path === directory)) {
       return diagnostic.message
     }
@@ -63,7 +65,7 @@ export function saidAbout(diagnostics: readonly Diagnostic[], path: string): str
  */
 export function anythingUnreadable(diagnostics: readonly Diagnostic[]): boolean {
   return diagnostics.some(
-    (diagnostic) => diagnostic.code === 'file-unreadable' && diagnostic.at.in === 'file',
+    (diagnostic) => diagnostic.code === 'file-unreadable' && diagnostic.at.in !== 'document',
   )
 }
 

@@ -90,7 +90,7 @@ function only(name: string, error: unknown): (path: string) => unknown {
 /** Diagnostics as one line each, which is how a reviewer reads them. */
 function lines(diagnostics: readonly Diagnostic[]): string[] {
   return diagnostics.map((d) => {
-    const at = d.at.in === 'file' ? d.at.path : d.at.jsonPath
+    const at = d.at.in === 'document' ? d.at.jsonPath : d.at.path
     return `${at} ${d.severity} ${d.code}: ${d.message}`
   })
 }

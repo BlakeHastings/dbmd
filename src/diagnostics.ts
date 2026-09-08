@@ -10,11 +10,14 @@
  *
  * **Where a diagnostic points is a discriminated union, not a string.** The
  * model reader points at a file, by a slash-separated path relative to the model
- * directory, usually with a 1-based line. The import contract points into a JSON
- * document, by a JSONPath rooted at `$`, and its input has no lines to point at.
- * Those are different things and `at.in` says which you are holding, so a
- * consumer that wants to open an editor at a line has to ask, and a consumer
- * that only wants to print a location calls `locationText` and never asks.
+ * directory, usually with a 1-based line, or at a directory under the same root,
+ * which has no lines and cannot be opened in an editor. The import contract
+ * points into a JSON document, by a JSONPath rooted at `$`, and its input has no
+ * lines to point at. Those are different things and `at.in` says which you are
+ * holding, so a consumer that wants to open an editor at a line has to ask, and a
+ * consumer that only wants to print a location calls `locationText` and never
+ * asks. ADR 0086 is why `directory` exists rather than every model diagnostic
+ * claiming to be in a file.
  *
  * **Message convention, stated once: one sentence, no leading capital, no
  * trailing full stop, legible without the file open.** A caller pastes it after
@@ -52,6 +55,16 @@ export type ModelDiagnosticCode =
   | 'file-unreadable'
   /** There is no `_model.md`, so the model has no name and no engine. */
   | 'model-file-missing'
+  /**
+   * There is a `_model.md` and it is a directory, so the model has no name and
+   * no engine and the file cannot simply be written.
+   *
+   * Distinct from `model-file-missing` because the fix is the opposite one.
+   * `model-file-missing` says to write the file, and writing it here fails with
+   * `EISDIR`: the directory has to be moved out of the way first. One `else`
+   * used to serve both states and asserted the first of them.
+   */
+  | 'model-file-not-a-file'
   /** A directory under the model root that is not a known kind. */
   | 'unknown-kind-directory'
   /**
@@ -255,9 +268,10 @@ export type DiagnosticCode = ModelDiagnosticCode | ImportDiagnosticCode
  * Where the problem is.
  *
  * `in` is the discriminant and it is the whole reason this is not a string.
- * A file location can be opened in an editor at a line; a document location
- * cannot, because the input is a JSON file whose lines dbmd never saw. Nothing
- * derives one from the other and nothing guesses.
+ * A file location can be opened in an editor at a line; a directory location
+ * cannot, because a directory has no lines; a document location cannot either,
+ * because the input is a JSON file whose lines dbmd never saw. Nothing derives
+ * one from the other and nothing guesses.
  */
 export type DiagnosticLocation =
   | {
@@ -270,6 +284,18 @@ export type DiagnosticLocation =
        * a whole, such as absent frontmatter, does not get one.
        */
       readonly line?: number
+    }
+  | {
+      readonly in: 'directory'
+      /**
+       * Slash-separated, relative to the model directory, and `.` for the model
+       * directory itself. Never absolute, for `path`'s reason.
+       *
+       * There is deliberately no `line`. Every diagnostic that points here is
+       * about the directory as a thing on disk, so there is nothing to count
+       * lines of, and an editor has nowhere to put a cursor.
+       */
+      readonly path: string
     }
   | {
       readonly in: 'document'
@@ -308,13 +334,26 @@ export function inFile(path: string, line?: number): DiagnosticLocation {
   return { in: 'file', path, ...(line === undefined ? {} : { line }) }
 }
 
+/**
+ * A directory location. `.` is the model directory itself.
+ *
+ * Separate from `inFile` rather than a flag on it, because the difference is
+ * what a caller may do with the answer: a file can be opened at a line and a
+ * directory cannot, and a summary that counts these has to say which it counted.
+ * ADR 0086.
+ */
+export function inDirectory(path: string): DiagnosticLocation {
+  return { in: 'directory', path }
+}
+
 /** A location inside a JSON document, written as a JSONPath rooted at `$`. */
 export function inDocument(jsonPath: string): DiagnosticLocation {
   return { in: 'document', jsonPath }
 }
 
 /**
- * The location as one printable string: `tables/orders.md:4`, or `$.tables[0]`.
+ * The location as one printable string: `tables/orders.md:4`, `views`, or
+ * `$.tables[0]`.
  *
  * This is the consumer that does not care which it has. One that does care asks
  * `at.in` and gets a typed answer; there is deliberately no way to reach `line`
@@ -322,6 +361,7 @@ export function inDocument(jsonPath: string): DiagnosticLocation {
  */
 export function locationText(at: DiagnosticLocation): string {
   if (at.in === 'document') return at.jsonPath
+  if (at.in === 'directory') return at.path
   return at.line === undefined ? at.path : `${at.path}:${at.line}`
 }
 
@@ -398,7 +438,7 @@ export function compareDiagnostics(a: Diagnostic, b: Diagnostic): number {
 }
 
 function pathOf(at: DiagnosticLocation): string {
-  return at.in === 'file' ? at.path : at.jsonPath
+  return at.in === 'document' ? at.jsonPath : at.path
 }
 
 function lineOf(at: DiagnosticLocation): number {

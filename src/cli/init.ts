@@ -31,9 +31,11 @@ is meant to be read once and then replaced.
 
   directory   where to create it, defaulting to ${DEFAULT_DIRECTORY}
 
-It refuses to write into a directory that already exists and is not empty,
-because the files it writes are named after common tables and overwriting
-somebody's model is not a thing to do by accident.
+It refuses a directory that already exists and is not empty, because the files
+it writes are named after common tables and overwriting somebody's model is not
+a thing to do by accident. It refuses a path that is not a directory for the
+same reason, and says so differently, because emptying a file does not make it
+a directory init may write a model into.
 `,
   run: runInit,
 }
@@ -41,7 +43,25 @@ somebody's model is not a thing to do by accident.
 async function runInit(argv: readonly string[], out: Output): Promise<number> {
   const directory = parseInitArgs(argv)
 
-  if (!(await isVacant(directory))) {
+  const found = await vacancy(directory)
+  if (found === 'not-a-directory') {
+    // No "empty it" here, and that is the whole point of the branch. Emptying
+    // a file leaves a file, so the advice the other refusal gives is advice a
+    // developer can follow and then meet the same refusal, which is what
+    // happened before this branch existed.
+    return out.report({
+      code: EXIT_FAILURE,
+      text:
+        `${out.style.bad('dbmd:')} ${directory} is not a directory, ` +
+        `so init has left it alone.\n` +
+        `Move it aside, or give init a different directory.\n`,
+      json: {
+        directory,
+        error: { code: 'not-a-directory', message: `${directory} is not a directory` },
+      },
+    })
+  }
+  if (found === 'occupied') {
     return out.report({
       code: EXIT_FAILURE,
       text:
@@ -112,22 +132,38 @@ function parseInitArgs(argv: readonly string[]): string {
 }
 
 /**
- * Whether init may write here: nothing there at all, or an empty directory.
+ * The three answers, because two of them need different words.
  *
- * `ENOTDIR` counts as occupied. `dbmd init README.md` has to refuse rather than
- * scatter a model around somebody's file, and a path that is not a directory is
- * not a directory this command is willing to make one.
+ * `vacant` is nothing there at all or an empty directory, and init writes.
+ * `occupied` is a directory with entries in it. `not-a-directory` is `ENOTDIR`,
+ * which is what `dbmd init README.md` gets: a path init cannot make a directory
+ * of, whatever is or is not written in it.
+ *
+ * These used to be one boolean, and the single refusal it fell into was worded
+ * for `occupied`. So a file was told it was a non-empty directory, an empty file
+ * was told it was not empty, and the fix it named, emptying it, provably does
+ * not work: truncating a file leaves a file and the refusal repeats.
+ *
+ * **The refusal for `not-a-directory` does not claim the path exists**, and that
+ * is deliberate rather than coy. `ENOTDIR` also arrives for `README.md/model`,
+ * where nothing exists at the path and a plain file is in the way further up,
+ * and "is not a directory" is true of both while "already exists" is true of
+ * only one. Measured: Linux answers `ENOTDIR` for the nested form, Windows 11
+ * with Node 24 answers `ENOENT`, so the two platforms do not even agree on which
+ * branch it takes.
  *
  * Anything else, a permission error most likely, is thrown: it is a fact about
  * the machine rather than about the model, and the entry point reports it.
  */
-async function isVacant(directory: string): Promise<boolean> {
+type Vacancy = 'vacant' | 'occupied' | 'not-a-directory'
+
+async function vacancy(directory: string): Promise<Vacancy> {
   try {
-    return (await readdir(directory)).length === 0
+    return (await readdir(directory)).length === 0 ? 'vacant' : 'occupied'
   } catch (error) {
     const code = errorCode(error)
-    if (code === 'ENOENT') return true
-    if (code === 'ENOTDIR') return false
+    if (code === 'ENOENT') return 'vacant'
+    if (code === 'ENOTDIR') return 'not-a-directory'
     throw error
   }
 }
