@@ -3197,3 +3197,28 @@ corrected by whoever fixed the thing and the other was nobody's job.
   It then re-drove all five findings for the third time, on a rebase that turned
   out to have changed nothing, and got identical numbers. That is what makes the
   first two drives worth anything.
+
+- **The SQL Server path was driven end to end, and it holds.** Almost everything
+  tonight was driven against PostgreSQL payloads, so the second engine had far
+  less attention than the first. From its own fixture: the import writes two
+  tables, `dbmd check` says `2 tables, 0 notes, 0 groups, no problems`, the
+  diagram carries both with their types intact (`nvarchar(32)`,
+  `datetimeoffset(7)`, `decimal(12,2)`, `nvarchar(max)`), and a re-import says
+  `db-model already says what this sqlserver import says: 2 tables, nothing to
+  change`.
+
+  `dbmd refs Order` answers with three refs from one table, each carrying its own
+  clauses: one `key required on delete: no action`, two `required on delete:
+  cascade`. The composite primary key comes through as `PK,FK` and `PK` on the
+  right columns.
+
+  **The loss that shape produces is documented in both places a reader would
+  look.** A composite foreign key arrives as two refs paired by position, and
+  `docs/import-format.md` says so in as many words: "The constraint's name and
+  the fact that the two refs are one constraint are not carried."
+  `docs/format.md` carries the same fact from the format's side, including that a
+  freshly imported model with composite foreign keys in it still passes.
+
+  So the second engine is not a thinner version of the first: the same commands
+  answer the same way, and the one thing it cannot represent is written down
+  rather than discovered.
