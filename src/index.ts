@@ -18,6 +18,7 @@ export type {
   ReadResult,
   Ref,
   RefEdge,
+  RefusedFile,
   Table,
 } from './model/types.js'
 // The diagnostic contract is one type for the whole tool, model reader and

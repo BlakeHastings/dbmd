@@ -170,6 +170,94 @@ describe('the directory decides the kind', () => {
   })
 })
 
+describe('the object files that are there and are not objects', () => {
+  // ADR 0090. `Model.tables` says which tables this model has, and until this
+  // existed every reader of it said "there is no tables/orders.md" instead,
+  // which is a different sentence and is false through the whole of a rename.
+
+  test('a file the reader refused is on the model, beside the diagnostic about it', async () => {
+    const { model } = await withModel({
+      'tables/orders.md': '---\nkind: note\n---\n',
+      'notes/why.md': 'no frontmatter at all\n',
+    })
+
+    // Sorted by path, as every other list on a model is.
+    expect(model.refused).toEqual([
+      { kind: 'note', name: 'why', path: 'notes/why.md' },
+      { kind: 'table', name: 'orders', path: 'tables/orders.md' },
+    ])
+  })
+
+  test('a directory wearing an object file name is one of them', async () => {
+    const { model } = await withModel({ 'tables/orders.md/README.txt': 'not a table\n' })
+
+    // The sharpest case: the run says the path is a directory, and used to say
+    // in the next breath that nothing is at it.
+    expect(model.refused).toEqual([{ kind: 'table', name: 'orders', path: 'tables/orders.md' }])
+  })
+
+  test('a file that loaded is not one of them, however much the reader said about it', async () => {
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': '---\ntable: orders\n---\n',
+    })
+
+    // `kind-missing` is an error and the table is in the model all the same,
+    // which is the line this list is drawn on: it holds what produced no
+    // object, not what produced a diagnostic.
+    expect(diagnostics.map((d) => d.code)).toEqual(['kind-missing'])
+    expect(model.refused).toEqual([])
+  })
+
+  test('a model with nothing wrong with it has an empty list', async () => {
+    const { model } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\n---\n',
+    })
+
+    expect(model.refused).toEqual([])
+  })
+
+  // Every way a `tables/*.md` fails to become a table, one per line, so that a
+  // new one added without an error beside it is a red build rather than a
+  // silence. `file-unreadable` is the seventh and is not here: it needs a
+  // permission or a dangling link, which `test/model/unreadable.test.ts` builds
+  // and asserts is an error, at both of the reader's filesystem calls.
+  const refusals: readonly (readonly [string, Record<string, string>])[] = [
+    ['no frontmatter', { 'tables/orders.md': 'just prose\n' }],
+    ['frontmatter never closed', { 'tables/orders.md': '---\nkind: table\n' }],
+    ['frontmatter with nothing in it', { 'tables/orders.md': '---\n---\n' }],
+    ['YAML that will not parse', { 'tables/orders.md': '---\nkind: table\n\tpk: true\n---\n' }],
+    ['frontmatter that is a list', { 'tables/orders.md': '---\n- kind: table\n---\n' }],
+    ['a kind the directory disagrees with', { 'tables/orders.md': '---\nkind: note\n---\n' }],
+    ['a directory wearing the name', { 'tables/orders.md/README.txt': 'not a table\n' }],
+  ]
+
+  test.each(refusals)(
+    'a table refused for %s is refused with an error beside it, never a warning alone',
+    async (_why, files) => {
+      const { model, diagnostics } = await withModel(files)
+
+      // The claim ADR 0090 rests its `group-empty` cost on: a model with a
+      // refused object exits 1 anyway, so the warning that stands down is
+      // deferred behind an error rather than lost from a passing run.
+      expect(model.refused).toHaveLength(1)
+      expect(diagnostics.some((d) => d.severity === 'error')).toBe(true)
+    },
+  )
+
+  test('and an incomplete table carries one too, which is the other half of that claim', async () => {
+    // `complete` is `!raised.some(d => d.severity === 'error')`, so this holds
+    // by construction. It is asserted because `emptyGroups` stands down for an
+    // incomplete table as well as for a refused file, and the two halves have
+    // to be true together for the cost to be a deferral rather than a loss.
+    const { model, diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ncolumns:\n  - name: id\n---\n',
+    })
+
+    expect(model.tables[0]?.complete).toBe(false)
+    expect(diagnostics.some((d) => d.severity === 'error')).toBe(true)
+  })
+})
+
 describe('a kind name that is not a directory', () => {
   test('a kind name that is a plain file is an error, not silence', async () => {
     // The state this is about: `dbmd check` used to print `0 tables, no
@@ -855,6 +943,30 @@ describe('group membership is declared by the member', () => {
     expect(model.groupMembers.has('shipping')).toBe(false)
     // The table itself still loads, and still says what it meant.
     expect(model.tables.find((table) => table.name === 'shipments')?.group).toBe('shipping')
+  })
+
+  test('a group file that is there and did not load is not called a file that is not there', async () => {
+    const { model, diagnostics } = await withModel({
+      'groups/billing.md': 'Renamed from `invoicing`, and not finished.\n',
+      'tables/orders.md': '---\nkind: table\ntable: orders\ngroup: billing\n---\n',
+    })
+
+    // The group file is refused, so it is not a group, and `group: billing`
+    // is not naming nothing: it is naming the file this run has just printed
+    // an error about. One mistake, one complaint. ADR 0090.
+    expect(diagnostics.map((d) => d.code)).toEqual(['frontmatter-absent'])
+    expect(model.refused).toEqual([{ kind: 'group', name: 'billing', path: 'groups/billing.md' }])
+    expect(model.groups).toEqual([])
+  })
+
+  test('and a `group:` with nothing at that path still says so, which is the common case', async () => {
+    const { diagnostics } = await withModel({
+      'tables/orders.md': '---\nkind: table\ntable: orders\ngroup: billing\n---\n',
+    })
+
+    expect(lines(diagnostics)).toEqual([
+      'tables/orders.md:4 error group-unknown: `group: billing` names no file at groups/billing.md',
+    ])
   })
 
   test('a group with a layout is told that its box is computed', async () => {

@@ -793,6 +793,7 @@ function model(objects: readonly (Table | Note | Group)[]): Model {
     groups: objects.filter((object): object is Group => object.kind === 'group'),
     referencesTo: new Map(),
     groupMembers: new Map(),
+    refused: [],
   }
 }
 

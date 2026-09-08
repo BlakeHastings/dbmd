@@ -22,6 +22,16 @@
  * whose conclusion is "these two both exist" does not, because dropping
  * something cannot invent a duplicate.
  *
+ * **A file the reader refused is the same rule at its limit, and reaching it is
+ * ADR 0090.** `Model.refused` is the object files that are on disk and are not
+ * objects here, and an object that was never built has dropped everything: not
+ * one column but its name, its `group:` and the fact that it is a table at all.
+ * So the same three words apply, and they apply harder. What changed is which
+ * rules can see it. `indexColumns`, `primaryKey` and `refs` each stand down for
+ * an incomplete object they hold, and had nothing to stand down on for a file
+ * that produced none; `emptyGroups` reads every table at once and so was blind
+ * to it twice over. Both are corrected below, in the same words.
+ *
  * **A rule about a ref reads every ref of the table it is written in.** A
  * composite foreign key is one constraint the format spells as one `ref:` per
  * column, so asking whether one of those columns identifies a row is asking the
@@ -54,15 +64,18 @@ import type { Diagnostic, Model, ModelDiagnosticCode, Severity, Table } from './
 export function validate(model: Model): readonly Diagnostic[] {
   const out: Diagnostic[] = []
   const tables = tablesByName(model, out)
+  const refusedTables = new Set(
+    model.refused.filter((file) => file.kind === 'table').map((file) => file.name),
+  )
 
   for (const table of model.tables) {
     duplicateColumns(table, out)
     duplicateIndexes(table, out)
     indexColumns(table, out)
     primaryKey(table, out)
-    refs(table, tables, out)
+    refs(table, tables, refusedTables, out)
   }
-  emptyGroups(model, out)
+  emptyGroups(model, refusedTables, out)
 
   return sortDiagnostics(out)
 }
@@ -224,7 +237,12 @@ function primaryKey(table: Table, out: Diagnostic[]): void {
   )
 }
 
-function refs(table: Table, tables: ReadonlyMap<string, Table>, out: Diagnostic[]): void {
+function refs(
+  table: Table,
+  tables: ReadonlyMap<string, Table>,
+  refusedTables: ReadonlySet<string>,
+  out: Diagnostic[],
+): void {
   // Every target column this table refs, gathered per target table before any
   // one ref is judged, because a composite foreign key is a set and its members
   // are declared on separate lines. Per target table, and never pooled across
@@ -244,6 +262,14 @@ function refs(table: Table, tables: ReadonlyMap<string, Table>, out: Diagnostic[
 
     const target = tables.get(ref.table)
     if (target === undefined) {
+      // The file is there and the reader would not build it, so the ref may be
+      // perfectly good and this rule has no way to tell. Standing down here is
+      // the same move as the one three lines below, arrived at from the other
+      // side: there the target lost a column, here it lost everything, and in
+      // neither case is its absence evidence. The run already carries the
+      // reader's error naming this exact file, which is the one to fix and the
+      // one that makes this ref resolvable. ADR 0090.
+      if (refusedTables.has(ref.table)) continue
       push(
         out,
         'ref-table-unknown',
@@ -400,8 +426,25 @@ function orList(names: readonly string[]): string {
  * `Model.groupMembers`, which is the same thing the reader computed. The point
  * of a validator is to be a second opinion, and a second opinion that reads the
  * first one's notes is one opinion.
+ *
+ * **It is the one rule here whose evidence is every table at once**, and that
+ * is why it stands down for the whole model rather than for one object. Its
+ * conclusion is "no table declares this", so a single table whose `group:` this
+ * process could not read is enough to make it a guess: the group may be exactly
+ * the one that table declares, and the advice about a rename that missed a file
+ * then sends somebody looking for a file that is on their screen. Both shapes
+ * of unreadable count, because they are one fact at two depths. A table the
+ * reader stumbled in may have lost its `group:` line, and a file that never
+ * became a table lost that line along with everything else. ADR 0090.
+ *
+ * The cost is real and it is the honest one: one broken table file silences
+ * every `group-empty` in the model until it is fixed, and the run says which
+ * file to fix. The alternative is a warning that is right most of the time and
+ * points away from the truth the rest of it, which is worse than none.
  */
-function emptyGroups(model: Model, out: Diagnostic[]): void {
+function emptyGroups(model: Model, refusedTables: ReadonlySet<string>, out: Diagnostic[]): void {
+  if (refusedTables.size > 0) return
+  if (model.tables.some((table) => !table.complete)) return
   const joined = new Set(
     model.tables
       .map((table) => table.group)

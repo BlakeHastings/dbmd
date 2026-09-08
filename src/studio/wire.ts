@@ -32,6 +32,7 @@ import type {
   Model,
   Note,
   RefEdge,
+  RefusedFile,
   ReferentialAction,
   Table,
 } from '../model/types.js'
@@ -161,6 +162,12 @@ export interface WireModel {
   readonly groups: readonly Group[]
   readonly referencesTo: readonly { readonly table: string; readonly edges: readonly RefEdge[] }[]
   readonly groupMembers: readonly { readonly group: string; readonly tables: readonly string[] }[]
+  /**
+   * Carried because the page runs the validator too, and three of its rules are
+   * wrong about a file they do not know is there. ADR 0090. Already JSON-shaped,
+   * so it is passed through like `tables` rather than translated like the maps.
+   */
+  readonly refused: readonly RefusedFile[]
 }
 
 export function toWireModel(model: Model): WireModel {
@@ -174,6 +181,7 @@ export function toWireModel(model: Model): WireModel {
     groups: model.groups,
     referencesTo: [...model.referencesTo].map(([table, edges]) => ({ table, edges })),
     groupMembers: [...model.groupMembers].map(([group, tables]) => ({ group, tables })),
+    refused: model.refused,
   }
 }
 

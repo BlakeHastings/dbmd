@@ -240,6 +240,10 @@ function modelFacts(existing: Model, incoming: Model, items: DeltaItem[]): Model
     groups: [],
     referencesTo: new Map(),
     groupMembers: new Map(),
+    // A fact about the directory this delta is proposed against, so it is
+    // carried across for the same reason `body` and `complete` are: the files
+    // are still there, and the import did not read them either.
+    refused: existing.refused,
   }
 }
 

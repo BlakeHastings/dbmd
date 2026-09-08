@@ -515,6 +515,7 @@ function inMemory(name: string, columns: readonly Pick<Column, 'name' | 'type'>[
     groups: [],
     referencesTo: new Map(),
     groupMembers: new Map(),
+    refused: [],
   }
 }
 

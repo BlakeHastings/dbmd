@@ -297,6 +297,7 @@ function generateModel(seed: number): Model {
     groups: sortByName(groups),
     referencesTo: new Map(),
     groupMembers: new Map(),
+    refused: [],
   }
 }
 

@@ -59,6 +59,7 @@ import type {
   ReadResult,
   Ref,
   RefEdge,
+  RefusedFile,
   ReferentialAction,
   Severity,
   Table,
@@ -73,6 +74,12 @@ export async function readModel(dir: string): Promise<ReadResult> {
   const tables: Table[] = []
   const notes: Note[] = []
   const groups: Group[] = []
+  /**
+   * Every object file this read complained about instead of building. It is on
+   * the model because the questions it answers are asked after the read is over
+   * and somewhere else: ADR 0090.
+   */
+  const refused: RefusedFile[] = []
   /** Deferred because a `group:` cannot be checked until every group is read. */
   const declaredGroups: { table: string; path: string; group: string; line?: number }[] = []
 
@@ -201,12 +208,25 @@ export async function readModel(dir: string): Promise<ReadResult> {
       continue
     }
 
-    for (const file of await markdownFiles(join(dir, entryName), entryName, kind, diagnostics)) {
+    const found = await markdownFiles(join(dir, entryName), entryName, kind, diagnostics)
+    for (const file of found.directories) {
+      refused.push(refusedFile(kind, entryName, file))
+    }
+    for (const file of found.files) {
       const relative = `${entryName}/${file}`
       const text = await readText(join(dir, entryName, file), relative, diagnostics)
-      if (text === undefined) continue
+      if (text === undefined) {
+        // Listed and unopenable, which for a `.md` name in a kind directory is
+        // a dangling link. Something is at the path, the reader has said so,
+        // and what it holds is unknown rather than absent.
+        refused.push(refusedFile(kind, entryName, file))
+        continue
+      }
       const object = readObjectFile(kind, relative, file.slice(0, -'.md'.length), text, diagnostics)
-      if (object === undefined) continue
+      if (object === undefined) {
+        refused.push(refusedFile(kind, entryName, file))
+        continue
+      }
       if (object.kind === 'table') {
         tables.push(object)
         if (object.group !== undefined) {
@@ -229,9 +249,22 @@ export async function readModel(dir: string): Promise<ReadResult> {
   notes.sort((a, b) => byText(a.name, b.name))
   groups.sort((a, b) => byText(a.name, b.name))
 
+  refused.sort((a, b) => byText(a.path, b.path))
+
   const groupNames = new Set(groups.map((group) => group.name))
+  // The group files this read complained about instead of building. A `group:`
+  // naming one of them is not naming nothing: the file is there, this run has
+  // already said what is wrong with it, and fixing that file is what makes the
+  // membership work. Saying "names no file at groups/billing.md" four lines
+  // under a heading reading `groups/billing.md` is the reader contradicting
+  // itself in one run, and it is the reader's own rule about `_model.md` above:
+  // one mistake, one complaint, and the complaint is the one that names the fix.
+  // ADR 0090.
+  const brokenGroups = new Set(
+    refused.filter((file) => file.kind === 'group').map((file) => file.name),
+  )
   for (const declared of declaredGroups) {
-    if (groupNames.has(declared.group)) continue
+    if (groupNames.has(declared.group) || brokenGroups.has(declared.group)) continue
     push(diagnostics, {
       code: 'group-unknown',
       severity: 'error',
@@ -250,8 +283,14 @@ export async function readModel(dir: string): Promise<ReadResult> {
     groups,
     referencesTo: buildReferencesTo(tables),
     groupMembers: buildGroupMembers(groups, declaredGroups),
+    refused,
   }
   return { model, diagnostics: diagnostics.sort(compareDiagnostics) }
+}
+
+/** One file the reader listed, complained about, and did not turn into an object. */
+function refusedFile(kind: ObjectKind, directory: string, file: string): RefusedFile {
+  return { kind, name: file.slice(0, -'.md'.length), path: `${directory}/${file}` }
 }
 
 // --------------------------------------------------------------------------
@@ -1352,7 +1391,7 @@ async function markdownFiles(
   relative: string,
   kind: ObjectKind,
   out: Diagnostic[],
-): Promise<readonly string[]> {
+): Promise<Listing> {
   let entries
   try {
     entries = await readdir(dir, { withFileTypes: true })
@@ -1363,10 +1402,11 @@ async function markdownFiles(
       at: inDirectory(relative),
       message: `cannot list the directory: ${messageOf(error)}`,
     })
-    return []
+    return { files: [], directories: [] }
   }
 
   const files: string[] = []
+  const directories: string[] = []
   for (const entry of entries) {
     const name = entry.name
     if (name.startsWith('.')) continue
@@ -1406,6 +1446,7 @@ async function markdownFiles(
         at: inDirectory(`${relative}/${name}`),
         message: `\`${name}\` is a directory rather than a file, so there is no ${kind} \`${name.slice(0, -'.md'.length)}\`; a link that resolves to a directory looks exactly like this`,
       })
+      directories.push(name)
       continue
     }
     // A link to a file, or a link to nothing. The read that follows is the
@@ -1414,7 +1455,23 @@ async function markdownFiles(
     // always meant here.
     files.push(name)
   }
-  return files.sort(byText)
+  return { files: files.sort(byText), directories: directories.sort(byText) }
+}
+
+/**
+ * What one kind directory holds, split by whether reading it is even possible.
+ *
+ * Both halves are object paths and neither is an object yet. `files` is what
+ * the caller goes on to open; `directories` is the names it never can, and they
+ * are returned rather than dropped because "there is no `tables/orders.md`" is
+ * false about every one of them and three diagnostics elsewhere used to say it.
+ * ADR 0090.
+ */
+interface Listing {
+  /** The `.md` names to read, sorted. */
+  readonly files: readonly string[]
+  /** The `.md` names that are directories, sorted. */
+  readonly directories: readonly string[]
 }
 
 /**
@@ -1524,5 +1581,8 @@ function emptyModel(): Model {
     groups: [],
     referencesTo: new Map(),
     groupMembers: new Map(),
+    // Nothing was refused because nothing was listed: the one caller is the
+    // model directory that would not open at all.
+    refused: [],
   }
 }

@@ -38,6 +38,7 @@ export function fromWireModel(wire: WireModel): Model {
     groups: wire.groups,
     referencesTo: new Map(wire.referencesTo.map(({ table, edges }) => [table, edges])),
     groupMembers: new Map(wire.groupMembers.map(({ group, tables }) => [group, tables])),
+    refused: wire.refused,
   }
 }
 

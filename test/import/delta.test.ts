@@ -61,6 +61,7 @@ function model(
     groups: [],
     referencesTo: new Map(),
     groupMembers: new Map(),
+    refused: [],
   }
 }
 
