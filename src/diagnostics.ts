@@ -241,7 +241,7 @@ export type ImportDiagnosticCode =
    * the case it was added for.
    */
   | 'import/conflicting-fields'
-  // The three below are raised by `dbmd import` rather than by the contract:
+  // The four below are raised by `dbmd import` rather than by the contract:
   // they are about the model the document became, which is a thing only the
   // caller that builds one can see. ADR 0029.
   /**
@@ -264,9 +264,18 @@ export type ImportDiagnosticCode =
    */
   | 'import/reference-not-exported'
   /**
+   * A primary key naming a column the table's `columns` does not hold, so there
+   * is no column to write `pk:` on. A warning for the reason above: the file
+   * disagrees with itself about one table, the rest of that table is written
+   * exactly as it arrived, and the import is still worth having.
+   */
+  | 'import/key-column-not-exported'
+  /**
    * Two tables that would be written to one file. A model directory is flat
    * (ADR 0003), so two schemas with a table of the same name collide, and
-   * writing both would silently keep whichever was written last.
+   * writing both would silently keep whichever was written last. Names are
+   * folded before they are compared, so `Orders` and `orders` collide too, on
+   * every platform: ADR 0093.
    */
   | 'import/name-collision'
 

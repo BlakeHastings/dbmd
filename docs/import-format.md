@@ -615,15 +615,27 @@ all have nowhere to go. `docs/format.md` names those losses under what the forma
 does not have, and a warning for each would put a dozen identical lines on every
 clean import of a real schema.
 
-**Three things are diagnosed, because each would otherwise leave a model that
+**Four things are diagnosed, because each would otherwise leave a model that
 lies.** They are raised by the import command rather than by the contract, since
 each is about the model the document became rather than about the document:
 
 ```
 warning $.tables[0].foreignKeys[0] [import/reference-not-exported] `public.orders` has a foreign key to `public.customers`, which this file does not contain, so no `ref:` was written for it; re-run the query over the whole database if that table belongs in the model
+warning $.tables[0].primaryKey.columns [import/key-column-not-exported] `public.orders` has a primary key on `order_id`, which this file does not list among the table's columns, so no `pk:` was written for it and the key in the model is not the key in the database; re-run the query if that column belongs to the table
 error $.tables[0].name [import/unsafe-name] the table `Ledger: Entry` has no file it can be written to, because no filesystem accepts that name and a checkout could not hold it; rename it in the database or leave it out of the query
 error $.tables[1].name [import/name-collision] `sales.Order` and `dbo.Order` would both be written to tables/Order.md, and a model directory is flat, so only `dbo.Order` was written; import one schema at a time until the format has somewhere to put the other
+error $.tables[1].name [import/name-collision] `public.orders` and `public.Orders` differ only in case, and a model directory is flat and is cloned onto machines that do not tell those two file names apart, so only `public.Orders` was written, to tables/Orders.md; import one of them at a time until the format has somewhere to put the other
 ```
+
+**Two table names that differ only in case are that last one.** `Orders` and
+`orders` are two tables in Postgres, which reports each as it really is, and
+they are two files on Linux and one file on Windows and on macOS. The comparison
+here folds them on every platform, so what an import writes does not depend on
+the filesystem it ran over, and a model directory this refuses is one that could
+not have been cloned.
+[ADR 0093](architecture/decisions/0093-a-model-directory-refuses-a-name-a-clone-could-not-keep.md)
+is the argument, and it is a different comparison from the contract's own: the
+contract tells `Orders` and `orders` apart, because the database does.
 
 A ref that is dropped is dropped rather than written and left for `dbmd check` to
 find, because a partial export is a normal thing to have and a `ref-table-unknown`
@@ -655,7 +667,7 @@ is the argument for.
 **`error` means it did not make it into the model.** **`warning` means it did,
 and is worth a look anyway.** An error found while reading the document stops
 the import before a single file is written, and the directory is left exactly as
-it was. The three in the second table are found after the model is built, so
+it was. The four in the second table are found after the model is built, so
 those write every table that can be written and name the ones that could not.
 
 `test/import/docs.test.ts` reads `ImportDiagnosticCode` out of
@@ -742,7 +754,7 @@ directory yet.
 | `import/unknown-engine` | error | `engine` names no provider in this build. The message lists the ones it has. | Check the spelling. A provider id never changes once shipped, so a name that used to work is a dbmd that is too old. |
 | `import/engine-overridden` | warning | `--engine` disagreed with the file and won. Never silent: [ADR 0007](architecture/decisions/0007-engines-are-providers.md). | Nothing, if you meant it. Drop the flag if you did not: the file knows which engine wrote it, and reading it as the wrong one usually fails a hundred lines later instead. |
 | `import/unknown-field` | warning | A field nothing in this version of the format reads. It is dropped and the import carries on. | Nothing, unless it is your provider and the key is a typo. This is a warning rather than an error so that adding a field to the format is not a breaking change. |
-| `import/duplicate` | error | Two things that have to be told apart are byte-identical: two tables with one `schema` and `name`, two columns of one table, or two indexes of one table. Names are compared byte for byte and never folded, so `Orders` and `orders` are two things, not one. | Fix the query. A duplicate here usually means the catalogue was joined without a filter and every row came back twice. |
+| `import/duplicate` | error | Two things that have to be told apart are byte-identical: two tables with one `schema` and `name`, two columns of one table, or two indexes of one table. Names are compared byte for byte and never folded, so `Orders` and `orders` are two things, not one, which is what the database says they are. Two tables that survive this and then cannot both have a file are `import/name-collision`, one table further down, where the comparison is folded because a filesystem's is. | Fix the query. A duplicate here usually means the catalogue was joined without a filter and every row came back twice. |
 | `import/mismatched-columns` | error | A foreign key's `columns` and `referencedColumns` are different lengths, so the pairs do not pair and no `ref:` can be written from them. | A provider bug rather than a database that can exist. Report it against the provider. |
 | `import/not-in-vocabulary` | error | A value outside a closed list this page defines: a `normalised` that is not one of the fourteen, an `onDelete` that is not one of the five actions, an `identity.generation` that is neither `always` nor `byDefault`. | In a provider, return `other` rather than guessing: `native` still says what the type really was. |
 | `import/conflicting-fields` | error | Both halves of an either/or are given, so there is no single fact to keep. An index key saying both `column` and `expression` is the case it exists for. | Send one. Nothing prefers one over the other, deliberately, because a key naming a column called `lower(code)` and a key over the expression `lower(code)` are different schemas. |
@@ -752,13 +764,14 @@ directory yet.
 Raised by `dbmd import` rather than by the contract, because each is about the
 model the document became rather than about the document.
 [ADR 0029](architecture/decisions/0029-what-an-import-writes-and-what-it-drops.md)
-is why these three are diagnosed and the other losses are not.
+is why these are diagnosed and the other losses are not.
 
 | code | severity | what happened | what to do |
 | --- | --- | --- | --- |
 | `import/unsafe-name` | error | A catalogue handed dbmd a table name that no file can be called, so the table has nowhere to be written. `Ledger: Entry` is a name a database takes and a checkout cannot hold. The rule is `isFileName` in `src/model/paths.ts`: either slash, a control character, a vertical bar, one of `< > : " ? *`, or a name too long to be one path component. | Rename it in the database, or leave it out of the query. Every other table is still written. [ADR 0026](architecture/decisions/0026-a-name-the-writer-cannot-write-is-a-skip.md) is why this code exists on the import side and has no counterpart in the model reader. |
 | `import/reference-not-exported` | warning | A foreign key whose referenced table is not in the file. No `ref:` was written for it, and the column is written without one. | Nothing, if you meant to export part of the database. Otherwise re-run the query over the whole of it. The ref is dropped rather than written and left dangling, so `dbmd check` does not blame you for a partial export. |
-| `import/name-collision` | error | Two tables that would be written to one file. `tables/` is flat (ADR 0003), so `dbo.Order` and `sales.Order` are one path, and writing both would silently keep whichever went last. The first in the document's order is the one kept, and the document is sorted, so which one that is does not depend on the machine. | Import one schema at a time until the format has somewhere to put the other. |
+| `import/key-column-not-exported` | warning | A `primaryKey` naming a column the table's own `columns` does not hold, so there is nothing to write `pk:` on. `dbmd query` cannot produce this, because the query builds both lists from the catalogue, so it means the file was cut or edited on the way here. Without this the key was dropped in silence and the table reached disk with no key at all, and the first `dbmd check` then said `primary-key-missing` about a table whose database has a key. | Re-run the query if the column belongs to the table. The rest of the table is written exactly as it arrived, which is why this is a warning: nothing else about it is wrong, and the key is one line to put back. |
+| `import/name-collision` | error | Two tables that would be written to one file. `tables/` is flat (ADR 0003), so `dbo.Order` and `sales.Order` are one path, and writing both would silently keep whichever went last. Names are folded before they are compared, so `public.Orders` and `public.orders` are this too, on every platform: they are two files on Linux and one on Windows and on macOS, and a model directory is cloned onto all three ([ADR 0093](architecture/decisions/0093-a-model-directory-refuses-a-name-a-clone-could-not-keep.md)). The first in the document's order is the one kept, and the document is sorted, so which one that is does not depend on the machine. | Import one schema at a time until the format has somewhere to put the other, or, for a pair that differs only in case, one of the two tables at a time. |
 
 ## Writing a provider
 

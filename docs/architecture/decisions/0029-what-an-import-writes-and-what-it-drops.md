@@ -321,3 +321,28 @@ same time. Nobody has asked for the normalised type in the file, the
 `timestamp with time zone(3)` wart has not appeared in a real diff, two schemas
 with the same table name is still rare, and the two entries that had already
 fired are recorded in the section above this one.
+
+## The collision check could not fire on the filesystem it was written for, and there is a fourth code
+
+Appended rather than edited, because everything above about what a collision is
+and what it costs is right, and it is the reasoning ADR 0093 builds on.
+
+**`import/name-collision` compared names case-sensitively**, and the filesystem
+it protects does not. `public.Orders` and `public.orders` are two tables in
+PostgreSQL and one file on Windows and on macOS, so the second write landed on
+the first: two tables reported, three files listed, one file on disk, exit 0.
+[ADR 0093](0093-a-model-directory-refuses-a-name-a-clone-could-not-keep.md)
+folds the comparison on every platform, including Linux, where the two files
+really can coexist, because a model directory is cloned onto machines where they
+cannot. The paragraph above is otherwise unchanged: the first in the document's
+order is still the one kept, and the report still names it.
+
+**There is a fourth code in the group this record calls three.**
+`import/key-column-not-exported`, a warning, for a `primaryKey` naming a column
+the table's own `columns` does not hold. `columnOf` writes `pk: true` where the
+key names the column in front of it, so such a key marked nothing and said
+nothing, and the table reached disk with no key at all: `dbmd check` then said
+`primary-key-missing` about a table whose database has a key. It is a warning
+for `import/reference-not-exported`'s reason, which this record already states:
+what arrived disagrees with itself about one table, the rest of that table is
+written exactly as it came, and the import is worth having.

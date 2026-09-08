@@ -336,6 +336,156 @@ describe('two tables that would be one file', () => {
     expect(diagnostics[0]?.message).toContain('`sales.Order`')
     expect(diagnostics[0]?.message).toContain('`dbo.Order`')
   })
+
+  /**
+   * The case half, which is the one that lost a table.
+   *
+   * This ran on Windows and reported two tables and three files over one file
+   * on disk, because the comparison was case-sensitive and the filesystem was
+   * not. There is no platform condition in any of these: ADR 0093 decided that
+   * a model directory refuses a pair it could not be cloned with, so Linux,
+   * where the two files really can coexist, gets the same answer as the machine
+   * that would lose one, and this file is where that is pinned.
+   */
+  test('two names that differ only in case collide, on every platform', () => {
+    const { model, diagnostics } = modelFromIntrospection(
+      document([
+        { schema: 'public', name: 'Orders' },
+        { schema: 'public', name: 'orders' },
+      ]),
+    )
+
+    expect(model.tables.map((table) => table.name)).toEqual(['Orders'])
+    expect(diagnostics.map((d) => `${d.severity} ${d.code}`)).toEqual([
+      'error import/name-collision',
+    ])
+    expect(diagnostics[0]?.at).toEqual({ in: 'document', jsonPath: '$.tables[1].name' })
+  })
+
+  test('and the message says why, and names the file that was written', () => {
+    const { model, diagnostics } = modelFromIntrospection(
+      document([
+        { schema: 'public', name: 'Orders' },
+        { schema: 'public', name: 'orders' },
+      ]),
+    )
+
+    const message = diagnostics[0]?.message ?? ''
+    expect(message).toContain('differ only in case')
+    // The path in the sentence is the path that exists. The advice from the
+    // other half of this diagnostic, to import one schema at a time, is not
+    // reachable from here: both of these are in `public`.
+    expect(message).toContain('tables/Orders.md')
+    expect(message).not.toContain('tables/orders.md')
+    expect(message).toContain('`public.Orders` was written')
+    expect(model.tables[0]?.path).toBe('tables/Orders.md')
+  })
+
+  test('two names that differ by more than case are two tables, as they were', () => {
+    const { model, diagnostics } = modelFromIntrospection(
+      document([
+        { schema: 'public', name: 'orders' },
+        { schema: 'public', name: 'order_lines' },
+      ]),
+    )
+
+    expect(model.tables.map((table) => table.name)).toEqual(['order_lines', 'orders'])
+    expect(diagnostics).toEqual([])
+  })
+})
+
+/**
+ * A primary key naming a column the export does not carry.
+ *
+ * `dbmd query` cannot produce this document, and the payload it takes to
+ * produce is one somebody saved and cut. Before this it marked nothing and said
+ * nothing, and the table reached disk with no key at all, so the reader's first
+ * `dbmd check` told them to add a key their database already has.
+ */
+describe('a primary key on a column the table has not got', () => {
+  const cut = document([
+    {
+      name: 'orders',
+      columns: [{ name: 'id', type: { native: 'bigint', normalised: 'integer' }, nullable: false }],
+      primaryKey: { columns: ['order_id'] },
+    },
+  ])
+
+  test('is a warning, and no column is quietly marked instead', () => {
+    const { model, diagnostics } = modelFromIntrospection(cut)
+
+    expect(tableNamed(model.tables, 'orders').columns.map((column) => column.pk)).toEqual([
+      undefined,
+    ])
+    expect(diagnostics.map((d) => `${d.severity} ${d.code}`)).toEqual([
+      'warning import/key-column-not-exported',
+    ])
+    expect(diagnostics[0]?.at).toEqual({
+      in: 'document',
+      jsonPath: '$.tables[0].primaryKey.columns',
+    })
+    expect(diagnostics[0]?.message).toContain('`public.orders`')
+    expect(diagnostics[0]?.message).toContain('`order_id`')
+  })
+
+  test('names every column that is missing, and only those', () => {
+    const { diagnostics } = modelFromIntrospection(
+      document([
+        {
+          name: 'invoice_lines',
+          columns: [
+            {
+              name: 'invoice_id',
+              type: { native: 'bigint', normalised: 'integer' },
+              nullable: false,
+            },
+          ],
+          primaryKey: { columns: ['invoice_id', 'line_no', 'revision'] },
+        },
+      ]),
+    )
+
+    expect(diagnostics.map((d) => d.code)).toEqual(['import/key-column-not-exported'])
+    expect(diagnostics[0]?.message).toContain('`line_no` and `revision`')
+    expect(diagnostics[0]?.message).not.toContain('`invoice_id`,')
+  })
+
+  test('and the half of the key the file does have is still written', () => {
+    const { model } = modelFromIntrospection(
+      document([
+        {
+          name: 'invoice_lines',
+          columns: [
+            {
+              name: 'invoice_id',
+              type: { native: 'bigint', normalised: 'integer' },
+              nullable: false,
+            },
+          ],
+          primaryKey: { columns: ['invoice_id', 'line_no'] },
+        },
+      ]),
+    )
+
+    expect(tableNamed(model.tables, 'invoice_lines').columns[0]?.pk).toBe(true)
+  })
+
+  test('a key naming a column that is there says nothing at all', () => {
+    const { model, diagnostics } = modelFromIntrospection(
+      document([
+        {
+          name: 'orders',
+          columns: [
+            { name: 'id', type: { native: 'bigint', normalised: 'integer' }, nullable: false },
+          ],
+          primaryKey: { columns: ['id'] },
+        },
+      ]),
+    )
+
+    expect(tableNamed(model.tables, 'orders').columns[0]?.pk).toBe(true)
+    expect(diagnostics).toEqual([])
+  })
 })
 
 describe('what an import writes is what the reader reads back', () => {
