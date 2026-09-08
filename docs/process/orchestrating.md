@@ -1054,3 +1054,41 @@ positive.
 
 **Keep the script.** It is the difference between a claim that the class was
 swept and a thing the next person can re-run after adding a command.
+
+## The document that is written to be obeyed is the one with no machinery on it
+
+This repository checks its documentation harder than most projects check their
+code. The README's tagged blocks are executed and compared. The format page's
+error blocks are run and their codes asserted. Every plain JSON fence on four
+pages is claimed by exactly one test case, so a new payload turns that file red
+until somebody says which command it came from. A script reads every version
+written after `dbmd@` across 186 files and fails unless it matches the manifest.
+
+**The one document with none of that is the agent skill**, which is the only
+document in the tree written to be obeyed rather than read.
+
+It went stale within the hour. A merge gave a thrown error the list of files a
+failed run had already written, and the agent that made the change correctly
+added a bullet to the skill saying so. Two hundred lines earlier, the same file
+still said that the record was lost and `git status` was the only way to find
+out. Both sentences shipped in one commit, from one author, in one file.
+
+**The mechanism is that a skill is prose about behaviour, spread out.** A page of
+examples has its examples in one place and a test can run them. A skill's claims
+are scattered through argument, which is what makes it useful and also what makes
+a targeted edit leave the rest standing. The author who adds the correct new
+bullet has read the section they are editing, not the one two hundred lines up
+that says the opposite.
+
+Two things follow, and the second matters more.
+
+**When a change alters observable behaviour, the brief should name the skill as a
+file to re-read, not only to edit.** "Update the skill if needed" invites the
+targeted edit. "Read the whole skill against what you changed" is a different
+instruction and costs a few minutes.
+
+**And a document nobody can check is a document to distrust in proportion to how
+long it has been since somebody drove it.** That is an uncomfortable property for
+the file agents are pointed at first, and the honest response is to sweep it on a
+schedule rather than to trust it because it was correct when written. Five false
+claims were found in this same file once before, in one pass.

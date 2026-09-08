@@ -6264,3 +6264,23 @@ corrected by whoever fixed the thing and the other was nobody's job.
   and 2 are all represented. The script is kept in the scratchpad as
   `envelope.mjs` rather than described, so the next person can rerun it after
   adding a command.
+
+- **A merge falsified a document elsewhere in the repository and nothing noticed,
+  including the agent that made both edits.** #227 gave `WriteFailed` the list of
+  files a failed run had already written, and its author correctly added a bullet
+  to `.claude/skills/dbmd/SKILL.md` saying so. Two hundred lines earlier the same
+  file still says "the throw took the `written` array with them, so `git status`
+  is the only record of what landed", which was true that morning and is not now.
+  An agent reading top to bottom meets the false sentence first.
+
+  **The gap is that the skill has no machinery**, while the pages beside it do.
+  `test/docs/readme.test.ts` runs the README's tagged blocks, `test/docs/
+  format.test.ts` runs the format page's, `test/docs/payloads.test.ts` claims
+  every plain JSON fence on four pages and goes red on an unclaimed one, and
+  `scripts/check-commands.mjs` reads every `dbmd@` version and every `npm run`
+  reference across 186 files. None of them reads the skill, which is the one
+  document written specifically to be obeyed rather than read.
+
+  Sent back to the agent that wrote both halves, with the four merges of the
+  night named so the sweep covers what they changed rather than only what it
+  finds.
