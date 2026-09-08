@@ -52,33 +52,32 @@ are listed below.
 **All eight epics are closed**, the last
 two on 2026-09-07: import, which closed when re-import landed, and publishing.
 
-## In flight right now, which is two agents and two branches of mine
+## In flight, which this file no longer tries to count
 
-**This section went stale in exactly the way it warns about**, listing three
-agents that had all landed. It is rewritten rather than patched, and the date
-below is the thing to distrust first.
+**This section has gone stale three times in one day**, in the file that keeps
+a section about going stale. Twice it was wrong about how many agents were out,
+once about how many branches of mine were open, and each time it was rewritten
+with the new number. That is the move that does not work, so it stops carrying
+numbers and carries the commands that produce them.
 
-**As of 2026-09-08, very late.** Two agents are out, and neither is fixing a
-defect: one is sweeping all 331 revisit conditions across the 92 decision
-records, which were last swept before about twenty changes landed, and one is
-sweeping `.claude/skills/dbmd/SKILL.md`, which has gone stale twice in one day.
-The second also carries a question worth more than the sweep: **what about that
-file could be checked mechanically**, given every page beside it is checked by
-something and it is the only document written to be obeyed rather than read.
+```bash
+# What is open, whose it is, and whether it can land.
+gh pr list --state open --json number,title,headRefOid,mergeStateStatus \
+  --jq '.[] | "#\(.number) \(.mergeStateStatus) \(.headRefOid[0:7])  \(.title)"'
 
-**Two branches of mine are open and only one needs a decision.** #241 is the
-README fix and is **deliberately not merged**: it is two lines, proven against a
-real run, and merging it makes the owner's next `git pull` refuse until they
-stash the edit they have in that file. That is theirs to accept. The other is
-this branch, the consolidation you are reading. #244, which recorded that the
-studio the owner has open predates eight studio fixes, has landed, and its
-paragraphs are the next section down.
+# What a running agent is holding, so a brief does not tell one a lie.
+# The live ids are the one fact this cannot derive, so pass them.
+node scripts/held.mjs --live <id>,<id>
 
-**Everything else dispatched today has landed.** Eleven branches: the export and
-refs message fixes, the flag guard, the three false check and init sentences, the
-import partial write, the skill sweep, the last-resort test, the duplication
-guard, the six diagnostic messages, and four studio branches carrying fourteen of
-the fifteen page findings.
+# Which decision record numbers are free, across main and every open PR.
+node scripts/freeadr.mjs
+```
+
+**What no command will tell you is which open item is held on purpose.** There
+is one, and it is #241: a two-line README fix, proven against a real run, and
+**deliberately not merged**, because merging it makes the owner's next
+`git pull` refuse until they stash the edit they have in that file. That is
+theirs to accept and it is not waiting on review.
 
 **Three sweeps are closed and accounted for**, each with its list written down
 rather than left as a feeling: 35 model diagnostics with 9 fixed, 17 import
@@ -87,6 +86,17 @@ and about 90 studio sentences with 15 suspect and 14 fixed. **The fifteenth is
 held on purpose** and is the owner's: a sentence that is true in every clause and
 on screen for 13 milliseconds, where fixing it means deciding how long a status
 line holds.
+
+**A fourth sweep is running and its subject is the one nobody had swept.** All
+eight `--help` outputs, 258 lines, read as a list of testable assertions the way
+the other three were. It is the first thing a person reads and the last surface
+to be driven.
+
+**And the skill is finally getting machinery.** `.claude/skills/dbmd/SKILL.md`
+has gone stale nine or ten times depending on how you count, and ADR 0084 said to
+revisit when a sixth was found. The blocks in it that are already exact tool
+output are being made to run, following `test/docs/readme.test.ts`, which has
+done exactly this for the README since long before the skill needed it.
 
 ## The session the owner has open, and the loop they asked for
 
